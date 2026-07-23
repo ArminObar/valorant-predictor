@@ -1,0 +1,13 @@
+# Data lives outside version control by design: the HTML cache is the raw
+# source of truth (large, immutable) and everything else is derived from it.
+data/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+.DS_Store
+
+frontend/node_modules/
+frontend/dist/

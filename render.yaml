@@ -1,0 +1,34 @@
+# Render blueprint — one web service with a persistent disk.
+#
+# Why no separate cron worker: Render persistent disks attach to exactly ONE
+# service, and the ledger/model/store all live on that disk. A cron job could
+# not see them. So the refresh cycle (top-up crawl -> grade ledger -> retrain
+# if stale -> predict upcoming) runs INSIDE the web process on a background
+# thread, enabled by VPREDICT_REFRESH=1. scripts/refresh.py still exists for
+# real cron on a box with its own disk.
+#
+# First deploy: the disk starts empty. Seed it once from the shell tab:
+#   python -m vpredict.scraping.crawl --backfill   # or upload matches.jsonl
+#   python scripts/train.py
+#   python scripts/predict_upcoming.py --crawl
+# After that the in-process refresh keeps everything current.
+#
+# Railway alternative: build the same Dockerfile, attach a Volume mounted at
+# /data, set the same env vars. Same single-service reasoning applies.
+services:
+  - type: web
+    name: vpredict
+    runtime: docker
+    plan: starter          # disks require a paid plan
+    healthCheckPath: /api/health
+    disk:
+      name: vpredict-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: VPREDICT_DATA
+        value: /data
+      - key: VPREDICT_REFRESH
+        value: "1"
+      - key: VPREDICT_REFRESH_INTERVAL_S
+        value: "21600"     # 6 hours

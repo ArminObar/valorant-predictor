@@ -1,0 +1,79 @@
+# Model card — vpredict serving bundle
+
+## Model details
+
+- **Task.** Pre-match win probability for professional Valorant, trained at
+  map grain, aggregated to series probabilities by exact best-of DP.
+- **Architecture.** Heavily regularized LightGBM (121 trees after early
+  stopping) with isotonic calibration, selected by validation log loss over
+  a gated menu (LR always; regularized LightGBM admitted at ≥500 usable
+  matches; no neural networks by project scope). Validation is now large
+  enough (~2,000 map rows) to admit isotonic calibration. The persisted bundle contains the fitted pipeline,
+  calibrator, feature schema, feature parameters (half-life 90 d, roster
+  factor 0.8, feature Elo K=32), the tuned baseline K, training-data
+  fingerprint, and a version string.
+- **Features.** Differenced team form as of match start: time-decayed round
+  share, attack/defense side efficiencies, first-kill diff per 12 rounds,
+  shrunk pistol win rate, rest days, roster stability, overall and
+  map-specific Elo diffs, map identity one-hots, best-of, playoff flag,
+  history depth. Tier-B economy/clutch features are auto-dropped when the
+  source tabs weren't scraped (they currently are dropped).
+- **Version.** Reported by `/api/model` and stamped on every ledger row.
+
+## Intended use
+
+Educational and portfolio use: public pre-match probabilities with a frozen
+audit trail, and a worked example of leakage-safe evaluation. **Not betting
+advice**; no wagering use is intended or supported. Not affiliated with
+Riot Games or vlr.gg.
+
+## Training data
+
+Scraped politely from vlr.gg (robots.txt honored, ≥1.1 s spacing, disk
+cache). Current store: 6,796 matches, 2024-07-24 → 2026-07-22 (a full two
+years at the backfill boundary), **all tiers mixed** — tier-1 VCT (1,073
+usable), Challengers/Evolution (2,884), Game Changers (713), other (819).
+After the ≥3-prior-maps eligibility rule: 5,489 usable matches / 13,337
+map-team rows. Chronological 70/15/15 split by match.
+
+## Metrics (untouched test window, 2026-07-05 → 07-22)
+
+Map grain: log loss 0.6671, Brier 0.2370, accuracy 59.5%, ECE 0.0247 —
+versus tuned Elo (K=24) 0.6704 / 0.2388 / 59.0%. Series grain (824 series,
+veto-completed map sets): log loss **0.6500**, Brier **0.2262**, accuracy
+**64.3%** — ahead of the map-effective Elo DP baseline (0.6555 / 0.2317 /
+61.7%) at the deliverable grain. Per-tier: strongest on Game Changers
+(0.6168 / 64.3%); tier-1 remains hardest (0.6790 / 56.9%) though the model
+leads Elo on log loss in every tier. A stability finding is on record: plain
+LR outperformed the selected LightGBM on the held-out test window at both
+grains, while losing the validation selection — see Limitations. Every
+figure regenerates from `scripts/evaluate.py`.
+
+## Limitations
+
+- **Selection stability.** Validation selection chose LightGBM; the
+  untouched test window preferred plain LR at both grains (map 0.6619 vs
+  0.6671; series 0.6375 vs 0.6500). Switching models on test evidence would
+  be test-set selection, so the shipped bundle remains the validation
+  choice and the frozen ledger arbitrates. Planned protocol upgrade:
+  rolling-origin validation.
+- **Memory footprint.** The full feature build peaks ~0.7 GB RSS; 512 MB
+  deploy instances cannot run the retrain/predict cycle (serving the API
+  alone is light). See the deploy notes.
+- **Uniform pool weights.** Upcoming-match series probabilities average the
+  current 7-map pool uniformly; team pick/ban tendencies are not modeled.
+- **Coefficients are not explanations.** VIF up to ~115 among the
+  strength-signal features (see `results.md` §5); individual weights carry
+  no marginal-effect meaning.
+- **Roster/patch semantics are coarse.** Roster change is a lineup-overlap
+  decay factor; patches and agent metas are unmodeled.
+- **Low-history flag.** Predictions for teams with <3 prior maps are made
+  but flagged `low_history` in the ledger and UI.
+
+## Maintenance
+
+The refresh cycle (in-process on deploy, `scripts/refresh.py` on cron)
+tops up the crawl, grades the ledger, retrains when the bundle is ≥7 days
+old or ≥100 new matches arrived, and re-predicts. Retraining is safe by
+construction: ledger rows are frozen at first prediction, so model upgrades
+can never rewrite the public record.

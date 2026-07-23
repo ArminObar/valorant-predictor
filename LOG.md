@@ -1,0 +1,268 @@
+# LOG
+
+Engineering log, newest at the bottom. Bugs are written up as
+symptom → cause → fix → why earlier testing missed it → lesson.
+
+---
+
+## 1. 2026-07-23 — Recon: community scrapers are NOT stale
+
+GitHub's API was rate-limited from the build sandbox's shared IP, so staleness
+evidence came from shallow clones instead: axsddlr/vlrggapi (MIT) and
+akhilnarang/vlrgg-scraper both had commits dated 2026-07-18 — five days before
+this build — and Vanshbordia/vlrdevapi 2026-07-09. sanjaybaskaran01/StatsVLR
+failed to clone with an authentication prompt, meaning the repository is no
+longer publicly reachable. Net: the build brief's premise ("several have gone
+stale") holds for exactly one of four; recorded in ASSUMPTIONS §1 rather than
+quietly adopted. vlrgg-scraper has no license file, so nothing from it was
+copied; its real-page fixture was used for local validation only.
+
+## 2. 2026-07-23 — Scaffold mishap: brace expansion
+
+`mkdir -p a/{b,c}` ran under a shell without brace expansion and created a
+literal `{src` directory. Removed; directories recreated with explicit paths.
+Trivial, logged because the junk directory would otherwise have shipped.
+
+## 3. 2026-07-23 — Listing parser validated against real vlr.gg HTML
+
+Before any live traffic existed, the results-listing parser was run against a
+genuine 135 KB vlr.gg results-page snapshot found in a cloned repo's test
+fixtures (used locally, not redistributed): 50 of 50 match cards parsed with
+correct ids, team names, events, and statuses. This validated the listing
+selectors months of layout drift could have broken — but note entry 9 for what
+snapshot validation of *one page type* cannot catch.
+
+## 4. 2026-07-23 — Session interruption; state reconciled from disk
+
+The build session was cut off mid-batch. On resumption the working tree was
+audited file-by-file: four files believed unwritten (leakage tests, feature
+builder, baselines, evaluate script) were in fact complete on disk. Lesson:
+after an interrupted run, verify the filesystem before regenerating anything —
+the alternative was duplicating or clobbering finished work.
+
+## 5. 2026-07-23 — Bug: Elo replay order (non-commutativity)
+
+**Symptom (latent):** the build-time leakage spot-check would have raised
+false "LEAKAGE" errors on real schedules mixing Bo1/Bo3/Bo5 with dense timing.
+**Cause:** Elo updates do not commute. The live path applies updates in
+estimated-finish order (event queue); the spot-check's independent replay
+applied the *same set* of updates in start order. Same set, different order,
+different ratings — so an honest recomputation could mismatch an honest
+original, indicting the leakage guard itself.
+**Fix:** the replay now sorts eligible matches by (estimated finish, start,
+match id), exactly mirroring the event queue's heap order.
+**Why tests missed it:** the synthetic fixture used uniform Bo3 durations and
+weekly spacing, under which the two orders coincide.
+**Lesson:** when a checker re-derives a stateful computation, the *order
+contract* is part of the spec, not an implementation detail. The contract is
+now written into both functions' docstrings and exercised by schedules with
+overlapping matches.
+
+## 6. 2026-07-23 — Bug: unstable sort under tied timestamps
+
+Maps of one match share an estimated finish time; pandas' default quicksort
+may permute such ties differently for the full dataset vs a truncated one.
+Aggregations are order-invariant, but the roster "core" derives from the last
+five map rows, so tie reordering could flip which rows are "last five" —
+nondeterminism between a build and its own verification. Fix: stable sort in
+the as-of engine. One-word change; whole class of flaky-verification bugs
+removed.
+
+## 7. 2026-07-23 — Bug round-trip: LightGBM 4.7 eval API
+
+The evaluate script used `eval_X=`/`eval_y=` with a TypeError fallback to
+`eval_set=`. During review this looked like an invented API and was "fixed" to
+plain `eval_set=` — whereupon the smoke run emitted
+`LGBMDeprecationWarning: 'eval_set' is deprecated, use 'eval_X' and 'eval_y'`.
+LightGBM 4.7 really did migrate. Original structure restored (new API first,
+TypeError fallback for older versions). Lesson: check the installed version's
+actual behavior before "correcting" working code; the deprecation warning was
+the ground truth the review lacked.
+
+## 8. 2026-07-23 — Synthetic end-to-end smoke run (watermarked)
+
+620 seeded-simulator matches (609 usable, 1466 map rows) through the full
+pipeline: gate correctly opened LR + LightGBM, leakage spot-check passed on a
+schedule with genuinely overlapping matches, and the test window reported
+LR(C=0.03)+Platt at 0.6013 log loss vs tuned Elo (K=16) at 0.5922. Elo winning
+narrowly is the *expected* honest outcome — the simulator is itself a
+latent-strength world, so Elo is close to its true model — and it demonstrated
+the report will happily print an unflattering comparison. Every output carried
+the SYNTHETIC watermark. These numbers say nothing about real Valorant and
+appear nowhere in project documentation as results.
+
+## 9. 2026-07-23 — Field bug: map names concatenated with veto labels
+
+**Found by:** first live scrape (project owner's machine), not by any test.
+**Symptom:** stored map names like "LotusPICK", "AscentPICK", "BreezePICK".
+Decider maps carry no veto label, so the same map is stored under two keys —
+per-map history silently fragments, roughly halving per-map sample sizes and
+degrading per-map Elo, map-filtered snapshots, and map dummies.
+**Cause:** vlr.gg nests the label inside the name span:
+`<span>Lotus<span class="picked">PICK</span></span>`. `get_text()` on the name
+span concatenates the child, and the guard `startswith("pick")` inspected the
+wrong end of "LotusPICK". The reference implementation this parser's selectors
+were grounded in (vlrggapi, MIT) contains the *identical* flaw — grounding in
+community code transferred a community bug.
+**Fix:** extract the span's direct text only (child tags excluded), skip
+label/duration spans outright, and defensively strip an uppercase
+PICK/BAN/DECIDER suffix on every path (uppercase-only, so no real map name can
+be mangled). Regression tests in `tests/test_parsers.py` drive the full match-
+page parser over the nested-label structure and pin pick-vs-decider key unity.
+**Why offline validation missed it:** the real snapshot on hand was a
+*listing* page; map headers only exist on match pages, which were validated
+structurally, from selector descriptions — descriptions that omitted the
+nesting.
+**Remediation (map names are baked into stored records):** stop any crawl
+running old code; then
+`rm data/raw/matches.jsonl` (and `data/processed/features.joblib` if present);
+then `python -m vpredict.scraping.crawl --backfill --since-days 730
+--max-pages 400`. All previously fetched match pages re-parse from the disk
+cache for free; only listing pages (15-min TTL) and genuinely new match pages
+touch the network.
+
+## 10. 2026-07-23 — Field bug: top-up early-exit blocks historical backfill
+
+**Found by:** the same live session.
+**Symptom:** after an initial crawl, re-running with a larger `max_pages`
+returns "stored: 0" instantly instead of going deeper.
+**Cause:** the crawler treated "every match on this listing page is already
+known" as "caught up" unconditionally. Correct for topping up with new
+results; fatal for deepening history, because the walk toward older pages must
+pass *through* pages of known matches.
+**Fix:** the two intents are now separate code paths with opposite stop rules.
+`crawl_results` (top-up) keeps the early exit — it is the cheap scheduled-job
+path and now stops even on an all-known page 1. `backfill_results` walks
+through known pages; known matches are never refetched — their *stored* start
+times drive the `since` stop rule — so a backfill's network cost is exactly
+the unknown match pages plus listing pages. A CLI was added
+(`python -m vpredict.scraping.crawl [--backfill] [--since-days N]
+[--max-pages N] [--tier-b]`) so both paths are invocable without writing code.
+Offline tests in `tests/test_crawl.py` pin both behaviors and the
+stored-timestamp stop rule against a canned fetcher.
+
+## 11. 2026-07-23 — First live-scrape validation (external)
+
+Reported from the field after the fixes above were identified: 150 matches /
+810 map-team rows with zero missing side splits, zero missing first-kill
+counts, and first-kill counts internally consistent per round. This is the
+first real-data confirmation of the Tier A parsing path end to end. Full
+test suite after both fixes: 18/18 passing. Next milestone (by explicit
+decision): `scripts/evaluate.py` on the re-parsed real store, reported
+separately from the synthetic run; training-bundle persistence, ledger/API,
+frontend, and deployment are all held until that number exists.
+
+## 12. 2026-07-23 — Staged-backfill hardening: interrupt safety made real
+
+A full 2-year backfill is ~20,000 match pages ≈ 6+ hours at the 1.1 s floor,
+so it WILL be interrupted. Audit of what was already true: the HTML cache
+persists per fetch (no network work is ever lost) and the store write is
+tmp-then-atomic-replace (no interrupt can corrupt it). What was NOT true:
+parsed matches were held in memory and upserted once at the end, so a Ctrl-C
+at hour five discarded five hours of parses (recoverable from cache, but at a
+full re-parse cost) and a 20k-match batch would have held the whole dataset in
+RAM. Fix: the crawler now flushes to the store every 250 parsed matches
+(`config.CRAWL_FLUSH_MATCHES`) and, via try/finally, flushes everything parsed
+on ANY exit including KeyboardInterrupt — so an interrupt loses at most the
+single in-flight match, and a SIGKILL/power loss at most one flush window.
+Resume is a plain re-run of the same command: known matches are skipped using
+stored timestamps, so resume overhead is just the listing-page walk back to
+the frontier (~1.1 s per page). Pinned by
+`tests/test_crawl.py::test_interrupt_persists_progress_and_resume_completes`.
+
+## 13 — 2026-07-23 · Extended K grid; match-level results; Elo wins at series grain
+Extended the Elo K grid to 128 per review: K=50 is an interior optimum
+(val 0.6591; 64 gives 0.6598, degrading beyond), so the earlier grid-edge
+concern is resolved and the map-level comparison stands un-flattered.
+Built series-level evaluation: veto notes parsed to recover unplayed decider
+maps (59/136 test series veto-completed, 16 mean-prob fallback, 61 full),
+exact best-of DP over per-map probabilities. Finding, reported as-is per the
+spec's "a tie with Elo is a legitimate finding" rule: at MATCH grain the
+tuned Elo baseline beats the model (LL 0.6411 vs 0.6615, acc 65.4% vs 62.5%).
+Mechanism diagnosed, not guessed: map-effective Elo is WORSE than overall Elo
+at map grain (0.6849 vs 0.6820), so Elo's series edge is not map knowledge —
+it is probability spread. The C=0.03 + Platt model is better calibrated per
+map but more compressed toward 0.5, and DP aggregation rewards spread.
+Actionable later (discrimination-preserving regularization), deliberately NOT
+tuned now — serving ships first per the project owner's ordering.
+
+## 14 — 2026-07-23 · Tier breakdown; tier-1-restricted training hurts
+Keyword tier classifier over observed 2026 event strings (tier1 VCT /
+tier2 Challengers+Evolution Series / Game Changers / other), mapping counts
+printed in the report for auditability. The validation window (Jun 23–Jul 5)
+contains ZERO tier-1 matches — a real VCT calendar gap between stages — so
+the restriction experiment selects/calibrates on the full val window for
+both arms (which also cleanly isolates the training-set effect). Result:
+training on tier-1 rows only (131 matches) is worse everywhere, including on
+tier-1 test rows (LL 0.6989 vs 0.6836; acc 48.9% vs 53.3%). Cross-tier data
+helps tier-1 prediction at this sample size; restriction is rejected.
+
+## 15 — 2026-07-23 · Serving layer, scoreboard, frontend, deploy
+Ledger (SQLite): predictions refused inside 5 min of start; the FIRST
+prediction per match is frozen — later calls, even from newer bundles, are
+ignored; grading fills results idempotently; Elo's probability is stored
+beside the model's so the public comparison is fixed at prediction time.
+Prediction path reuses build.py's _assemble_row and was verified byte-exact
+against training rows on real matches (worst |Δ| = 0.0 across 6 spot checks);
+a drift guard raises if serving-time features go missing rather than
+zero-filling silently. Pre-veto series probability: uniform-weight mean over
+the current pool (top-7 by 60-day frequency) through the exact DP —
+pick/ban-informed weights are documented future work. Fixed a path split
+where the ledger default and the API disagreed on the SQLite location.
+Deploy: Render disks attach to a single service, so the refresh cycle runs
+in-process behind VPREDICT_REFRESH=1 instead of a cron service that could
+never see the disk; render.yaml documents this and the Railway equivalent.
+Frontend (Vite/React, Rajdhani+Inter, no Riot trade dress) builds clean and
+is served by the API. e2e verified in an isolated env: train on the real
+1250-match store -> two upcoming fixtures -> 2 frozen ledger rows -> API
+serves upcoming + scoreboard + static UI. 29 tests green.
+
+## 16 — 2026-07-23 · Collinearity check (spec non-negotiable) + docs milestone
+Implemented the outstanding collinearity requirement as evaluate.py §5: VIF
+via auxiliary regressions plus top pairwise correlations, training rows,
+continuous/context features. Findings put hard numbers under the coefficient
+investigation from entry 15: round_share_diff VIF 115.2, side efficiencies
+~47, elo_diff/map_elo_diff ~39 with r=+0.99 between them, while the
+independent features (fk, pistol, rest, roster, context) all sit near 1.
+The report now states explicitly that coefficients are not marginal effects.
+Headline tables verified unchanged by the addition. Also removed dead lines
+in predict.py's column selection and pinned the Dockerfile COPY now that
+README.md exists. Wrote the three remaining spec docs — README.md (headline
+results + single-script reproducibility guarantee), WALKTHROUGH.md (the
+methodology for a reader new to rigorous evaluation, with the compression
+trade-off and the tier experiment as case studies), MODEL_CARD.md (live
+bundle card with limitations stated plainly, including the series-grain gap
+and uniform pool weights). Suite at 32 tests.
+
+## 17 — 2026-07-23 · Two-year dataset: gap closes; C sweep flat; stability finding
+The deep crawl landed: 6,796 matches (2024-07-24 → 2026-07-22; the sender's
+"5,546" was the increment over the earlier 1,250, which is fully contained).
+5,489 usable / 13,337 map rows; split 3,842/823/824. Ran the identical
+protocol: validation selection now picks LightGBM (121 trees) + isotonic
+(val finally large enough for isotonic), tuned Elo K drops 50 → 24 as
+predicted once cold-start pressure vanished, and the model beats Elo at
+BOTH grains — map 0.6671 vs 0.6704, series 0.6500 vs 0.6555 LL (64.3% vs
+61.7% acc, 824 series; provenance 331 full / 291 veto / 202 fallback).
+ECE 0.0247.
+The authorized compression fix (sweep LR C, recalibrate, select by
+validation SERIES log loss) was implemented as evaluate.py §6 and the
+answer is that C stopped mattering: test series LL is 0.6375 for every C in
+[0.03, 3.0] — compression was a small-data artifact. The sweep surfaced a
+better finding: plain LR beats the selected LightGBM on the untouched test
+window at both grains while losing validation selection. Deliberately NOT
+switching (test-set selection); shipped bundle stays the validation choice,
+the disagreement is documented in the model card, and the frozen ledger
+arbitrates. Protocol upgrade queued: rolling-origin validation.
+Tier-1-restriction re-test at 752 t1 training matches: within noise
+(0.6771 vs 0.6790 on t1 test LL, accuracy still worse); conclusion updated
+from "hurts" to "no demonstrated benefit"; all-tier training stays.
+Collinearity at scale: round_share 97.7, side efficiencies ~40, elo pair
+~12.7 (r=+0.96) — structure unchanged, elo less entangled with two years of
+separation.
+Operational: full runs at this scale exceed the interactive execution
+window (feature build 50 s at 0.69 GB peak RSS; 12 default leakage
+spot-checks ≈ 13 s each; two LightGBM selections), so evaluate.py gained
+--features-cache and --spot-checks; identical numbers either way, and the
+runtime leakage spot-checks were exercised separately at full scale (pass).
+Deploy implication recorded: 512 MB instances cannot run the
+retrain/predict cycle (~0.7 GB peak); serving alone is light.
