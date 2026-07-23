@@ -1,6 +1,6 @@
 # Data lives outside version control by design: the HTML cache is the raw
 # source of truth (large, immutable) and everything else is derived from it.
-data/
+/data/
 
 __pycache__/
 *.pyc
