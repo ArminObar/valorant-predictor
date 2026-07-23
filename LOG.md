@@ -266,3 +266,63 @@ spot-checks ≈ 13 s each; two LightGBM selections), so evaluate.py gained
 runtime leakage spot-checks were exercised separately at full scale (pass).
 Deploy implication recorded: 512 MB instances cannot run the
 retrain/predict cycle (~0.7 GB peak); serving alone is light.
+
+## Entry 11 — 2026-07-23 — unanchored `data/` in .gitignore excluded package source
+
+*(Numbering assumes the file currently ends at entry 10, per the references
+in ASSUMPTIONS §1–3; renumber if it has drifted.)*
+
+**Symptom.** First Render deploy built successfully, then crashed at
+runtime with `ModuleNotFoundError: No module named 'vpredict.data'`.
+
+**Cause.** `.gitignore` contained the unanchored pattern `data/`, which git
+matches at any depth. It excluded the intended repo-root `data/` directory
+*and* `src/vpredict/data/` (`schema.py`, `store.py`) — so the committed
+tree, which is what the deploy builds from, was missing part of the
+package. The local working tree still had the files, so everything worked
+locally.
+
+**Fix.** Anchored the pattern to `/data/` so only the repo-root data
+directory is ignored; committed the previously-excluded
+`src/vpredict/data/` files.
+
+**Why testing missed it.** The entire test suite runs against the local
+working tree, where the files exist. Nothing ever exercised the *committed*
+tree installed as a package. Remediation shared with entry 12:
+`scripts/smoke_container.sh` now builds the image from `git archive HEAD`
+(deploy-shaped context) and imports every `vpredict.*` submodule inside the
+container, so a file missing from git fails the smoke test locally instead
+of the deploy.
+
+## Entry 12 — 2026-07-23 — frontend mount silently skipped in the container; site served 404 at /
+
+**Symptom.** After fixing entry 11 the deploy came up and `/api/*` worked,
+but `/` returned "Not Found". No error or warning anywhere in the logs.
+
+**Cause.** `api.py` resolved the frontend as
+`Path(__file__).resolve().parents[3] / "frontend" / "dist"`. In a source
+checkout that lands on the repo root; in the container the package is
+pip-installed into site-packages, so `parents[3]` is
+`/usr/local/lib/python3.12/` while the Dockerfile puts the build at
+`/app/frontend/dist`. The guard `if dist.exists():` then evaluated false
+and skipped the static mount *silently* — a missing frontend was treated as
+a normal configuration rather than a fault worth logging.
+
+**Fix.** New `src/vpredict/frontend_locate.py`: resolution order is the
+`VPREDICT_FRONTEND_DIR` env var, then `/app/frontend/dist`, then
+`<ancestor>/frontend/dist` walking up from the module (reproduces the old
+dev behaviour without hardcoding `parents[N]`), then `<cwd>/frontend/dist`.
+A candidate counts only if it contains `index.html`, so an empty dist is
+treated as absent. When nothing matches it logs a WARNING listing every
+path tried; when the env var is set but invalid it warns and falls through
+to the candidates (serving the site beats failing on a typo, but the
+misconfiguration stays visible). `api.py` now calls
+`locate_frontend_dist()` and mounts `if dist is not None`.
+
+**Why testing missed it.** Same blind spot as entry 11 from a different
+angle: tests ran where the relative path resolves and the files exist;
+nothing verified that the *installed* package in the *container* actually
+serves its frontend. The `dist.exists()` guard converted a deployment fault
+into silence. Remediation: the same `scripts/smoke_container.sh` boots the
+built container and asserts `GET /api/health` returns 200 and `GET /`
+returns 200 with an HTML body.

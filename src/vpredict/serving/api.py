@@ -29,6 +29,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from vpredict.frontend_locate import locate_frontend_dist
 
 from .. import config
 from .ledger import Ledger
@@ -54,7 +55,7 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
     ledger_path = data_dir / "serving" / "ledger.sqlite"
     predictions_json = data_dir / "processed" / "upcoming_predictions.json"
     bundle_path = data_dir / "models" / "model.joblib"
-    dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+    dist = locate_frontend_dist()
 
     app = FastAPI(title="vpredict", version="0.1.0")
     app.add_middleware(CORSMiddleware, allow_origins=["*"],
@@ -90,7 +91,7 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         meta = _bundle_meta(bundle_path)
         return meta or {"error": "no trained bundle yet — run scripts/train.py"}
 
-    if dist.exists():
+    if dist is not None:
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
 
     if os.environ.get("VPREDICT_REFRESH", "0") == "1":

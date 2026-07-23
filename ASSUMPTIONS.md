@@ -235,3 +235,93 @@ map-pool window 60 d / size 7 for the deferred serving milestone.
   to one service; the refresh loop therefore runs in-process
   (`VPREDICT_REFRESH=1`) rather than as a separate cron that couldn't see
   the ledger.
+
+## 9. Deploy fixes and the memory measurement standard (2026-07-23)
+
+**Frontend location strategy.** The dist directory resolves in order:
+`VPREDICT_FRONTEND_DIR`, `/app/frontend/dist`, `<ancestor>/frontend/dist`
+walking up from the module, `<cwd>/frontend/dist`; a candidate must contain
+`index.html` (an empty dist is "absent", not "mounted and 404ing"). An env
+var that is set but invalid logs a warning and falls through to the
+candidates rather than failing hard — serving the site beats dying on a
+typo, and the warning keeps the misconfiguration visible. Absence is never
+silent: a warning lists every path tried (LOG entry 12).
+
+**Smoke tests exercise the committed tree, not the working tree.** The
+container smoke test builds from `git archive HEAD` because both deploy
+bugs (LOG entries 11–12) lived precisely in the gap between working tree
+and committed-tree-installed-as-package. A working-tree mode exists for
+pre-commit iteration, but the deploy-shaped build is the default.
+
+**Binding memory number = cgroup peak inside a Linux container.** That is
+what Render enforces, so that is the instrument; macOS figures
+(`/usr/bin/time -l`, getrusage) are indicative only. "Before" measurements
+run under a 1 GB container limit — measuring a ~0.69 GB workload at 512 MB
+just OOM-kills the run — and 512 MB enforcement is a separate post-trim
+run. Budget target 440 MB (~85% of 512) for page-cache accounting and
+OOM headroom. Risk, stated honestly: local Docker on Apple silicon
+measures arm64 while Render runs x86-64; accepted as second-order at the
+magnitudes involved, with final verification on Render.
+
+**Forced retrains on the full real store are legitimate.** The
+`VPREDICT_FORCE_RETRAIN` switch exists so measurement runs exercise the
+expensive path; a forced full-data retrain produces the same bundle a
+scheduled retrain would, and the frozen ledger makes retrains safe by
+construction, so baseline runs need no sandbox.
+
+**Growth-curve semantics.** The x-axis is stored-match count capped via
+`VPREDICT_STORE_LIMIT` in store-file (crawl) order — not chronological
+order, which is irrelevant for memory scaling and is the only thing these
+runs measure. Store-limited runs are measurement-only: any bundle or
+prediction they produce is garbage by design, so growth runs *always*
+execute inside a disposable cloned workspace via `VPREDICT_WORKSPACE`, and
+the harness refuses to run growth until the operator explicitly
+acknowledges having verified that wiring (procedure in MEMORY_RUNBOOK.md).
+The extrapolated budget-crossing match count is always labelled an
+extrapolation from the measured points, never a measurement.
+
+## 10. Market odds baseline — decisions on record, execution parked (2026-07-23)
+
+Execution is parked until the deployed site is working and seeded. The
+investigation's decisions are recorded now so the pilot is designed against
+them rather than re-litigated later.
+
+**"Market" means observed bookmaker prices.** Sources whose odds are
+house-originated by models (PandaScore's traded odds, Rimble's simulation
+pricing) are excluded — logging them as "market" would compare our model to
+a competitor model wearing a market costume. Direct scraping of book sites
+is rejected on ToS, geo-blocking (offshore books gate by server region, so
+a US-region Render box sees a different book than a Toronto browser), and
+this project's politeness rules; aggregator or official book APIs only.
+Rivalry, named in the original plan, suspended all betting in February 2026
+and is not a source. Candidate order from the 2026-07-23 investigation:
+OddsPapi (free tier; carries Pinnacle, GG.BET, Thunderpick), BetsAPI
+fallback, Cloudbet's official feed as a sanctioned single-book supplement.
+
+**Pre-registered expectation: the market baseline is likely tier-1-only,
+and that is a finding, not a failure.** The best available prior —
+OddsPapi's own worked example, a vendor marketing figure, not our
+measurement — showed ~10 Valorant fixtures with odds in a week, against
+the ~65 matches/week our crawl averages. If per-tier line availability
+comes back negligible below tier 1, the deliverable is exactly that table:
+per-tier availability-by-start and availability-at-freeze (NULL-at-freeze
+rates), reported per tier and never pooled, with the model card scoping the
+market comparison to "where the market speaks". The pilot is designed to
+report sparse coverage cleanly — a market column that exists only for
+tier 1 while the model covers all tiers is itself evidence about where the
+market is soft, which is the point of the comparison.
+
+**Capture and de-vig protocol (unchanged from the investigation, for when
+this unparks).** Market implied probability is captured in the same
+transaction that freezes model and Elo (identical information cutoff;
+NULL when no line exists at that instant), plus a last-tick-before-start
+snapshot as a closing proxy, both forward-only — no historical backfill,
+even where vendors offer timestamped history; vendor history is used only
+to audit our own capture integrity. Raw prices are stored append-only and
+de-vigged at analysis time: Shin's method primary (margin loads onto
+longshots, and tier-2 margins run wider, so proportional normalization
+would flatter the market's underdog pricing exactly where our model is
+strongest), multiplicative as a sensitivity column, per-tier mean overround
+reported as its own table. One headline book per row by fixed sharpness
+priority (Pinnacle > GG.BET > Bet365 > Thunderpick > any), priority pinned
+in config, all captured books stored, never silently averaged.
