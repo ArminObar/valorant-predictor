@@ -44,6 +44,6 @@ test("a naive ISO string is treated as UTC, never viewer-local", () => {
 });
 
 test("missing timestamps render as a dash, not 'Invalid Date'", () => {
-  assert.equal(fmtTime(null), "—");
-  assert.equal(fmtTime("not-a-date"), "—");
+  assert.equal(fmtTime(null), "n/a");
+  assert.equal(fmtTime("not-a-date"), "n/a");
 });

@@ -4,8 +4,8 @@
   --line: #223041;
   --text: #e8edf2;
   --dim: #7c8b9d;
-  --a: #37b3a8;      /* team A / model accent — teal */
-  --b: #e06a4e;      /* team B accent — ember */
+  --a: #37b3a8;      /* team A / model accent (teal) */
+  --b: #e06a4e;      /* team B accent (ember) */
   --warn: #e0b14e;
 }
 
@@ -42,6 +42,7 @@ nav button {
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 nav button.on { color: var(--text); border-bottom-color: var(--a); }
+nav.intro-links { border-bottom: none; margin: 4px 0 0; }
 nav button:hover { color: var(--text); }
 
 .card {

@@ -167,7 +167,7 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
     @app.get("/api/model")
     def model() -> dict:
         meta = _bundle_meta(bundle_path)
-        return meta or {"error": "no trained bundle yet — run scripts/train.py"}
+        return meta or {"error": "No trained model yet. Run scripts/train.py."}
 
     if dist is not None:
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")

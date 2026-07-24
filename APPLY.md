@@ -199,3 +199,53 @@ POST-hardening sandbox numbers in the session report are your comparison
 baseline. Push the site afterwards (`git push`; Render adopts the clip on
 deploy — interim delta is nil for in-band predictions, and the next
 cadence retrain stamps the new version).
+
+## 11. Patch 0021: homepage + plain-language copy pass (frontend only)
+
+Adds the intro block above the tabs (what the site is, how it works, an
+honest one-line standing that reads the same at 1 graded match or 100,
+with links into Upcoming and the Backtest), rewrites every panel's copy
+in plain language with tooltips on the badges, and removes every em dash
+from the frontend and from the served-JSON label strings. No model or
+prediction behavior changes: BUNDLE_BEHAVIOR_REV is untouched, no retrain
+needed, no backtest implications.
+
+    git am patches/0021-*.patch
+    python -m pytest                 # expect 106 passed
+    cd frontend && npm test && cd .. # expect 5 pass
+    git push                         # then hard-refresh the site
+
+## 12. Verify autonomy yourself (Render logs + two curls)
+
+The scheduler runs a cycle IMMEDIATELY on every boot, then every 6 h. In
+the Render service logs, a healthy deployment shows, in order:
+
+1. Once per boot: `refresh scheduler enabled (subprocess), every 21600s`
+2. Per cycle, the health record:
+   `refresh cycle: {'ts': ..., 'crawl': {'since': ..., 'stored': N},
+   'graded': M, 'retrain': 'bundle fresh', 'predict': {'inserted': ...}}`
+3. Then: `refresh subprocess ok in Ns`
+
+THE TRAP: steps are fault-isolated, so a cycle whose crawl FAILED still
+ends with `refresh subprocess ok`. Health lives in the `refresh cycle:`
+dict, not the ok line. Failure signatures to grep for:
+`results crawl failed:` (and `'crawl': {'error': ...}` in the dict),
+`grading failed:`, `prediction failed:`, `tz migration failed:`,
+`refresh subprocess exited N`, `OOM-killed`.
+
+Decision tree: no scheduler line since the last deploy means the env var
+isn't active on the running service. Scheduler line but no cycle dicts
+means the subprocess can't spawn. Cycle dicts with a crawl error mean
+Render can't reach vlr.gg (paste the exact error line; the fix depends on
+which exception it is). Cycles with `stored > 0` but `graded` stuck at 0
+while finished matches exist means a grading bug; send the whole dict.
+
+From your Mac, no dashboard needed:
+
+    curl -s https://vpredict.onrender.com/api/model | python3 -m json.tool
+    curl -s https://vpredict.onrender.com/api/upcoming | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['generated_at'], d['model_version'], len(d['predictions']))"
+
+`generated_at` advances every completed cycle (models and data are not in
+git, so any movement is server-side). The clean experiment: note the
+time, touch nothing for 7 hours, curl again. If `generated_at` advanced,
+autonomy is real; if it's stale, read the logs against the tree above.

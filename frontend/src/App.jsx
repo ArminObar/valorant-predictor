@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { fmtTime } from "./time.js";
 
 const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
-const fmt4 = (v) => (v == null ? "—" : v.toFixed(4));
+const fmt4 = (v) => (v == null ? "n/a" : v.toFixed(4));
 
 function useApi(path) {
   const [data, setData] = useState(null);
@@ -47,8 +47,12 @@ function UpcomingCard({ m }) {
       <div className="probs">
         <span className="num a">{fmtPct(p)}</span>
         <span className="mid">
-          model favours <b>{fav}</b> · Elo says {fmtPct(m.p_elo)}
-          {m.low_history ? <span className="badge">low history</span> : null}
+          model picks <b>{fav}</b> · Elo says {fmtPct(m.p_elo)}
+          {m.low_history ? (
+            <span className="badge" title={"One or both teams have fewer "
+              + "than 3 recorded maps, so this prediction leans on "
+              + "defaults. Extra doubt advised."}>low history</span>
+          ) : null}
         </span>
         <span className="num b">{fmtPct(1 - p)}</span>
       </div>
@@ -63,15 +67,18 @@ function Upcoming() {
   if (!data.predictions.length)
     return (
       <p className="empty">
-        No predictions logged yet. Run <code>python scripts/predict_upcoming.py --crawl</code>.
+        No upcoming predictions right now. New ones appear after the next
+        refresh cycle (self-hosting? run
+        <code> python scripts/predict_upcoming.py --crawl</code>).
       </p>
     );
   return (
     <>
       <p className="note">
-        Generated {fmtTime(data.generated_at)} · model {data.model_version} ·
-        every prediction below is frozen in the ledger at least 5 minutes
-        before match start.
+        Matches that haven't started yet. Each prediction is locked in
+        ("frozen") at least 5 minutes before the match, so it can't be
+        changed after the fact. Generated {fmtTime(data.generated_at)} by
+        model {data.model_version}.
       </p>
       {data.predictions.map((m) => (
         <UpcomingCard key={m.match_id} m={m} />
@@ -102,20 +109,28 @@ function MarketPicks() {
   return (
     <div className="panel">
       <div className="panel-title">
-        Market picks · LIVE — frozen ledger vs captured odds
+        Market picks: model vs real odds
       </div>
+      <p className="note">
+        When a sportsbook prices a match we predicted, we compare our
+        locked-in probability to their price. EV is the expected profit
+        per $1 staked if our probability is right; "de-vig" means the
+        bookmaker's built-in margin has been removed from their implied
+        probability. Live rows only. Not betting advice.
+      </p>
       {!gate.ev_validated && (
         <p className="warn">
-          EV unvalidated — {gate.n_graded}/{gate.required} graded
-          market-covered picks. The threshold was registered before the
-          first pick graded; numbers below are provisional until it is met.
+          EV numbers are unvalidated until {gate.required} market-covered
+          picks have graded ({gate.n_graded} so far). That threshold was
+          set before the first pick graded, so it can't be moved to
+          flatter the results.
         </p>
       )}
       {picks.length === 0 ? (
         <p className="empty">
-          No market-covered picks yet. They appear once a captured price
-          links to a frozen prediction (odds capture runs off-site every
-          10 minutes).
+          No market-covered picks yet. They appear once a captured
+          sportsbook price matches up with a frozen prediction (prices are
+          captured every 10 minutes, off-site).
         </p>
       ) : (
         <>
@@ -125,8 +140,8 @@ function MarketPicks() {
               {s.avg_ev_pct != null && <> · avg EV {s.avg_ev_pct}%</>}
               {s.avg_clv_pct != null && <> · avg CLV {s.avg_clv_pct}% ·
                 beat close {fmtPct(s.beat_close_rate)}</>}
-              {" "}· extrapolated picks are labeled and excluded from these
-              aggregates
+              {" "}· picks marked "extrapolation" are excluded from these
+              averages
             </p>
           )}
           <table className="ledger">
@@ -142,7 +157,10 @@ function MarketPicks() {
                       ? "map total" : "moneyline"} · {p.source}</span></td>
                   <td>{p.selection}
                     {p.extrapolated &&
-                      <span className="badge">extrapolation</span>}</td>
+                      <span className="badge" title={"Our probability is "
+                        + "outside the range where calibration was checked "
+                        + "(15% to 88%), so trust it less."}>
+                        extrapolation</span>}</td>
                   <td>{fmtPct(p.p_model)}</td>
                   <td className="dim">{fmtPct(p.implied)}</td>
                   <td className="dim">{fmtPct(p.shin)}</td>
@@ -159,9 +177,11 @@ function MarketPicks() {
             </tbody>
           </table>
           <p className="note">
-            EV = frozen model probability × raw entry price − 1. De-vig
-            column is Shin; the multiplicative sensitivity is in the data.
-            Series moneyline and map totals only — nothing else is scored.
+            EV = our locked-in probability times the price at capture,
+            minus 1. Positive means the price looked better than our
+            probability said it should be. The de-vig column uses Shin's
+            method. Only match winners and total-maps bets are scored,
+            nothing else.
           </p>
         </>
       )}
@@ -175,21 +195,24 @@ function Backtest() {
   const w = data.window;
   const tiers = Object.entries(data.per_tier || {});
   return (
-    <div className="panel">
+    <div className="panel" id="backtest">
       <div className="panel-title">
-        Backtest — simulated walk-forward
-        <span className="badge">simulated · not independently verifiable</span>
+        Backtest: the system replayed over two years
+        <span className="badge" title={"Computed after the fact from "
+          + "stored data. You can't verify it the way you can the live "
+          + "scoreboard, which is why the two are kept apart."}>
+          simulated</span>
       </div>
       <p className="note">
-        The live system replayed over history, once: the same pre-veto
-        pool-mean quantity the ledger freezes, called at the last legal
-        moment, retrained on the production cadence
-        ({w.n_retrains} retrains) with the production selection policy.
+        We re-ran the whole system over the past two years as if it had
+        been live the entire time: every prediction uses only information
+        that existed at that moment, and the model retrains on the real
+        production schedule ({w.n_retrains} retrains).
         {" "}{w.n_predictions} simulated predictions
-        ({w.n_low_history} low-history, counted but not scored) from{" "}
-        {fmtTime(w.first_prediction)} to {fmtTime(w.last_prediction)}.
-        Kept strictly separate from the LIVE frozen ledger above — the two
-        are never merged into one number.
+        ({w.n_low_history} of them low-history, counted but not scored)
+        from {fmtTime(w.first_prediction)} to {fmtTime(w.last_prediction)}.
+        Because it's simulated, it is kept strictly separate from the live
+        scoreboard above. The two are never mixed into one number.
       </p>
       <table className="ledger">
         <thead>
@@ -218,10 +241,12 @@ function Backtest() {
         </tbody>
       </table>
       <p className="note">
-        Metrics per event tier only, over graded non-low-history rows.
-        Green marks the lower (better) log loss per tier. Run-once: this
-        result is re-generated only when the model changes, and the prior
-        result stays archived.
+        Results are split by event tier (tier1 is the top pro circuit) and
+        never pooled into one number. Lower log loss is better; green
+        marks the winner in each tier. The short version: Elo wins most of
+        the two-year history, and the model does better in the most recent
+        stretch. This backtest runs once. It only re-runs if the model
+        changes, and the old result stays archived.
         {data.synthetic_data && (
           <span className="badge">contains synthetic data</span>
         )}
@@ -239,13 +264,18 @@ function Scoreboard() {
     <>
       <div className="panel">
         <div className="panel-title">
-          LIVE — frozen ledger · called in advance · {s.n_graded} graded
-          · {s.n_pending} pending
+          Live scoreboard: {s.n_graded} graded, {s.n_pending} pending
         </div>
+        <p className="note">
+          Every row here was locked in before its match started, then graded
+          when the match ended. This is the record the model has to live
+          with. The sample grows as pending matches finish; be careful
+          reading much into small counts.
+        </p>
         {s.n_graded === 0 ? (
           <p className="empty">
-            Nothing graded yet — the scoreboard fills in as predicted matches
-            finish. This page is the honest record either way.
+            Nothing graded yet. The scoreboard fills in as predicted matches
+            finish, and this page is the honest record either way.
           </p>
         ) : (
           <div className="metrics">
@@ -258,6 +288,13 @@ function Scoreboard() {
             <Metric label="brier" model={s.model.brier} elo={s.elo.brier} />
             <Metric label="accuracy" model={s.model.accuracy} elo={s.elo.accuracy} />
           </div>
+        )}
+        {s.n_graded > 0 && (
+          <p className="note">
+            Log loss and Brier measure how good the probabilities are
+            (lower is better). Accuracy just counts correct picks (higher
+            is better). Green marks whichever side is ahead.
+          </p>
         )}
       </div>
       <MarketPicks />
@@ -316,23 +353,52 @@ function ModelTab() {
   ];
   return (
     <div className="panel">
-      <div className="panel-title">Model card (live bundle)</div>
+      <div className="panel-title">Model details (live bundle)</div>
       {data.synthetic_data && (
-        <p className="warn">This bundle was trained on SYNTHETIC demo data.</p>
+        <p className="warn">This model was trained on made-up demo data.</p>
       )}
       <table className="kv">
         <tbody>
           {rows.map(([k, v]) => (
-            <tr key={k}><td className="dim">{k}</td><td>{String(v ?? "—")}</td></tr>
+            <tr key={k}><td className="dim">{k}</td><td>{String(v ?? "n/a")}</td></tr>
           ))}
         </tbody>
       </table>
       <p className="note">
-        Trained at map grain on vlr.gg history with leakage-safe as-of features;
-        chronological splits; probabilities Platt-calibrated on validation.
-        Series probabilities aggregate per-map predictions over the current
-        pool with uniform weights.
+        The model predicts one map at a time, trained on scraped vlr.gg
+        history. Every stat it uses comes only from matches that had
+        already finished before the match being predicted started (no
+        peeking at the future). Per-map probabilities get combined into
+        one series probability, and everything is calibrated on held-out
+        data so that "65%" is meant to come true about 65% of the time.
       </p>
+    </div>
+  );
+}
+
+function Intro({ go }) {
+  return (
+    <div className="panel">
+      <div className="panel-title">What this is</div>
+      <p className="note">
+        This site predicts who wins pro Valorant matches, then shows its
+        work. Every prediction is locked in at least 5 minutes before the
+        match starts and graded in public once it ends, against Elo (a
+        simple rating system that is hard to beat) and against real
+        sportsbook odds.
+      </p>
+      <p className="note">
+        Where it stands: on the most recent slice of two years of data,
+        the model beats Elo at both the map level and the series level.
+        Replayed over the full two years, Elo wins more of the history.
+        Both views are on this site. The live scoreboard has only just
+        started grading, so treat it as a record being written, not a
+        verdict.
+      </p>
+      <nav className="intro-links">
+        <button onClick={() => go("upcoming")}>see upcoming predictions</button>
+        <button onClick={() => go("backtest")}>see the backtest</button>
+      </nav>
     </div>
   );
 }
@@ -340,6 +406,16 @@ function ModelTab() {
 export default function App() {
   const [tab, setTab] = useState("upcoming");
   const { data: health } = useApi("/api/health");
+  const go = (where) => {
+    if (where === "backtest") {
+      setTab("scoreboard");
+      setTimeout(() =>
+        document.getElementById("backtest")?.scrollIntoView(
+          { behavior: "smooth" }), 60);
+    } else {
+      setTab(where);
+    }
+  };
   return (
     <div className="wrap">
       <header>
@@ -347,12 +423,17 @@ export default function App() {
           v<span className="logo-accent">predict</span>
         </div>
         <div className="tagline">
-          Valorant win probabilities, logged before the match — graded against Elo, in public.
+          Valorant win probabilities, locked in before each match and graded
+          in public.
         </div>
       </header>
       {health?.synthetic_model && (
-        <p className="warn">Serving a SYNTHETIC-data demo model — not real predictions.</p>
+        <p className="warn">
+          This is a demo model trained on made-up data. Not real
+          predictions.
+        </p>
       )}
+      <Intro go={go} />
       <nav>
         {["upcoming", "scoreboard", "model"].map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
@@ -364,9 +445,10 @@ export default function App() {
       {tab === "scoreboard" && <Scoreboard />}
       {tab === "model" && <ModelTab />}
       <footer>
-        Data scraped politely from vlr.gg (robots.txt respected, ≥1s spacing).
-        Predictions freeze ≥5 min pre-match; the first call stands. Not affiliated
-        with Riot Games.
+        Data scraped politely from vlr.gg (robots.txt respected, at least 1s
+        between requests). Predictions lock at least 5 minutes before each
+        match, and the first call stands. Not affiliated with Riot Games.
+        Not betting advice.
       </footer>
     </div>
   );

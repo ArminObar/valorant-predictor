@@ -280,14 +280,14 @@ def _build_report(rows: list[dict], retrains: list[dict], mt: pd.DataFrame,
     blocks = summarize_rows(rows)
     return {
         "section": "BACKTEST",
-        "label": ("simulated walk-forward — large sample, not independently "
-                  "verifiable; never merged with the LIVE frozen ledger"),
+        "label": ("simulated walk-forward. Large sample, not independently "
+                  "verifiable, never merged with the LIVE frozen ledger."),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "synthetic_data": bool(mt["synthetic"].any()),
         "protocol": {
-            "quantity": ("pre-veto pool-mean series probability — the same "
+            "quantity": ("pre-veto pool-mean series probability, the same "
                          "quantity the live ledger freezes"),
-            "call_time": "start − freeze margin (the latest legal call)",
+            "call_time": "start minus freeze margin (the latest legal call)",
             "freeze_margin_s": config.LEDGER_FREEZE_MARGIN_S,
             "cadence": {"max_age_days": config.RETRAIN_MAX_AGE_DAYS,
                         "new_matches": config.RETRAIN_NEW_MATCHES,

@@ -1,4 +1,4 @@
-/* Time rendering — one place, one rule (LOG entry 29).
+/* Time rendering: one place, one rule (LOG entry 29).
  *
  * The API serves UTC instants as ISO-8601 strings with explicit offsets
  * ("...T08:00:00+00:00"). Rendering converts to the VIEWER'S local zone and
@@ -23,7 +23,7 @@ export function parseUtc(iso) {
 
 export function fmtTime(iso, opts = {}) {
   const d = parseUtc(iso);
-  if (!d) return "—";
+  if (!d) return "n/a";
   return d.toLocaleString(opts.locale, {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     timeZoneName: "short",
