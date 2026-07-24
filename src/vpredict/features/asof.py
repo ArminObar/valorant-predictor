@@ -48,6 +48,9 @@ class TeamSnapshot:
     pistol_wr: float = 0.5
     rest_days: float = 30.0
     roster_stability: float = 1.0
+    core_absent: float = 0.0     # share of the 5-player core missing from
+                                 # the most recent eligible lineup
+    newface: float = 0.0         # share of that lineup outside the core
     # Tier B (None when unavailable)
     fullbuy_wr: float | None = None
     lowbuy_wr: float | None = None
@@ -197,6 +200,10 @@ class AsOfEngine:
         core = self._core_roster(g)
         recent = [lu for lu in g["lineup"].tail(5) if lu]
         if core and recent:
+            last = set(recent[-1])
+            snap.core_absent = len(core - last) / 5.0
+            snap.newface = len(last - core) / max(len(last), 1)
+        if core and recent:
             snap.roster_stability = float(
                 np.mean([len(set(lu) & core) / 5.0 for lu in recent]))
 
@@ -241,6 +248,8 @@ def snapshot_diffs(a: TeamSnapshot, b: TeamSnapshot) -> dict[str, float | None]:
         "pistol_wr_diff": a.pistol_wr - b.pistol_wr,
         "rest_diff": math.log1p(a.rest_days) - math.log1p(b.rest_days),
         "roster_stability_diff": a.roster_stability - b.roster_stability,
+        "core_absent_diff": a.core_absent - b.core_absent,
+        "newface_diff": a.newface - b.newface,
         "fullbuy_wr_diff": d(a.fullbuy_wr, b.fullbuy_wr),
         "lowbuy_wr_diff": d(a.lowbuy_wr, b.lowbuy_wr),
         "clutch_per_map_diff": d(a.clutch_per_map, b.clutch_per_map),
@@ -248,7 +257,8 @@ def snapshot_diffs(a: TeamSnapshot, b: TeamSnapshot) -> dict[str, float | None]:
     }
 
 
-TIER_A_DIFFS = ["round_share_diff", "atk_eff_diff", "def_eff_diff", "fk_diff12_diff",
+TIER_A_DIFFS = ["core_absent_diff", "newface_diff",
+                "round_share_diff", "atk_eff_diff", "def_eff_diff", "fk_diff12_diff",
                 "pistol_wr_diff", "rest_diff", "roster_stability_diff"]
 TIER_B_DIFFS = ["fullbuy_wr_diff", "lowbuy_wr_diff", "clutch_per_map_diff",
                 "multikill_per_map_diff"]

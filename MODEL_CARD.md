@@ -92,10 +92,10 @@ Figures below are the evaluation report's (single-shot protocol; on the
 corrected data its LR-vs-LightGBM choice is a dead heat decided by 8e-5 —
 this session's regeneration selected plain LR, a re-run on other hardware
 may legitimately select LightGBM with third-decimal differences; the
-SERVING bundle remains LightGBM under hysteresis — see Architecture). Map grain: log loss 0.6672,
-Brier 0.2375, accuracy 59.3%, ECE 0.0275 — versus tuned Elo (K=24) 0.6704
+SERVING bundle remains LightGBM under hysteresis — see Architecture). Map grain (2026-07-24 late regeneration, stand-in features in): log loss 0.6676,
+Brier 0.2375, accuracy 59.6%, ECE 0.0345 — versus tuned Elo (K=24) 0.6704
 / 0.2388 / 59.0%. Series grain (824 series, veto-completed map sets): log
-loss **0.6530**, Brier **0.2294**, accuracy **62.5%** — ahead of the
+loss **0.6501**, Brier **0.2275**, accuracy **63.5%** — ahead of the
 map-effective Elo DP baseline (0.6555 / 0.2317 / 61.7%) at the deliverable
 grain. Per-tier: the report model leads Elo on log loss in tier-1, tier-2,
 and other; Game Changers flipped to Elo on this regeneration (0.6262 vs

@@ -852,3 +852,40 @@ where the scraper's input violates the definition. The invariant
 (distinct team keys) existed implicitly everywhere and explicitly
 nowhere. It is now explicit at the prediction choke point and pinned by a
 test that feeds the degenerate fixture directly.
+
+## Entry 34 — Stand-in features ship; the ensemble's selector was biased toward the incumbent and said so in its own table (2026-07-24, late night)
+
+One pre-registered evaluation run (§19), one test read. Three findings:
+
+**1. The stand-in features pass their gate — barely, and one of them is a
+duplicate.** Best candidate validation map LL improved 0.66007 → 0.65977
+with `core_absent_diff` and `newface_diff` in; the §19 gate says ship, so
+they ship. Test movement is third-decimal and mixed (map 0.6672 → 0.6676,
+series 0.6530 → 0.6501) — consistent with a small real signal plus noise.
+The embarrassment, printed by the run's own collinearity table: the two
+features correlate at +1.00. With full 5-player lineups (100% coverage),
+|core − last| = |last − core|, so they are the same quantity under two
+denominators. Under L2 a perfect duplicate splits weight and changes
+nothing predictive (the span is identical), so this round ships as
+evaluated; the duplicate is dropped in the next feature round rather than
+burning another test read on a provable no-op.
+
+**2. The ensemble selection stands — incumbent — but the selector is
+biased and the table shows it.** Both blends lose validation (0.6608 /
+0.6597 vs 0.6511) and both beat the incumbent on test (map 0.6630 /
+0.6615 vs 0.6676; per-tier best). The bias: the incumbent's validation
+number comes from its isotonic calibrator FITTED ON that same validation
+window, while the blends were fitted only on out-of-fold train rows — the
+§19 protocol protected the blends from leaking and forgot the incumbent
+enjoys exactly the optimism it was protecting against (measured: raw
+0.6598 vs calibrated-on-val 0.6511, a 0.0087 gift). No switch happens —
+selecting on the test columns is the sin this project exists to name —
+but §19b (ASSUMPTIONS) pre-registers the fair selector for the NEXT
+evaluation: every candidate, incumbent included, scored on validation via
+out-of-fold-fitted calibration. The per-tier blend's test showing also
+matches the walk-forward finding that Elo deserves more trust in tier-1,
+which is why this lead is worth a fair rematch rather than a shrug.
+
+**3. Selection flipped to LightGBM again (gap 5e-5)** — the fourth lead
+change of a dead heat the hysteresis policy exists to absorb. Production
+keeps its incumbent; the report shows the single-shot pick, as always.

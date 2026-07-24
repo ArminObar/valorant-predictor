@@ -745,3 +745,78 @@ the public headline) misrepresents the model in both directions at small
 n. Placeholder fixtures (colliding team keys) are no longer predicted at
 all; names on old rows backfill at grade time as display metadata (§15
 precedent).
+
+## 19. Ensemble, stand-in features, and one test read — pre-registered before running (2026-07-24, late night)
+
+Registered before any evaluation executes, so nothing below can be tuned
+against results.
+
+**Stacked ensemble (owner item a).** Stage-1 for out-of-fold fitting is
+the LR procedure's RAW probabilities (fit_lr, C picked per fold as
+always) — the dead heat (§17/LOG 32 context: 8e-5) makes the family
+choice immaterial and LR is deterministic cross-machine. Elo input is the
+K=24 prematch probability (the production baseline K; K was tuned on
+validation once, a status shared with every validation choice). OOF
+protocol: 5 expanding chronological folds over the TRAIN slice's last
+half; stage-2 fits ONLY on those out-of-fold train rows — never on
+validation, because stage-1's production calibrator fits there and
+stacking on it would leak. Candidate list, fixed now: (1) incumbent
+pipeline unchanged; (2) global blend sigma(a + b*logit(p_model_raw) +
+c*logit(p_elo)); (3) per-tier blend, one (a,b,c) per tier, tiers under
+200 OOF rows fall back to the global fit. Selection by validation MAP log
+loss; every candidate's test columns are printed (C-sweep precedent), the
+selected one also reported at series grain through the identical DP
+machinery. The blend, if selected, replaces the calibrator role
+end-to-end; it is a model change (behavior/feature versioning applies).
+
+**Stand-in features (owner item c), exactly two, Tier A.** From lineups
+already scraped at 100% coverage: `core_absent_diff` (share of the
+5-player core missing from the team's most recent eligible lineup, A−B)
+and `newface_diff` (share of that lineup outside the core, A−B). Both
+derive only from PRIOR eligible maps through the engine, so the as-of
+rule applies by construction and the poison test covers them via full
+snapshot comparison. The "star absent by first-kill share" variant is NOT
+computable — per-player FK is aggregated at parse time — and would need a
+per-player scraping pass; recorded as future work. Ship gate, fixed now:
+the new features ship only if validation log loss improves against the
+same split without them; otherwise the result is recorded and the
+features are reverted.
+
+**Patch timing: deferred, not faked.** The store's patch field is
+populated on 0 of 6,790 completed matches, and hardcoding a patch-date
+table from memory risks fabricated data. Two honest routes recorded:
+parser addition + cache re-parse on the owner's machine, or an
+owner-verified date table; neither is built this round.
+
+**Per-map form: not built, on measurement.** (team, map) cells have a
+median of 3 rows and 14% reach 10; a map-conditional form feature would
+be shrinkage prior for most of the pool, and per-map Elo already carries
+the deep-data signal. Recorded, revisit if the store doubles.
+
+**Bradley-Terry / TrueSkill: not built, reasoning sharpened.** Beyond
+parameter count (~1,000 teams, median 11 maps each), a batch latent-
+strength fit is frozen at train-end while Elo keeps updating as-of
+through validation and test; making BT as-of means refitting at every
+prediction time, which re-derives online Elo at far higher cost. The
+gated menu's Elo features already occupy this role.
+
+**Version integrity.** `make_version` now hashes the feature-name list —
+a feature-set change on the same params/day previously produced an
+identical version string, the same blind spot §17 fixed for behavior
+(the run-once gate must be able to see feature changes too).
+
+**One test read.** This entire batch — features in or out by the gate,
+ensemble candidates — is evaluated in a single evaluate.py run: one new
+dated results file, one read of the test window.
+
+## 19b. Fair ensemble selector — pre-registered for the NEXT evaluation (2026-07-24, late night)
+
+LOG entry 34's finding: §19's selector compared blends fitted on
+out-of-fold train rows against an incumbent whose validation score
+includes its calibrator's fit-on-validation optimism (measured 0.0087).
+Next evaluation, every candidate — incumbent included — is scored on
+validation through out-of-fold-fitted calibration (Platt on the same OOF
+train predictions), selection by that number, calibration for DEPLOYMENT
+still fitted as production fits it. Registered now, before any such run,
+so the blends' strong test columns in this round cannot influence the
+rule. This round's selection (incumbent) stands.

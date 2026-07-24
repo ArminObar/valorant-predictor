@@ -42,13 +42,13 @@ pressure).
 
 | model | log loss | Brier | accuracy |
 |---|---|---|---|
-| report model (LR + isotonic) | **0.6672** | **0.2375** | **0.5925** |
+| report model (LightGBM + isotonic) | **0.6676** | **0.2375** | **0.5958** |
 | Elo baseline (K=24) | 0.6704 | 0.2388 | 0.5897 |
 | Elo (map-effective blend) | 0.6754 | 0.2413 | 0.5694 |
 | favourite (higher Elo) | — | — | 0.5897 |
 | constant 0.5 | 0.6931 | 0.2500 | — |
 
-Model ECE 0.0274 (10 quantile bins).
+Model ECE 0.0345 (10 quantile bins).
 
 **Match level — series probabilities (824 test series, exact best-of DP over
 the post-veto map set; 331 fully played / 291 veto-completed / 202 mean-prob
@@ -56,7 +56,7 @@ fallback):**
 
 | model | log loss | Brier | accuracy |
 |---|---|---|---|
-| model (per-map → series DP) | **0.6530** | **0.2294** | **0.6250** |
+| model (per-map → series DP) | **0.6501** | **0.2275** | **0.6347** |
 | Elo (map-effective, DP) | 0.6555 | 0.2317 | 0.6165 |
 | favourite | — | — | 0.6201 |
 | constant 0.5 | 0.6931 | 0.2500 | — |

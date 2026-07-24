@@ -38,7 +38,8 @@ from vpredict.modeling import series as sr
 from vpredict.modeling.baselines import (compute_prematch_elo, elo_row_probs,
                                          matches_lite_from_maps, tune_elo_k)
 from vpredict.modeling.train import (PlattCalibrator, ll,
-                                     predict_calibrated, select_model)
+                                     fit_lr, predict_calibrated,
+                                     select_model)
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -475,6 +476,103 @@ def main() -> int:
           f"Brier {_brier(m_y, m_pe):.4f}, "
           f"acc {accuracy_score(m_y, m_pe >= 0.5):.4f}.", ""]
     L += [f"- Calibration curves (both grains): `{cal_png.name}`", ""]
+
+    # ============================================== 7. stacked ensemble (§19)
+    # Pre-registered in ASSUMPTIONS §19 BEFORE this code first ran. Stage-2
+    # fits ONLY on out-of-fold stage-1 predictions over TRAIN rows (never on
+    # validation, where stage-1's production calibrator fits). Candidates
+    # are fixed; selection by validation map log loss; every candidate's
+    # test columns are printed so nothing is cherry-picked.
+    from sklearn.linear_model import LogisticRegression as _SkLR
+
+    def _logit(p):
+        p = np.clip(np.asarray(p, float), 1e-6, 1 - 1e-6)
+        return np.log(p / (1 - p))
+
+    idx_tr = np.where(tr)[0]
+    n_tr = len(idx_tr)
+    fold_edges = [int(round(n_tr * (0.5 + 0.5 * i / 5))) for i in range(6)]
+    oof_pos, oof_p1 = [], []
+    for b0, b1 in zip(fold_edges[:-1], fold_edges[1:]):
+        if b1 <= b0:
+            continue
+        gi_fit, gi_out = idx_tr[:b0], idx_tr[b0:b1]
+        Xf, yf = augment_swapped(fs.X.iloc[gi_fit], fs.y.iloc[gi_fit])
+        lr_f = fit_lr(Xf, yf, fs.X.iloc[gi_out], y[gi_out])
+        oof_pos.extend(gi_out.tolist())
+        oof_p1.extend(lr_f["model"].predict_proba(
+            fs.X.iloc[gi_out])[:, 1].tolist())
+    oof_pos = np.array(oof_pos)
+    Z_oof = np.column_stack([_logit(oof_p1), _logit(p_elo[oof_pos])])
+    y_oof = y[oof_pos]
+    tier_oof = meta["tier"].to_numpy()[oof_pos]
+
+    lr_full = fit_lr(X_tr, y_tr, fs.X[va], y[va])       # stage-1, full train
+    p1_all = lr_full["model"].predict_proba(fs.X)[:, 1]
+    Z_all = np.column_stack([_logit(p1_all), _logit(p_elo)])
+    tiers_all = meta["tier"].to_numpy()
+
+    g2 = _SkLR(C=1e6, max_iter=2000).fit(Z_oof, y_oof)
+    p_blend_g = np.clip(g2.predict_proba(Z_all)[:, 1],
+                        config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP)
+    tier_fits = {}
+    for t_name in sorted(set(tier_oof)):
+        m_rows = tier_oof == t_name
+        tier_fits[t_name] = (_SkLR(C=1e6, max_iter=2000)
+                             .fit(Z_oof[m_rows], y_oof[m_rows])
+                             if m_rows.sum() >= 200 else g2)
+    p_blend_t = np.empty(len(fs.X))
+    for t_name in set(tiers_all):
+        m_rows = tiers_all == t_name
+        p_blend_t[m_rows] = tier_fits.get(t_name, g2).predict_proba(
+            Z_all[m_rows])[:, 1]
+    p_blend_t = np.clip(p_blend_t, config.CAL_OUTPUT_CLIP,
+                        1 - config.CAL_OUTPUT_CLIP)
+
+    ens_cands = [("incumbent pipeline", p_model),
+                 ("blend: global trust", p_blend_g),
+                 ("blend: per-tier trust", p_blend_t)]
+    ens_val = [(nm, ll(y[va], pv[va])) for nm, pv in ens_cands]
+    best_ens = min(ens_val, key=lambda kv: kv[1])[0]
+    p_best = dict(ens_cands)[best_ens]
+    pe_dec = {}
+    if Xd is not None:
+        p1_dec = lr_full["model"].predict_proba(Xd)[:, 1]
+        pe_dec_probs = np.array([_elo_p(elo_best[mid]["maps"][name])
+                                 for mid, name in decider_key])
+        Z_dec = np.column_stack([_logit(p1_dec), _logit(pe_dec_probs)])
+        if best_ens == "blend: global trust":
+            pd_probs = g2.predict_proba(Z_dec)[:, 1]
+        elif best_ens == "blend: per-tier trust":
+            pd_probs = np.array([
+                tier_fits.get(tier_of[mid], g2).predict_proba(
+                    Z_dec[i:i + 1])[0, 1]
+                for i, (mid, _) in enumerate(decider_key)])
+        else:
+            pd_probs = predict_calibrated(sel, Xd)
+        pe_dec = dict(zip(decider_key, np.clip(
+            pd_probs, config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP)))
+    m_pb = model_series(test_mids, p_best, pe_dec)
+
+    L += ["## 7. Stacked ensemble (pre-registered, ASSUMPTIONS §19)", "",
+          "Stage-2 learns how much to trust the model vs Elo, fitted only "
+          "on out-of-fold TRAIN predictions (5 expanding folds, stage-1 = "
+          "raw LR per fold). Selection by validation map log loss; all "
+          "test columns shown.", "",
+          "| candidate | val map LL (selector) | test map LL | test brier "
+          "| test acc |", "|---|---|---|---|---|"]
+    for nm, pv in ens_cands:
+        star = " \u2605" if nm == best_ens else ""
+        L += [f"| {nm}{star} | {ll(y[va], pv[va]):.4f} | "
+              f"{ll(y[te], pv[te]):.4f} | {_brier(y[te], pv[te]):.4f} | "
+              f"{accuracy_score(y[te], pv[te] >= 0.5):.4f} |"]
+    L += ["", f"- \u2605 selected: {best_ens}. Series grain (selected): "
+          f"LL {ll(m_y, m_pb):.4f}, Brier {_brier(m_y, m_pb):.4f}, "
+          f"acc {accuracy_score(m_y, m_pb >= 0.5):.4f} "
+          f"(incumbent series row is table 2; Elo {ll(m_y, m_pe):.4f}).",
+          f"- Global blend weights (logit scale): intercept "
+          f"{g2.intercept_[0]:+.3f}, model {g2.coef_[0][0]:+.3f}, "
+          f"elo {g2.coef_[0][1]:+.3f}.", ""]
     if synthetic:
         L += ["**Every number above comes from a seeded simulator. It proves the",
               "pipeline runs end to end; it says nothing about real Valorant.**", ""]
