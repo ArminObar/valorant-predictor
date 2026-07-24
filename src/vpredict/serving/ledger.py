@@ -110,9 +110,16 @@ class Ledger:
         self._con.commit()
         return "inserted" if cur.rowcount == 1 else "frozen"
 
+    @staticmethod
+    def _placeholder(name: str | None) -> bool:
+        return (name or "").strip().lower() in {"", "tbd", "tba"}
+
     def grade(self, matches: Iterable[Match], now: datetime | None = None) -> int:
         """Fill observed results for ungraded rows whose match completed with a
-        winner. Returns number graded.
+        winner, and backfill placeholder team names ("TBD") with the real
+        names the completed match carries. Names are display metadata, like
+        start_ts (ASSUMPTIONS §15): the frozen probabilities and keys record
+        what was known at call time and are untouched. Returns number graded.
 
         Accepts any iterable and holds no Match objects: the ungraded-id set
         (small) comes from sqlite first, then the stream is scanned once. The
@@ -133,12 +140,45 @@ class Ledger:
                     " maps_played=? WHERE match_id=? AND graded=0",
                     (int(m.winner == "team1"), _iso(now), _maps_played(m),
                      m.match_id))
+                if ((self._placeholder(m.team1_name) is False
+                     or self._placeholder(m.team2_name) is False)):
+                    self._con.execute(
+                        "UPDATE predictions SET team1_name=?, team2_name=?"
+                        " WHERE match_id=? AND (LOWER(TRIM(team1_name)) IN"
+                        " ('', 'tbd', 'tba') OR LOWER(TRIM(team2_name)) IN"
+                        " ('', 'tbd', 'tba'))",
+                        (m.team1_name, m.team2_name, m.match_id))
                 graded += 1
                 ungraded.discard(m.match_id)
                 if not ungraded:
                     break
         self._con.commit()
         return graded
+
+    def backfill_names(self, matches: Iterable[Match]) -> int:
+        """One-time sweep for rows graded before grade() learned to backfill
+        placeholder names. Same stream discipline as backfill_maps_played."""
+        need = {r["match_id"] for r in self._con.execute(
+            "SELECT match_id FROM predictions WHERE"
+            " LOWER(TRIM(team1_name)) IN ('', 'tbd', 'tba')"
+            " OR LOWER(TRIM(team2_name)) IN ('', 'tbd', 'tba')")}
+        if not need:
+            return 0
+        fixed = 0
+        for m in matches:
+            if (m.match_id in need and m.status == "completed"
+                    and not self._placeholder(m.team1_name)
+                    and not self._placeholder(m.team2_name)):
+                self._con.execute(
+                    "UPDATE predictions SET team1_name=?, team2_name=?"
+                    " WHERE match_id=?",
+                    (m.team1_name, m.team2_name, m.match_id))
+                fixed += 1
+                need.discard(m.match_id)
+                if not need:
+                    break
+        self._con.commit()
+        return fixed
 
     def backfill_maps_played(self, matches: Iterable[Match]) -> int:
         """Fill maps_played for rows graded BEFORE the column existed.
@@ -190,12 +230,20 @@ class Ledger:
             return {"n": n, "log_loss": lls / n, "brier": brs / n,
                     "accuracy": acc / n}
 
-        ys = [int(r["team1_won"]) for r in g]
+        # Headline metrics score graded NON-low-history rows only, the same
+        # pre-registered convention the backtest uses (ASSUMPTIONS §16): a
+        # low-history call (e.g. a TBD placeholder bracket slot) is part of
+        # the frozen record and shown, but it measures the prior, not the
+        # model. Both counts are reported so nothing is hidden.
+        scored = [r for r in g if not r["low_history"]]
+        ys = [int(r["team1_won"]) for r in scored]
         return {
             "n_pending": int(pending),
             "n_graded": len(g),
-            "model": metrics([r["p_model"] for r in g], ys),
-            "elo": metrics([r["p_elo"] for r in g], ys),
+            "n_low_history": len(g) - len(scored),
+            "n_scored": len(scored),
+            "model": metrics([r["p_model"] for r in scored], ys),
+            "elo": metrics([r["p_elo"] for r in scored], ys),
         }
 
     def close(self) -> None:

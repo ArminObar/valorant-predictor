@@ -815,3 +815,40 @@ state, so deployed bundles adopt the clip on deploy without a version
 change; the interim delta is nil for in-band predictions (live upcoming
 calls sit within 0.15–0.88), and the next retrain stamps the
 behavior-rev'd version.
+
+## Entry 33 — "TBD vs TBD": the first graded scoreboard result was the model predicting a team against itself (2026-07-24, night)
+
+**Symptom.** A highlighted "TBD vs TBD" row with a green result mark,
+visually inside the Backtest panel, read as a live win. The owner's first
+graded headline (model LL 0.5373 vs Elo 0.6931) was this row.
+
+**Cause, three layers.** (1) vlr lists unresolved bracket slots as "TBD";
+the upcoming crawler stores them; both sides normalize to the SAME team
+key ("tbd"), so the prediction is a team against itself: Elo is exactly
+0.5 (LL ln 2 = 0.6931 — the arithmetic identifies the row), and p_model
+0.5843 is pure intercept bias on zero-information features, not signal.
+Six such self-collided rows sat in the seed ledger. (2) The frozen ledger
+kept the placeholder NAMES forever even after the real match graded by
+id. (3) Layout: the graded table rendered untitled directly beneath the
+Backtest panel, so a live-ledger row read as backtest content.
+
+**Fix (patch 0022).** Prediction path skips fixtures whose team keys
+collide (counted as `skipped_placeholder`; the slot gets a real
+prediction when the bracket resolves). grade() backfills placeholder
+names from the completed match — display metadata, same §15 precedent as
+start_ts; frozen probabilities and keys untouched — plus a one-time
+`backfill_names` sweep in the refresh cycle for rows graded before the
+fix. The live headline metrics now score graded NON-low-history rows
+only, the same pre-registered rule the backtest uses (§16), with both
+counts shown; the placeholder row stays in the record, flagged, unscored.
+Frontend: the graded table got its own titled panel inside the LIVE
+section and the Backtest panel moved last. Consequence stated plainly:
+the owner's scoreboard headline goes from "1 graded" to "1 graded,
+low-history, nothing scored yet" — which is the true state.
+
+**Why testing missed it.** Every fixture in the test suite has two
+distinct teams, because that is what a match is; nobody wrote the case
+where the scraper's input violates the definition. The invariant
+(distinct team keys) existed implicitly everywhere and explicitly
+nowhere. It is now explicit at the prediction choke point and pinned by a
+test that feeds the degenerate fixture directly.

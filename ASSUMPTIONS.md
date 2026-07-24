@@ -732,3 +732,16 @@ Interim delta is nil for in-band predictions (live upcoming calls sit
 inside 0.15–0.88); the next cadence retrain stamps the behavior-rev'd
 version. Static-report impact, measured: three fourth-decimal digits;
 every headline number unchanged.
+
+## 18. Live scoreboard scoring rule aligned with the backtest (2026-07-24, night)
+
+The live headline metrics now score graded non-low-history rows only —
+the rule §16 pre-registered for the backtest — after LOG entry 33's
+placeholder row became the first "result". Nothing is hidden: total
+graded, low-history, and scored counts are all served and shown, flagged
+rows stay visible in the graded table, and frozen probabilities are
+untouched. The alternative (scoring self-collided placeholder calls into
+the public headline) misrepresents the model in both directions at small
+n. Placeholder fixtures (colliding team keys) are no longer predicted at
+all; names on old rows backfill at grade time as display metadata (§15
+precedent).

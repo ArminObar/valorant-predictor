@@ -103,6 +103,10 @@ def refresh_cycle(crawl: bool = True) -> dict:
                 store.iter_matches(config.MATCHES_JSONL))
             if filled:
                 out["maps_played_backfilled"] = filled
+            renamed = led.backfill_names(
+                store.iter_matches(config.MATCHES_JSONL))
+            if renamed:
+                out["names_backfilled"] = renamed
             led.close()
         except Exception as e:
             log.error("grading failed: %s", e)

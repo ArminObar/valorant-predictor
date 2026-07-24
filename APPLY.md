@@ -249,3 +249,25 @@ From your Mac, no dashboard needed:
 git, so any movement is server-side). The clean experiment: note the
 time, touch nothing for 7 hours, curl again. If `generated_at` advanced,
 autonomy is real; if it's stale, read the logs against the tree above.
+
+## 13. Patch 0022: the TBD row, three-layer fix
+
+Your "TBD vs TBD" row was not backtest data. It was a live LEDGER row
+(the graded table rendered untitled beneath the Backtest panel), frozen
+from an unresolved vlr bracket slot where both team keys collapse to
+"tbd" — the model predicting a team against itself (Elo exactly 0.5 is
+the fingerprint; it was also your first graded headline). Patch 0022:
+placeholder fixtures are never predicted again, placeholder names
+backfill with the real teams at grade time, the graded table has its own
+titled panel with the Backtest panel moved last, and headline metrics now
+score non-low-history rows only (the backtest's pre-registered rule),
+with all counts shown.
+
+    git am patches/0022-*.patch
+    python -m pytest                 # expect 108 passed
+    git push
+
+Heads-up on what you'll see after deploy: the scoreboard will read
+"1 graded, low-history, nothing scored yet" until a real match grades.
+That is the honest state; the 0.5373-vs-0.6931 line was the placeholder.
+The next refresh cycle backfills the row's real team names on its own.

@@ -153,8 +153,23 @@ def run_predictions(bundle: dict, history, upcoming: list[Match],
     """Predict, write the ledger (freeze rules apply), and publish the JSON the
     API serves. Returns counters."""
     now = now or datetime.now(timezone.utc)
-    preds = predict_upcoming(bundle, history, upcoming, now=now)
-    counters = {"inserted": 0, "frozen": 0, "too_late": 0}
+    # Unresolved bracket slots ("TBD vs TBD") collide to the SAME team key,
+    # which is the model predicting a team against itself: p_elo is exactly
+    # 0.5 and p_model is pure intercept bias. Skip them; the slot gets a
+    # real prediction once the bracket resolves (new names, same freeze
+    # rules). Rows frozen before this guard existed stand, get their names
+    # backfilled at grade time, and are excluded from headline metrics by
+    # the low-history scoring rule.
+    playable = [um for um in upcoming
+                if um.key_team("team1") != um.key_team("team2")]
+    skipped = len(upcoming) - len(playable)
+    upcoming = playable
+    counters = {"inserted": 0, "frozen": 0, "too_late": 0,
+                "skipped_placeholder": skipped}
+    # Nothing playable: skip the (expensive) engine build entirely and
+    # still publish an empty, honest JSON.
+    preds = (predict_upcoming(bundle, history, upcoming, now=now)
+             if upcoming else [])
     for p, um in zip(preds, upcoming):
         status = ledger.insert_prediction(
             match_id=p["match_id"], start_ts=um.start_ts,

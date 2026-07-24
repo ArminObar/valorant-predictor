@@ -72,3 +72,54 @@ def test_grade_ignores_unfinished_matches(tmp_path):
                  team1_name="A", team2_name="B")
     assert led.grade([live]) == 0
     assert led.summary()["n_graded"] == 0
+
+
+def test_placeholder_names_backfilled_and_not_scored(tmp_path):
+    """A TBD-vs-TBD bracket slot: names backfill at grade time (display
+    metadata, ASSUMPTIONS §15), the frozen probabilities stand, and the
+    headline metrics exclude it via the low-history scoring rule."""
+    from vpredict.data.schema import Match
+    from vpredict.serving.ledger import Ledger
+    from datetime import datetime, timedelta, timezone
+
+    led = Ledger(tmp_path / "l.sqlite")
+    start = datetime.now(timezone.utc) + timedelta(hours=2)
+    led.insert_prediction(
+        match_id="m1", start_ts=start, team1="tbd", team2="tbd",
+        team1_name="TBD", team2_name="TBD", event="Cup", best_of=3,
+        p_model=0.5843, p_elo=0.5, model_version="t", low_history=True)
+    done = Match(match_id="m1", start_ts=start, status="completed",
+                 best_of=3, team1_id="a", team1_name="Alpha",
+                 team2_id="b", team2_name="Beta", winner="team1",
+                 team1_maps=2, team2_maps=0)
+    assert led.grade([done]) == 1
+    row = led.rows(graded=True)[0]
+    assert (row["team1_name"], row["team2_name"]) == ("Alpha", "Beta")
+    assert row["p_model"] == 0.5843          # frozen probability untouched
+    s = led.summary()
+    assert s["n_graded"] == 1 and s["n_low_history"] == 1
+    assert s["n_scored"] == 0 and s["model"] is None
+    led.close()
+
+
+def test_self_collided_fixture_is_never_predicted(tmp_path):
+    """run_predictions skips fixtures whose team keys collide (TBD vs TBD:
+    the model would be predicting a team against itself)."""
+    import pandas as pd
+    from vpredict.data.schema import Match
+    from vpredict.serving.ledger import Ledger
+    from vpredict.modeling.predict import run_predictions
+    from datetime import datetime, timedelta, timezone
+
+    class _Bundle(dict):
+        pass
+    # A fake bundle is unnecessary: the guard runs before any model work,
+    # so an empty upcoming list after filtering must short-circuit cleanly.
+    led = Ledger(tmp_path / "l.sqlite")
+    start = datetime.now(timezone.utc) + timedelta(hours=2)
+    tbd = Match(match_id="x", start_ts=start, status="upcoming", best_of=3,
+                team1_name="TBD", team2_name="TBD")
+    out = run_predictions({"version": "t"}, [], [tbd], led,
+                          json_path=tmp_path / "up.json")
+    assert out["skipped_placeholder"] == 1 and out["inserted"] == 0
+    led.close()

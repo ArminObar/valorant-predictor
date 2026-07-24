@@ -269,13 +269,20 @@ function Scoreboard() {
         <p className="note">
           Every row here was locked in before its match started, then graded
           when the match ended. This is the record the model has to live
-          with. The sample grows as pending matches finish; be careful
-          reading much into small counts.
+          with. Rows marked "low history" (like unresolved TBD bracket
+          slots) stay in the record but are not scored, the same rule the
+          backtest uses. The sample grows as pending matches finish; be
+          careful reading much into small counts.
         </p>
-        {s.n_graded === 0 ? (
+        {s.n_scored === 0 ? (
           <p className="empty">
-            Nothing graded yet. The scoreboard fills in as predicted matches
-            finish, and this page is the honest record either way.
+            {s.n_graded > 0
+              ? `${s.n_graded} graded so far, all low-history, so nothing is
+                 scored yet. The scoreboard fills in as predicted matches
+                 finish, and this page is the honest record either way.`
+              : `Nothing graded yet. The scoreboard fills in as predicted
+                 matches finish, and this page is the honest record either
+                 way.`}
           </p>
         ) : (
           <div className="metrics">
@@ -289,37 +296,48 @@ function Scoreboard() {
             <Metric label="accuracy" model={s.model.accuracy} elo={s.elo.accuracy} />
           </div>
         )}
-        {s.n_graded > 0 && (
+        {s.n_scored > 0 && (
           <p className="note">
+            Scored over {s.n_scored} graded matches
+            {s.n_low_history > 0 &&
+              ` (${s.n_low_history} more graded but low-history, not scored)`}.
             Log loss and Brier measure how good the probabilities are
             (lower is better). Accuracy just counts correct picks (higher
             is better). Green marks whichever side is ahead.
           </p>
         )}
       </div>
-      <MarketPicks />
-      <Backtest />
       {data.graded.length > 0 && (
-        <table className="ledger">
-          <thead>
-            <tr><th>match</th><th>start</th><th>model</th><th>elo</th><th>result</th></tr>
-          </thead>
-          <tbody>
-            {data.graded.map((r) => {
-              const winner = r.team1_won ? r.team1_name : r.team2_name;
-              const ok = (r.p_model >= 0.5) === Boolean(r.team1_won);
-              return (
-                <tr key={r.match_id}>
-                  <td>{r.team1_name} <span className="dim">vs</span> {r.team2_name}</td>
-                  <td className="dim">{fmtTime(r.start_ts)}</td>
-                  <td>{fmtPct(r.p_model)}</td>
-                  <td className="dim">{fmtPct(r.p_elo)}</td>
-                  <td className={ok ? "ok" : "miss"}>{winner} {ok ? "✓" : "✗"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="panel">
+          <div className="panel-title">Graded matches (live ledger)</div>
+          <table className="ledger">
+            <thead>
+              <tr><th>match</th><th>start</th><th>model</th><th>elo</th><th>result</th></tr>
+            </thead>
+            <tbody>
+              {data.graded.map((r) => {
+                const winner = r.team1_won ? r.team1_name : r.team2_name;
+                const ok = (r.p_model >= 0.5) === Boolean(r.team1_won);
+                return (
+                  <tr key={r.match_id}>
+                    <td>{r.team1_name} <span className="dim">vs</span> {r.team2_name}
+                      {Boolean(r.low_history) && (
+                        <span className="badge" title={"One or both teams "
+                          + "had almost no history when this was locked in "
+                          + "(often an unresolved TBD bracket slot). Kept "
+                          + "in the record, not scored."}>low history</span>
+                      )}
+                    </td>
+                    <td className="dim">{fmtTime(r.start_ts)}</td>
+                    <td>{fmtPct(r.p_model)}</td>
+                    <td className="dim">{fmtPct(r.p_elo)}</td>
+                    <td className={ok ? "ok" : "miss"}>{winner} {ok ? "✓" : "✗"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       {data.pending.length > 0 && (
         <div className="panel">
@@ -332,6 +350,8 @@ function Scoreboard() {
           ))}
         </div>
       )}
+      <MarketPicks />
+      <Backtest />
     </>
   );
 }
