@@ -40,7 +40,25 @@ CREATE TABLE IF NOT EXISTS predictions (
 );
 """
 
+# Columns added after first ship, applied as idempotent ALTERs so existing
+# ledgers upgrade in place. p_maps_dist freezes the model's maps-played
+# distribution WITH the first prediction (the map-totals analogue of
+# p_model — recomputing it later would let a newer model rewrite the public
+# totals call); maps_played is grading metadata for totals markets.
+_MIGRATIONS = [
+    ("p_maps_dist", "ALTER TABLE predictions ADD COLUMN p_maps_dist TEXT"),
+    ("maps_played", "ALTER TABLE predictions ADD COLUMN maps_played INTEGER"),
+]
+
 _EPS = 1e-6
+
+
+def _maps_played(m: Match) -> int | None:
+    """Maps actually played, for totals grading: the series score when the
+    parser has it, else the count of parsed map blocks, else None."""
+    if m.team1_maps is not None and m.team2_maps is not None:
+        return int(m.team1_maps) + int(m.team2_maps)
+    return len(m.maps) or None
 
 
 def _now() -> datetime:
@@ -58,6 +76,11 @@ class Ledger:
         self._con = sqlite3.connect(self.path)
         self._con.row_factory = sqlite3.Row
         self._con.executescript(_SCHEMA)
+        have = {r["name"] for r in self._con.execute(
+            "PRAGMA table_info(predictions)")}
+        for col, ddl in _MIGRATIONS:
+            if col not in have:
+                self._con.execute(ddl)
         self._con.commit()
 
     # ---------------------------------------------------------------- writes
@@ -66,20 +89,24 @@ class Ledger:
                           team2_name: str, event: str, best_of: int,
                           p_model: float, p_elo: float, model_version: str,
                           low_history: bool = False,
+                          p_maps_dist: dict | None = None,
                           now: datetime | None = None) -> str:
         """Returns 'inserted' | 'frozen' (already predicted) | 'too_late'."""
         now = now or _now()
         margin = (start_ts - now).total_seconds()
         if margin < config.LEDGER_FREEZE_MARGIN_S:
             return "too_late"
+        import json as _json
         cur = self._con.execute(
             "INSERT OR IGNORE INTO predictions "
             "(match_id, made_at, start_ts, team1, team2, team1_name, team2_name,"
-            " event, best_of, p_model, p_elo, model_version, low_history) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " event, best_of, p_model, p_elo, model_version, low_history,"
+            " p_maps_dist) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (match_id, _iso(now), _iso(start_ts), team1, team2, team1_name,
              team2_name, event, int(best_of), float(p_model), float(p_elo),
-             model_version, int(bool(low_history))))
+             model_version, int(bool(low_history)),
+             _json.dumps(p_maps_dist) if p_maps_dist else None))
         self._con.commit()
         return "inserted" if cur.rowcount == 1 else "frozen"
 
@@ -102,15 +129,40 @@ class Ledger:
             if (m.match_id in ungraded and m.status == "completed"
                     and m.winner):
                 self._con.execute(
-                    "UPDATE predictions SET graded=1, team1_won=?, graded_at=? "
-                    "WHERE match_id=? AND graded=0",
-                    (int(m.winner == "team1"), _iso(now), m.match_id))
+                    "UPDATE predictions SET graded=1, team1_won=?, graded_at=?,"
+                    " maps_played=? WHERE match_id=? AND graded=0",
+                    (int(m.winner == "team1"), _iso(now), _maps_played(m),
+                     m.match_id))
                 graded += 1
                 ungraded.discard(m.match_id)
                 if not ungraded:
                     break
         self._con.commit()
         return graded
+
+    def backfill_maps_played(self, matches: Iterable[Match]) -> int:
+        """Fill maps_played for rows graded BEFORE the column existed.
+        Grading metadata only — probabilities and outcomes are untouched.
+        Same streaming shape as grade(); cheap when nothing is missing."""
+        missing = {r["match_id"] for r in self._con.execute(
+            "SELECT match_id FROM predictions "
+            "WHERE graded = 1 AND maps_played IS NULL")}
+        if not missing:
+            return 0
+        filled = 0
+        for m in matches:
+            if m.match_id in missing and m.status == "completed":
+                n = _maps_played(m)
+                if n:
+                    self._con.execute(
+                        "UPDATE predictions SET maps_played=? WHERE match_id=?",
+                        (n, m.match_id))
+                    filled += 1
+                missing.discard(m.match_id)
+                if not missing:
+                    break
+        self._con.commit()
+        return filled
 
     # ---------------------------------------------------------------- reads
     def rows(self, graded: bool | None = None, limit: int = 300) -> list[dict]:

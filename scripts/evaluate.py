@@ -396,6 +396,9 @@ def main() -> int:
           f"{b['n_matches']['train']}/{b['n_matches']['val']}/{b['n_matches']['test']} "
           f"(train ends {b['train_end']:%Y-%m-%d}, val ends {b['val_end']:%Y-%m-%d})",
           f"- Gate: {sel['gate_note']}; selected by validation log loss",
+          f"- Candidate val map LL: " + ", ".join(
+              f"{k}: {v:.5f}" for k, v in
+              sorted(sel.get("candidate_val_ll", {}).items())),
           f"- Feature params: half_life={args.half_life}d, roster_factor={args.roster_factor}, "
           f"feature Elo K={config.DEFAULT_ELO_K}",
           f"- Tier B columns dropped: {fs.dropped_tier_b or 'none'}",

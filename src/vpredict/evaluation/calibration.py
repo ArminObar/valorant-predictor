@@ -15,11 +15,15 @@ from __future__ import annotations
 
 import math
 
+from .. import config
+
 REPORT_MIN_N = 30
 ACT_MIN_N = 100
-EXTRAP_LO = 0.15
-EXTRAP_HI = 0.88
-INNER_EDGES = [0.15, 0.35, 0.50, 0.65, 0.88]   # 4 inner cells
+# Single source of truth for the band is config (shared with markets EV,
+# per ASSUMPTIONS §7: config.py is the single home for constants).
+EXTRAP_LO = config.EV_EXTRAPOLATION_LO
+EXTRAP_HI = config.EV_EXTRAPOLATION_HI
+INNER_EDGES = [EXTRAP_LO, 0.35, 0.50, 0.65, EXTRAP_HI]   # 4 inner cells
 
 
 def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:

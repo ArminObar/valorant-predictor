@@ -99,6 +99,9 @@ def test_refresh_cycle_calls_crawl_results_with_bindable_args(tmp_path, monkeypa
         def grade(self, matches, now=None):
             return 0
 
+        def backfill_maps_played(self, matches):
+            return 0
+
         def close(self):
             return None
 

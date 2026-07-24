@@ -104,7 +104,7 @@ def run_once(sources: list[str], from_file: str | None,
                 continue
             start = datetime.fromisoformat(
                 by_id[mid]["start_ts"].replace("Z", "+00:00"))
-            slot = state.setdefault((source, mid),
+            slot = state.setdefault((source, mid, cap.market, cap.line),
                                     {"freeze": False, "close": False})
             kind = decide_kind(start, slot, now)
             if kind is None:

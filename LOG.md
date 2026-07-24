@@ -615,3 +615,90 @@ the old single-shot validation selection, so the serving protocol and the
 frozen two-year report now differ. The next full evaluation run adopts the
 rolling+hysteresis protocol and produces a new dated results file; the old
 file stays frozen as the record of the old protocol.
+
+## Entry 29 — Every stored start time was 4–5 h early: vlr's `data-utc-ts` is Eastern wall time (2026-07-24)
+
+**Symptom.** The live Upcoming tab showed Rex Regum Qeon vs ZETA DIVISION
+at "Jul 24, 12:00 AM" for a Toronto viewer; the match actually starts
+~08:00 UTC = 4:00 AM EDT. Every displayed time was exactly 4 h early.
+
+**Cause.** Not the frontend — `fmtTime` was already rendering
+viewer-local. The stored value itself was wrong: `_parse_utc_ts` read
+vlr.gg's `data-utc-ts` attribute and stamped it `timezone.utc`, but for a
+cookieless client vlr populates that attribute with the wall clock in the
+site's default display timezone, US Eastern — the attribute name lies.
+Ledger row 698894 carried `04:00:00+00:00`; Cloudbet's `startTime` for the
+same fixture (genuine UTC) reads 08:00. So every `start_ts` in the store
+was EDT/EST wall time mislabeled UTC: 4 h early in summer, 5 h in winter.
+
+**Fix.** Parser localizes the attribute to `America/New_York` and converts
+to UTC (DST-aware; the one ambiguous fall-back hour resolves to fold=0 —
+a ≤1 h error possible for at most one wall-clock hour per year). A
+marker-guarded one-time migration (`vpredict.data.migrate`) reinterprets
+every stored `start_ts` the same way — store, upcoming, and ledger
+metadata — then RE-SORTS the store, because the +4/+5 h shift is not
+uniform across DST seams and (start_ts, match_id) order is an invariant.
+It auto-runs at the top of the refresh cycle (Render self-heals; the
+marker makes every later call a no-op) and `scripts/migrate_store_tz.py`
+runs it manually. Applied to the seed store: 6,796 matches + 104 ledger
+rows; RRQ–ZETA reads 08:00Z after; VCT Pacific starts now cluster
+07:00–11:00 UTC — the real 16:00–20:00 KST/JST broadcast window (they
+previously implied midday-Asia starts, which nobody plays). Frontend time
+rendering moved to `frontend/src/time.js` — viewer-local with an explicit
+zone label, naive strings defensively treated as UTC — with a node --test
+suite (`npm test`) asserting a known UTC instant renders correctly under
+non-UTC zones.
+
+**Ledger policy.** `start_ts` on frozen rows was corrected as match
+METADATA, with the migration report as the audit record; `made_at`,
+`p_model`, `p_elo` and every other frozen field are untouched. The freeze
+property strengthens under the correction: every recorded `made_at`
+predates the TRUE start by 4–5 h more than the ledger previously claimed.
+
+**Evaluation impact, bounded.** A uniform shift cancels in every
+start-vs-start comparison, so eligibility, rest-day diffs, Elo event
+order, and split membership are unchanged except where a pair straddles a
+DST seam (±1 h on a 4–5 h shift): usable matches 5,489, map rows 13,337,
+and split counts are IDENTICAL before and after migration. Third-decimal
+metric movement plus a validation-selection flip did occur — see the
+2026-07-24 results file and MODEL_CARD Limitations.
+
+**Why testing missed it.** The parser test supplied the fixture attribute
+and asserted structure, never the semantic instant — and the semantic
+claim ("this attribute is UTC") was validated against the attribute's own
+NAME, not against an independent clock. Nothing in the offline corpus
+could contradict it: every stored time was consistently wrong, and
+consistency is what the tests checked. The first independent clock the
+system ever met was Cloudbet's `startTime` — and the user's own eyes on a
+match they were awake for. The regression tests now pin the instant, both
+Python-side (EDT and EST dates) and JS-side.
+
+## Entry 30 — First live Cloudbet run: entry 25's surface (a) validated, three findings (2026-07-24)
+
+The protocol run entry 25 gated on happened on the Mac: 101 fixtures
+checked, 16 captured, 0 source errors. Findings, each now acted on:
+
+1. **Real market keys pinned**: `esport_valorant.winner` (matched the
+   winner hints as designed), `esport_valorant.handicap` (ignored — out of
+   scope), `esport_valorant.totals`. Coverage is better than the ~10/week
+   §13 estimate — Cloudbet prices moneyline, totals, and handicap on
+   Valorant broadly. Note the totals key contains no "map": the totals
+   parser therefore filters by EXCLUSION (kill/round/player/per-map names
+   rejected) plus a numeric guard (lines > 4.5 are not map counts).
+2. **11 fixtures unlinked**, all the same shape: the book shortens org
+   names ("Secret" for Team Secret, "Titan" for Wuxi Titan Esports Club,
+   "G2" for G2 Esports). Entry 25's "linking never guesses" rule held —
+   they were stored unlinked, not mislinked. The new suggestion layer
+   (`vpredict.odds.fuzzy` + `scripts/suggest_aliases.py`) keeps that rule:
+   fuzzy proposes, a human confirms, aliases.json stays the audit trail.
+   All 11 names resolve unambiguously against the same prediction set the
+   run used (tested).
+3. **Capture-state keys widened** to (source, match, market, line) so a
+   moneyline freeze cannot suppress the totals freeze for the same match;
+   pre-totals log rows land at line=None unchanged. A non-blocking flock
+   in `capture_odds.py` makes overlapping cron fires exit cleanly instead
+   of double-appending freeze rows.
+
+Surface (b) — Pinnacle's intercepted shapes — remains UNVALIDATED until
+its first Mac run; `--debug` dumps every intercepted body for a one-paste
+fix if the parse count is 0.

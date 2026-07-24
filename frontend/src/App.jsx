@@ -93,6 +93,82 @@ function Metric({ label, model, elo }) {
   );
 }
 
+function MarketPicks() {
+  const { data, err } = useApi("/api/markets");
+  if (err || !data) return null;
+  const gate = data.gate || {};
+  const s = data.summary;
+  const picks = data.picks || [];
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        Market picks · LIVE — frozen ledger vs captured odds
+      </div>
+      {!gate.ev_validated && (
+        <p className="warn">
+          EV unvalidated — {gate.n_graded}/{gate.required} graded
+          market-covered picks. The threshold was registered before the
+          first pick graded; numbers below are provisional until it is met.
+        </p>
+      )}
+      {picks.length === 0 ? (
+        <p className="empty">
+          No market-covered picks yet. They appear once a captured price
+          links to a frozen prediction (odds capture runs off-site every
+          10 minutes).
+        </p>
+      ) : (
+        <>
+          {s && s.n_graded > 0 && (
+            <p className="note">
+              {s.n_graded} graded · win rate {fmtPct(s.win_rate)}
+              {s.avg_ev_pct != null && <> · avg EV {s.avg_ev_pct}%</>}
+              {s.avg_clv_pct != null && <> · avg CLV {s.avg_clv_pct}% ·
+                beat close {fmtPct(s.beat_close_rate)}</>}
+              {" "}· extrapolated picks are labeled and excluded from these
+              aggregates
+            </p>
+          )}
+          <table className="ledger">
+            <thead>
+              <tr><th>match</th><th>selection</th><th>model</th>
+                <th>implied</th><th>de-vig</th><th>EV</th><th>result</th></tr>
+            </thead>
+            <tbody>
+              {picks.map((p) => (
+                <tr key={`${p.match_id}-${p.market}-${p.line ?? ""}`}>
+                  <td>{p.match}
+                    <span className="dim"> · {p.market === "maps_total"
+                      ? "map total" : "moneyline"} · {p.source}</span></td>
+                  <td>{p.selection}
+                    {p.extrapolated &&
+                      <span className="badge">extrapolation</span>}</td>
+                  <td>{fmtPct(p.p_model)}</td>
+                  <td className="dim">{fmtPct(p.implied)}</td>
+                  <td className="dim">{fmtPct(p.shin)}</td>
+                  <td className={p.ev_pct >= 0 ? "ok" : "miss"}>
+                    {p.ev_pct > 0 ? "+" : ""}{p.ev_pct}%</td>
+                  <td className={p.graded ? (p.won ? "ok" : "miss") : "dim"}>
+                    {p.graded ? (p.won ? "won ✓" : "lost ✗") : "pending"}
+                    {p.graded && p.clv_pct != null &&
+                      <span className="dim"> · CLV {p.clv_pct > 0 ? "+" : ""}
+                        {p.clv_pct}%</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="note">
+            EV = frozen model probability × raw entry price − 1. De-vig
+            column is Shin; the multiplicative sensitivity is in the data.
+            Series moneyline and map totals only — nothing else is scored.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Scoreboard() {
   const { data, err } = useApi("/api/scoreboard");
   if (err) return <p className="empty">API unreachable.</p>;
@@ -102,7 +178,8 @@ function Scoreboard() {
     <>
       <div className="panel">
         <div className="panel-title">
-          Called in advance · {s.n_graded} graded · {s.n_pending} pending
+          LIVE — frozen ledger · called in advance · {s.n_graded} graded
+          · {s.n_pending} pending
         </div>
         {s.n_graded === 0 ? (
           <p className="empty">
@@ -122,6 +199,7 @@ function Scoreboard() {
           </div>
         )}
       </div>
+      <MarketPicks />
       {data.graded.length > 0 && (
         <table className="ledger">
           <thead>

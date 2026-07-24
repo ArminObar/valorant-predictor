@@ -1,0 +1,198 @@
+"""Markets & EV tests (spec item 5).
+
+Pins: the exact maps-played distribution and its consistency with
+series_prob; totals parsing against the LIVE-observed Cloudbet key
+(`esport_valorant.totals`, LOG entry 30) with kill-total exclusion; the
+frozen-record discipline (a totals pick prices only from the frozen
+p_maps_dist — rows frozen before that column simply have no totals pick);
+EV/CLV arithmetic; the extrapolation label; the pre-registered validation
+gate; and the ingest endpoint's auth.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from vpredict import config
+from vpredict.modeling.series import series_outcome_dist, series_prob
+from vpredict.odds import cloudbet
+from vpredict.odds.markets import build_markets_report, build_picks
+from vpredict.odds.schema import OddsCapture
+
+NOW = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
+
+
+# ------------------------------------------------------------- series dist
+
+def test_outcome_dist_matches_closed_form_bo3():
+    p = 0.6
+    d = series_outcome_dist([p] * 3)
+    assert d["p_win"] == pytest.approx(series_prob([p] * 3))
+    assert d["maps_dist"][2] == pytest.approx(p * p + (1 - p) * (1 - p))
+    assert d["maps_dist"][3] == pytest.approx(2 * p * (1 - p))
+    assert sum(d["maps_dist"].values()) == pytest.approx(1.0)
+
+
+def test_outcome_dist_bo5_support_and_mass():
+    d = series_outcome_dist([0.55] * 5)
+    assert set(d["maps_dist"]) == {3, 4, 5}
+    assert sum(d["maps_dist"].values()) == pytest.approx(1.0)
+    assert d["p_win"] == pytest.approx(series_prob([0.55] * 5))
+
+
+# ------------------------------------------------- cloudbet totals parsing
+
+CB_TOTALS_PAYLOAD = {
+    "events": [{
+        "id": 900, "status": "TRADING",
+        "home": {"name": "Team Solid"}, "away": {"name": "Krunker"},
+        "startTime": "2026-07-25T12:00:00Z",
+        "markets": {
+            "esport_valorant.winner": {"submarkets": {"period=ft": {
+                "selections": [
+                    {"outcome": "home", "params": "", "price": 1.61,
+                     "side": "BACK"},
+                    {"outcome": "away", "params": "", "price": 2.29,
+                     "side": "BACK"}]}}},
+            # The key the first live run actually reported — no 'map' in it.
+            "esport_valorant.totals": {"submarkets": {
+                "period=ft&total=2.5": {"selections": [
+                    {"outcome": "over", "params": "total=2.5",
+                     "price": 1.85, "side": "BACK"},
+                    {"outcome": "under", "params": "total=2.5",
+                     "price": 1.87, "side": "BACK"}]}}},
+            # Kill totals must be excluded by name AND by the line guard.
+            "esport_valorant.map_1_kill_totals": {"submarkets": {
+                "total=156.5": {"selections": [
+                    {"outcome": "over", "params": "total=156.5",
+                     "price": 1.9, "side": "BACK"},
+                    {"outcome": "under", "params": "total=156.5",
+                     "price": 1.9, "side": "BACK"}]}}},
+        },
+    }],
+}
+
+
+def test_cloudbet_emits_winner_and_map_totals_not_kill_totals():
+    caps, keys = cloudbet.parse_competition_events(CB_TOTALS_PAYLOAD, NOW,
+                                                   "freeze")
+    by_market = {(c.market, c.line): c for c in caps}
+    assert ("series_moneyline", None) in by_market
+    tot = by_market[("maps_total", 2.5)]
+    assert (tot.price_home, tot.price_away) == (1.85, 1.87)  # over, under
+    assert not any(c.line and c.line > 4.5 for c in caps)
+    assert "esport_valorant.map_1_kill_totals" in keys       # seen, logged
+
+
+# ------------------------------------------------------------ picks & EV
+
+def _row(mid="m1", graded=True, team1_won=1, maps_played=3,
+         p_model=0.70, dist=None):
+    return {"match_id": mid, "team1_name": "Alpha", "team2_name": "Beta",
+            "event": "VCT 2026: Pacific Stage 2", "best_of": 3,
+            "start_ts": "2026-07-24T08:00:00+00:00",
+            "p_model": p_model, "graded": int(graded),
+            "team1_won": team1_won, "maps_played": maps_played,
+            "p_maps_dist": json.dumps(dist) if dist else None}
+
+
+def _cap(mid="m1", kind="freeze", market="series_moneyline", line=None,
+         ph=1.61, pa=2.40, home_is_t1=True, at=NOW):
+    return OddsCapture(captured_at=at, source="cloudbet", capture_kind=kind,
+                       market=market, line=line, book_event_id="777",
+                       book_home="Alpha", book_away="Beta",
+                       price_home=ph, price_away=pa, match_id=mid,
+                       book_home_is_team1=home_is_t1)
+
+
+def test_moneyline_pick_ev_and_clv():
+    row = _row()                                    # p_model=0.70, Alpha won
+    caps = [_cap(kind="freeze", ph=1.61, pa=2.40),
+            _cap(kind="close", ph=1.50, pa=2.60,
+                 at=NOW + timedelta(hours=3))]
+    picks = build_picks([row], caps)
+    assert len(picks) == 1
+    p = picks[0]
+    # EV(home)=0.7*1.61-1=0.127 > EV(away)=0.3*2.40-1 -> pick home=Alpha.
+    assert p["selection"] == "Alpha"
+    assert p["ev_pct"] == pytest.approx(12.7, abs=0.01)
+    assert p["implied"] == pytest.approx(1 / 1.61, abs=1e-4)
+    # Entry 1.61 vs close 1.50: position beat the close by 1.61/1.50-1.
+    assert p["clv_pct"] == pytest.approx((1.61 / 1.50 - 1) * 100, abs=0.01)
+    assert p["graded"] and p["won"] is True and not p["extrapolated"]
+
+
+def test_totals_pick_prices_from_frozen_dist_only():
+    dist = {"2": 0.52, "3": 0.48}
+    row = _row(dist=dist, maps_played=3)
+    cap = _cap(market="maps_total", line=2.5, ph=2.10, pa=1.74)
+    picks = build_picks([row], [cap])
+    assert len(picks) == 1
+    p = picks[0]
+    # P(over 2.5)=0.48 -> EV(over)=0.48*2.10-1=0.008 > EV(under)=-0.095.
+    assert p["selection"] == "over 2.5 maps"
+    assert p["p_model"] == pytest.approx(0.48)
+    assert p["won"] is True                         # 3 maps played
+    # A row frozen BEFORE p_maps_dist existed cannot be priced — the frozen
+    # record rules, so the market is skipped rather than recomputed.
+    assert build_picks([_row(dist=None)], [cap]) == []
+
+
+def test_extrapolated_pick_labeled_and_excluded_from_aggregates():
+    row = _row(p_model=0.95, team1_won=1)           # outside [0.15, 0.88]
+    picks = build_picks([row], [_cap(ph=1.05, pa=9.0)])
+    assert picks[0]["extrapolated"] is True
+    rep = build_markets_report([row], [_cap(ph=1.05, pa=9.0)], now=NOW)
+    assert rep["summary"]["n_extrapolated"] == 1
+    assert rep["summary"]["avg_ev_pct"] is None     # nothing left to average
+    assert rep["summary"]["win_rate"] == 1.0        # win rate still honest
+
+
+def test_gate_stays_unvalidated_below_threshold():
+    rep = build_markets_report([_row()], [_cap()], now=NOW)
+    assert rep["gate"]["required"] == config.EV_MIN_GRADED_PICKS
+    assert rep["gate"]["ev_validated"] is False
+    assert rep["section"] == "LIVE"
+    assert "tier1" in rep["by_tier"]
+
+
+def test_book_priority_prefers_pinnacle_for_headline():
+    row = _row()
+    cb = _cap(ph=1.61, pa=2.40)
+    pn = OddsCapture(captured_at=NOW, source="pinnacle",
+                     capture_kind="freeze", book_event_id="9",
+                     book_home="Alpha", book_away="Beta",
+                     price_home=1.65, price_away=2.35, match_id="m1",
+                     book_home_is_team1=True)
+    picks = build_picks([row], [cb, pn])
+    assert len(picks) == 1 and picks[0]["source"] == "pinnacle"
+
+
+# --------------------------------------------------------------- ingest API
+
+def test_markets_endpoint_empty_then_ingest_roundtrip(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from vpredict.serving.api import create_app
+    monkeypatch.setenv("VPREDICT_INGEST_TOKEN", "s3cret")
+    c = TestClient(create_app(data_dir=tmp_path))
+    empty = c.get("/api/markets").json()
+    assert empty["picks"] == [] and empty["gate"]["ev_validated"] is False
+
+    report = {"generated_at": NOW.isoformat(), "picks": [{"x": 1}],
+              "gate": {"n_graded": 0, "required": 100,
+                       "ev_validated": False}}
+    assert c.post("/api/ingest/markets", json=report).status_code == 401
+    assert c.post("/api/ingest/markets", json=report,
+                  headers={"Authorization": "Bearer wrong"}
+                  ).status_code == 401
+    ok = c.post("/api/ingest/markets", json=report,
+                headers={"Authorization": "Bearer s3cret"})
+    assert ok.status_code == 200 and ok.json()["picks"] == 1
+    assert c.get("/api/markets").json()["picks"] == [{"x": 1}]
+
+    monkeypatch.delenv("VPREDICT_INGEST_TOKEN")
+    assert c.post("/api/ingest/markets", json=report,
+                  headers={"Authorization": "Bearer s3cret"}
+                  ).status_code == 503

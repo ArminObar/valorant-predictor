@@ -72,8 +72,13 @@ def test_append_iter_roundtrip_and_state(tmp_path, monkeypatch):
     got = list(iter_captures(path))
     assert [c.capture_kind for c in got] == ["freeze", "close", "freeze"]
     state = capture_state(path)
-    assert state[("cloudbet", "m1")] == {"freeze": True, "close": True}
-    assert state[("cloudbet", "book:e9")] == {"freeze": True, "close": False}
+    # Keys carry (market, line) since map-totals landed, so a moneyline
+    # freeze can't suppress the totals freeze for the same match; legacy
+    # moneyline rows sit at line=None.
+    assert state[("cloudbet", "m1", "series_moneyline", None)] == \
+        {"freeze": True, "close": True}
+    assert state[("cloudbet", "book:e9", "series_moneyline", None)] == \
+        {"freeze": True, "close": False}
 
 
 # ------------------------------------------------------------------ linking

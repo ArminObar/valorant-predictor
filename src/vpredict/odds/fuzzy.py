@@ -6,7 +6,7 @@ propose likely pairings for UNLINKED fixtures so confirmed pairs land in
 aliases.json instead of being hand-typed every week.
 
 Scoring is built around how books actually shorten org names
-(field-observed on the first Cloudbet run, LOG entry 25):
+(field-observed on the first Cloudbet run, LOG entry 30):
   "Secret"  for "Team Secret"          -> generic-token drop, exact core
   "Titan"   for "Wuxi Titan Esports Club" -> token subset
   "G2"      for "G2 Esports"           -> generic-token drop

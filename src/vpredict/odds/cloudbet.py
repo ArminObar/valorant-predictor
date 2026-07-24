@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from typing import Callable
@@ -113,6 +114,60 @@ def _winner_selections(markets: dict) -> tuple[str, float, float] | None:
     return None
 
 
+def _total_line(sel: dict, sub_key: str = "") -> float | None:
+    """The over/under line for a totals selection: `params` in Cloudbet's
+    docs is a string like "total=2.5" (dict tolerated too); the submarket
+    key (e.g. "period=ft&total=2.5") is the fallback."""
+    params = sel.get("params")
+    if isinstance(params, dict) and params.get("total") is not None:
+        try:
+            return float(params["total"])
+        except (TypeError, ValueError):
+            return None
+    blob = params if isinstance(params, str) else sub_key
+    m = re.search(r"total=([0-9]+(?:\.[0-9]+)?)", blob or "")
+    return float(m.group(1)) if m else None
+
+
+_TOTALS_EXCLUDE = re.compile(r"kill|round|player|map[_ ]?\d|game[_ ]?\d")
+# Map-count lines are small (Bo3 -> 2.5, Bo5 -> 3.5/4.5). Kill totals run
+# 150+, round totals 20+, so the numeric guard excludes them even if a
+# book's key naming ever slips past the name filter.
+_TOTALS_MAX_LINE = 4.5
+
+
+def _totals_selections(markets: dict) -> list[tuple[str, float, float, float]]:
+    """(market_key, line, price_over, price_under) for every fully-priced
+    map-totals line. The live key is `esport_valorant.totals` (LOG entry
+    30's first-run report), so filtering is by EXCLUSION — kill/round/player
+    and per-map scopes are rejected by name, and any line above
+    _TOTALS_MAX_LINE is rejected as not-a-map-count. Series map totals
+    only, per the scope rule."""
+    out: list[tuple[str, float, float, float]] = []
+    for mkey, market in sorted((markets or {}).items()):
+        lk = mkey.casefold()
+        if "total" not in lk or _TOTALS_EXCLUDE.search(lk):
+            continue
+        for sub_key, sub in sorted((market.get("submarkets") or {}).items()):
+            by_line: dict[float, dict[str, float]] = {}
+            for sel in sub.get("selections", []):
+                if sel.get("side") not in (None, "BACK"):
+                    continue
+                outcome = (sel.get("outcome") or "").casefold()
+                if outcome not in ("over", "under"):
+                    continue
+                line = _total_line(sel, sub_key)
+                if line is None or line > _TOTALS_MAX_LINE:
+                    continue
+                if sel.get("price") is None:
+                    continue
+                by_line.setdefault(line, {})[outcome] = float(sel["price"])
+            for line, prices in sorted(by_line.items()):
+                if set(prices) == {"over", "under"}:
+                    out.append((mkey, line, prices["over"], prices["under"]))
+    return out
+
+
 def parse_competition_events(payload: dict, captured_at: datetime,
                              capture_kind: str) -> tuple[list[OddsCapture],
                                                          list[str]]:
@@ -127,18 +182,29 @@ def parse_competition_events(payload: dict, captured_at: datetime,
             continue                       # outright/award style event
         if ev.get("status") not in ("TRADING", "TRADING_LIVE", None):
             continue
-        pick = _winner_selections(ev.get("markets") or {})
-        if pick is None:
-            continue
-        mkey, p_home, p_away = pick
         start = ev.get("startTime") or ev.get("cutoffTime")
-        out.append(OddsCapture(
-            captured_at=captured_at, source="cloudbet",
-            capture_kind=capture_kind,
-            book_event_id=str(ev.get("id")),
-            book_home=home["name"], book_away=away["name"],
-            book_start_ts=start, book_market_key=mkey,
-            price_home=p_home, price_away=p_away))
+        common = dict(captured_at=captured_at, source="cloudbet",
+                      capture_kind=capture_kind,
+                      book_event_id=str(ev.get("id")),
+                      book_home=home["name"], book_away=away["name"],
+                      book_start_ts=start)
+        pick = _winner_selections(ev.get("markets") or {})
+        emitted = False
+        if pick is not None:
+            mkey, p_home, p_away = pick
+            out.append(OddsCapture(**common, book_market_key=mkey,
+                                   price_home=p_home, price_away=p_away))
+            emitted = True
+        for mkey, line, p_over, p_under in _totals_selections(
+                ev.get("markets") or {}):
+            # Convention (schema.OddsCapture): for maps_total rows,
+            # price_home = OVER and price_away = UNDER.
+            out.append(OddsCapture(**common, market="maps_total", line=line,
+                                   book_market_key=mkey,
+                                   price_home=p_over, price_away=p_under))
+            emitted = True
+        if not emitted:
+            continue
     return out, sorted(seen_keys)
 
 

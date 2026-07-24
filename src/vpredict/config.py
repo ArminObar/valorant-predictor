@@ -137,3 +137,16 @@ CLOUDBET_BASE_URL = "https://sports-api.cloudbet.com/pub/v2/odds"
 # Pinnacle first: sharpest widely-referenced book, the standard CLV yardstick.
 # All captured books are stored; nothing is ever averaged.
 ODDS_BOOK_PRIORITY = ["pinnacle", "cloudbet"]
+
+# --------------------------------------------------------------------------- markets & EV (analysis time)
+# Pre-registered BEFORE any graded market-covered pick existed (§13 spec item
+# 5, recorded 2026-07-24): EV aggregates stay "unvalidated" in the UI until
+# this many market-covered picks have graded. Changing it after grading
+# starts would be moving the goalposts — don't.
+EV_MIN_GRADED_PICKS = 100
+# Series-grain probabilities outside the test window's supported range are
+# labeled EXTRAPOLATION, not edge, and excluded from EV aggregates. Band ≈
+# the frozen test window's series-probability range (results §2).
+EV_EXTRAPOLATION_LO = 0.15
+EV_EXTRAPOLATION_HI = 0.88
+MARKETS_JSON = PROCESSED_DIR / "markets.json"

@@ -17,6 +17,7 @@ disk.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -27,7 +28,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -98,6 +99,51 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                     "pending": led.rows(graded=False, limit=100)}
         finally:
             led.close()
+
+    @app.get("/api/markets")
+    def markets() -> JSONResponse:
+        path = data_dir / "processed" / "markets.json"
+        if path.exists():
+            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+        return JSONResponse({
+            "generated_at": None, "section": "LIVE",
+            "gate": {"n_graded": 0,
+                     "required": config.EV_MIN_GRADED_PICKS,
+                     "ev_validated": False},
+            "summary": None, "by_tier": {}, "by_market": {}, "picks": []})
+
+    @app.post("/api/ingest/markets")
+    async def ingest_markets(request: Request) -> JSONResponse:
+        """Receives the derived markets report from the Mac-side publisher
+        (scripts/publish_markets.py). Derived view only — overwriting it can
+        never touch the ledger or the odds log. Guarded by a shared bearer
+        token; disabled entirely when the env var is unset."""
+        token = os.environ.get("VPREDICT_INGEST_TOKEN")
+        if not token:
+            return JSONResponse({"error": "ingest disabled: "
+                                 "VPREDICT_INGEST_TOKEN not set"},
+                                status_code=503)
+        got = request.headers.get("authorization", "")
+        if not hmac.compare_digest(got, f"Bearer {token}"):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        body = await request.body()
+        if len(body) > 5_000_000:
+            return JSONResponse({"error": "report too large"},
+                                status_code=413)
+        try:
+            report = json.loads(body)
+        except ValueError:
+            return JSONResponse({"error": "not JSON"}, status_code=400)
+        if not isinstance(report, dict) or "picks" not in report:
+            return JSONResponse({"error": "not a markets report"},
+                                status_code=400)
+        path = data_dir / "processed" / "markets.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
+        tmp.replace(path)
+        return JSONResponse({"ok": True,
+                             "picks": len(report.get("picks", []))})
 
     @app.get("/api/model")
     def model() -> dict:

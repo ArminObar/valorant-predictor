@@ -97,6 +97,12 @@ def refresh_cycle(crawl: bool = True) -> dict:
         try:
             led = Ledger()
             out["graded"] = led.grade(store.iter_matches(config.MATCHES_JSONL))
+            # Totals grading metadata for rows graded before the column
+            # existed; a no-op stream scan once every row has it.
+            filled = led.backfill_maps_played(
+                store.iter_matches(config.MATCHES_JSONL))
+            if filled:
+                out["maps_played_backfilled"] = filled
             led.close()
         except Exception as e:
             log.error("grading failed: %s", e)

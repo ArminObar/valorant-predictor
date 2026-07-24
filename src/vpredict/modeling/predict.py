@@ -104,7 +104,8 @@ def predict_upcoming(bundle: dict, history, upcoming: list[Match],
         X = X[feature_names]
         p_maps = predict_calibrated(bundle, X)
         p_map_mean = float(p_maps.mean())
-        p_model = sr.series_prob([p_map_mean] * int(um.best_of))
+        dist = sr.series_outcome_dist([p_map_mean] * int(um.best_of))
+        p_model = dist["p_win"]
         pe_maps = [_elo_p(e_base["maps"][m]) for m in kept_maps]
         pe_mean = float(sum(pe_maps) / len(pe_maps))
         p_elo = sr.series_prob([pe_mean] * int(um.best_of))
@@ -116,6 +117,8 @@ def predict_upcoming(bundle: dict, history, upcoming: list[Match],
             "team1": a, "team2": b,
             "team1_name": um.team1_name, "team2_name": um.team2_name,
             "p_model": round(p_model, 4), "p_elo": round(p_elo, 4),
+            "maps_dist": {str(k): round(v, 4)
+                          for k, v in sorted(dist["maps_dist"].items())},
             "per_map": {m: round(float(p), 4) for m, p in zip(kept_maps, p_maps)},
             "pool": pool, "low_history": low_history,
             "model_version": bundle.get("version", "unknown"),
@@ -139,7 +142,7 @@ def run_predictions(bundle: dict, history, upcoming: list[Match],
             event=p["event"], best_of=p["best_of"],
             p_model=p["p_model"], p_elo=p["p_elo"],
             model_version=p["model_version"], low_history=p["low_history"],
-            now=now)
+            p_maps_dist=p.get("maps_dist"), now=now)
         counters[status] += 1
     json_path = json_path or (config.PROCESSED_DIR / "upcoming_predictions.json")
     json_path.parent.mkdir(parents=True, exist_ok=True)

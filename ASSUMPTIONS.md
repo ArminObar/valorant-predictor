@@ -519,3 +519,98 @@ regardless of n. Recorded now so the scoreboard build cannot tune it.
 **Cadence-fix semantics.** Bundles record `n_store_records`; a pre-fix
 bundle triggers exactly one labelled "retrain once" so every deployment
 converges to honest counting without manual surgery (LOG entry 26).
+
+## 15. Timezone remediation, alias suggestions, markets & EV — session decisions (2026-07-24, evening)
+
+**Ledger start_ts corrected as metadata; frozen fields untouched.** LOG
+entry 29's migration rewrites `start_ts` on already-frozen ledger rows.
+The freeze rule exists so probabilities and call times can never be
+revised — `made_at`, `p_model`, `p_elo`, `p_maps_dist` are exactly that
+and are untouched; `start_ts` is match metadata that was provably wrong by
+4–5 h, and displaying known-wrong times forever is the worse integrity
+outcome. The correction strengthens the freeze property (every call
+predates the TRUE start by more than the ledger previously claimed), and
+the migration marker file is the audit record. Risk accepted: rows in the
+one ambiguous DST fall-back hour per year can land 1 h off; same bound as
+the fixed parser.
+
+**Migration is run-once by marker, with auto-heal in the refresh cycle.**
+Applying the ET-reinterpretation twice would corrupt the store, so a
+marker file gates it; the refresh cycle applies it before crawling so the
+Render disk self-heals with no shell step, and old rows can never mix with
+fixed-parser rows unmigrated. `--force` exists solely for re-seeding
+old-format data onto an already-marked disk, and says so loudly. The
+migration is byte-equivalent to re-parsing the HTML cache with the fixed
+parser (same reinterpretation), chosen because the cache lives only on the
+Mac; running the cache re-parse afterwards and diffing is a valid audit.
+
+**Fuzzy linking proposes; it still never links.** §14's "linking never
+guesses" survives: the capture path is unchanged (exact normalized, then
+aliases, else UNLINKED). The fuzzy layer runs OFFLINE over unlinked log
+rows and produces suggestions a human confirms into aliases.json — the
+audit trail stays human-approved. Scoring: generic org tokens (esports/
+team/club/gaming/...) are dropped, token subsets and acronyms score high,
+and PROTECTED roster qualifiers (academy, GC, ...) present on one side
+but not the other zero the score outright — "G2" must never suggest "G2
+Academy". Near-ties within 0.05 are surfaced as ambiguous and never
+auto-accepted; `--yes` auto-accepts only unambiguous proposals ≥ 0.90.
+Thresholds chosen by judgment against the 11 field-observed cases, all of
+which resolve unambiguously (tested).
+
+**Markets & EV definitions (spec item 5), on the record before grading
+starts.** A *pick* exists per (match, market, line) on the headline source
+(§14 book priority): the side with higher EV at the ENTRY price, where
+entry = the earliest freeze capture (the public "called at" price) and
+close = the latest close capture. EV = frozen model probability × raw
+decimal entry price − 1; the Shin and multiplicative de-vigged
+probabilities are stored beside it for fair-value comparison and never
+blended into EV. CLV = entry/close − 1 on the pick's side (needs a close;
+missing closes are excluded from CLV aggregates and counted). Extrapolated
+picks (model probability outside the §13 band, now config-owned) are
+shown, labeled, and EXCLUDED from EV/CLV aggregates — win rate still
+counts them. The §14 pre-registered gate applies: EV displays
+"unvalidated" until ≥ `EV_MIN_GRADED_PICKS` = 100 graded market-covered
+picks. Scope is series moneyline and map totals ONLY (model card).
+
+**Totals are priced from the frozen distribution or not at all.** The
+maps-played distribution comes from the same pool-mean per-map probability
+and exact best-of DP as the series probability, is computed at prediction
+time, and freezes into the ledger (`p_maps_dist`) with the first call.
+Rows frozen before the column existed are simply not priced for totals —
+recomputing with a newer model would let upgrades rewrite the public
+totals call. `maps_played` on graded rows is grading metadata (like
+`team1_won`), filled at grade time and backfilled once for rows graded
+before the column existed. Cloudbet totals identification is by exclusion
+(the live key `esport_valorant.totals` contains no "map"): reject
+kill/round/player/per-map names and any line > 4.5 — map-count lines are
+small, kill totals are 150+. Capture convention: for `maps_total` rows,
+price_home = OVER, price_away = UNDER.
+
+**The markets report is a derived view pushed over an authenticated
+ingest.** The odds log lives on the Mac (§13), the ledger behind the live
+API — so `scripts/publish_markets.py` joins them on the Mac and POSTs the
+derived JSON to `/api/ingest/markets`, guarded by a shared bearer token
+(`VPREDICT_INGEST_TOKEN`; endpoint disabled when unset, constant-time
+compare, size-capped). Overwriting the report can never touch either
+source of truth. Rejected alternative: committing the report to git and
+redeploying per update — auditable but turns every odds refresh into a
+deploy.
+
+**Capture overlap is locked, not detected.** A non-blocking `fcntl.flock`
+in `capture_odds.py` makes a second concurrent pass exit 0 immediately.
+The log-derived state (§14) already makes SEQUENTIAL re-runs idempotent;
+the lock closes the remaining race where two CONCURRENT passes both read
+"no freeze yet" and both append one. flock releases with the process, so
+no stale-lockfile handling exists to get wrong.
+
+**Walk-forward backtest cost protocol (item 7, measured before building).**
+The feature matrix is built ONCE and reused across every simulated
+retrain: each row's features are as-of its own match start by the leakage
+rule, so they do not depend on when the model trains — a retrain at
+simulated time T trains on rows finishing before T. `scripts/
+backtest_cost.py` replays the production retrain trigger over the real
+store timeline (92 retrains over 635 days at 7 d / 100-match cadence,
+warmup 300) and times the true retrain unit (rolling-origin scores +
+hysteresis + final fit ≈ 2.4 s on a 1-core box): production-cadence total
+≈ minutes, retrain-before-every-match ≈ 3.4 h there. Numbers regenerate
+from the script on any machine.

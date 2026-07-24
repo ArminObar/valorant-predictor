@@ -4,13 +4,20 @@
 
 - **Task.** Pre-match win probability for professional Valorant, trained at
   map grain, aggregated to series probabilities by exact best-of DP.
-- **Architecture.** Heavily regularized LightGBM (121 trees after early
-  stopping) with isotonic calibration, selected by validation log loss over
-  a gated menu (LR always; regularized LightGBM admitted at ≥500 usable
-  matches; no neural networks by project scope). Validation is now large
-  enough (~2,000 map rows) to admit isotonic calibration. The persisted bundle contains the fitted pipeline,
-  calibrator, feature schema, feature parameters (half-life 90 d, roster
-  factor 0.8, feature Elo K=32), the tuned baseline K, training-data
+- **Architecture.** Heavily regularized LightGBM with isotonic
+  calibration, retained by the production selection policy: rolling-origin
+  family scores with one-paired-SE champion/challenger hysteresis over a
+  gated menu (LR always; regularized LightGBM admitted at ≥500 usable
+  matches; no neural networks by project scope; `LOG.md` entry 28). On the
+  current (timezone-corrected) data the single-shot LR-vs-LightGBM
+  comparison is a numerical dead heat — candidate validation log losses
+  differ by 8e-5 (printed in the results header) — so which family a
+  fresh single-shot selection names is machine-noise territory; hysteresis
+  holds the incumbent. See Limitations. Validation is large
+  enough (~2,000 map rows) to admit isotonic calibration. The persisted
+  bundle contains the fitted pipeline, calibrator, feature schema, feature
+  parameters (half-life 90 d, roster factor 0.8, feature Elo K=32), the
+  tuned baseline K, the selection decision with its margin, training-data
   fingerprint, and a version string.
 - **Features.** Differenced team form as of match start: time-decayed round
   share, attack/defense side efficiencies, first-kill diff per 12 rounds,
@@ -54,27 +61,47 @@ usable), Challengers/Evolution (2,884), Game Changers (713), other (819).
 After the ≥3-prior-maps eligibility rule: 5,489 usable matches / 13,337
 map-team rows. Chronological 70/15/15 split by match.
 
-## Metrics (untouched test window, 2026-07-05 → 07-22)
+## Metrics (untouched test window, 2026-07-05 → 07-22; regenerated 2026-07-24 after the timestamp correction)
 
-Map grain: log loss 0.6671, Brier 0.2370, accuracy 59.5%, ECE 0.0247 —
-versus tuned Elo (K=24) 0.6704 / 0.2388 / 59.0%. Series grain (824 series,
-veto-completed map sets): log loss **0.6500**, Brier **0.2262**, accuracy
-**64.3%** — ahead of the map-effective Elo DP baseline (0.6555 / 0.2317 /
-61.7%) at the deliverable grain. Per-tier: strongest on Game Changers
-(0.6168 / 64.3%); tier-1 remains hardest (0.6790 / 56.9%) though the model
-leads Elo on log loss in every tier. A stability finding is on record: plain
-LR outperformed the selected LightGBM on the held-out test window at both
-grains, while losing the validation selection — see Limitations. Every
-figure regenerates from `scripts/evaluate.py`.
+Figures below are the evaluation report's (single-shot protocol; on the
+corrected data its LR-vs-LightGBM choice is a dead heat decided by 8e-5 —
+this session's regeneration selected plain LR, a re-run on other hardware
+may legitimately select LightGBM with third-decimal differences; the
+SERVING bundle remains LightGBM under hysteresis — see Architecture). Map grain: log loss 0.6672,
+Brier 0.2375, accuracy 59.3%, ECE 0.0274 — versus tuned Elo (K=24) 0.6704
+/ 0.2388 / 59.0%. Series grain (824 series, veto-completed map sets): log
+loss **0.6530**, Brier **0.2294**, accuracy **62.5%** — ahead of the
+map-effective Elo DP baseline (0.6555 / 0.2317 / 61.7%) at the deliverable
+grain. Per-tier: the report model leads Elo on log loss in tier-1, tier-2,
+and other; Game Changers flipped to Elo on this regeneration (0.6262 vs
+0.6201) — previously the model's strongest tier, and a reminder of how
+soft these orderings are at a few hundred test rows. Tier-1 remains
+hardest (0.6791 / 56.9%). The pre-correction figures (map 0.6671/0.2370/
+59.5%, series 0.6500/0.2262/64.3%, LightGBM-selected) live in the dated
+snapshot `results-2yr-2026-07-23.md`; split counts and row counts are
+identical before and after the correction, and the movement is
+third-decimal. Every figure regenerates from `scripts/evaluate.py`.
 
 ## Limitations
 
-- **Selection stability.** Validation selection chose LightGBM; the
-  untouched test window preferred plain LR at both grains (map 0.6620 vs
-  0.6671; series 0.6375 vs 0.6500). Switching models on test evidence would
-  be test-set selection, so the shipped bundle remains the validation
-  choice and the frozen ledger arbitrates. Planned protocol upgrade:
-  rolling-origin validation.
+- **Selection stability.** The LR-vs-LightGBM gap sits inside noise and
+  the ordering has now flipped twice: on the pre-correction data,
+  validation chose LightGBM while the untouched test window preferred LR
+  at both grains; on the corrected data, single-shot validation is a
+  measured dead heat (candidate val map LL gap 8e-5, printed in the
+  results header; C sweep val-series flat at 0.6309–0.6310 across three
+  decades of C) while production's rolling-origin + hysteresis policy
+  keeps the LightGBM incumbent (margin inside one paired SE). No switch is made on test
+  evidence; the frozen ledger arbitrates, and the hysteresis policy is
+  the pre-registered mechanism for absorbing exactly this instability.
+- **Timestamp erratum (2026-07-24, `LOG.md` entry 29).** Every start time
+  stored before the fix was US-Eastern wall time mislabeled UTC (4–5 h
+  early). A marker-guarded migration corrected the store and ledger
+  metadata; frozen probabilities and call times were untouched, and every
+  recorded call predates the true start by MORE than previously claimed.
+  Eligibility, splits, and row counts are identical before/after (a
+  uniform shift cancels in start-vs-start comparisons, except within ±1 h
+  of DST seams); metric movement is third-decimal, per the Metrics note.
 - **Memory footprint.** The full feature build peaks ~0.7 GB RSS; 512 MB
   deploy instances cannot run the retrain/predict cycle (serving the API
   alone is light). See the deploy notes.
@@ -100,13 +127,14 @@ the crawl, grades the ledger, retrains when the bundle is ≥7 days old or
 construction: ledger rows are frozen at first prediction, so model upgrades
 can never rewrite the public record.
 
-**Production note (2026-07-24).** Automated refresh is still disabled on
-the live deployment (`VPREDICT_REFRESH=0`), but the memory trim that
-unblocks it has landed: the cycle streams the store instead of
+**Production note (2026-07-24, evening).** Automated refresh is ENABLED
+on the live deployment (`VPREDICT_REFRESH=1`, Render Standard, 2 GB) —
+made viable by the memory trim: the cycle streams the store instead of
 materializing it, dropping the measured full-store peak from 1,221 MB to
 296 MB with a growth slope of ~18 MB per 1,000 matches (sandbox
-measurement; `LOG.md` entries 22–23). Re-enabling awaits verification on
-the deployment. A separate production observation is on record: model
+measurement; `LOG.md` entries 22–23). First-cycle verification on the
+deployment (no OOM; cadence settles after the one labelled
+"retrain once") is the open check. A separate production observation is on record: model
 selection flipped architecture between two consecutive retrains on nearly
 identical data — the stability finding in Limitations surfacing live
 (`LOG.md` entry 24). The fix landed 2026-07-24: deterministic fits,

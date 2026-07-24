@@ -219,7 +219,12 @@ def select_model(X_tr, y_tr, X_val, y_val, n_train_matches: int,
     cal_name, cal = fit_calibrator(p_val, np.asarray(y_val))
     return {"model": chosen["model"], "calibrator": cal, "cal_name": cal_name,
             "name": chosen["name"], "gate_note": gate_note,
-            "val_ll": chosen["val_ll"]}
+            "val_ll": chosen["val_ll"],
+            # Every candidate's validation loss, so reports can show how
+            # close the selection was (the LR/LightGBM gap is measured in
+            # 1e-5s on current data — a dead heat the reader should see).
+            "candidate_val_ll": {c["name"]: round(c["val_ll"], 5)
+                                 for c in cands}}
 
 
 def predict_calibrated(sel: dict, X) -> np.ndarray:

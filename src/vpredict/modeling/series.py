@@ -36,6 +36,38 @@ def series_prob(map_probs: list[float]) -> float:
     return rec(0, 0, 0)
 
 
+def series_outcome_dist(map_probs: list[float]) -> dict:
+    """Exact joint distribution over (series winner, maps played) from the
+    same per-map probabilities and independence assumption as series_prob.
+
+    Returns {"p_win": P(A wins), "maps_dist": {n_maps: prob}} where
+    maps_dist sums to 1 and its keys run from ceil(n/2) to n. This is the
+    model side of a map-totals market: P(over L) = sum of maps_dist[k] for
+    k > L. The two views are mutually consistent by construction —
+    series_prob(map_probs) equals the p_win computed here.
+    """
+    n = len(map_probs)
+    if n % 2 != 1:
+        raise ValueError(f"best-of must be odd, got {n} map probabilities")
+    need = n // 2 + 1
+    p_win = 0.0
+    maps_dist: dict[int, float] = {}
+
+    def rec(i: int, a: int, b: int, mass: float) -> None:
+        nonlocal p_win
+        if a == need or b == need:
+            maps_dist[a + b] = maps_dist.get(a + b, 0.0) + mass
+            if a == need:
+                p_win += mass
+            return
+        p = map_probs[i]
+        rec(i + 1, a + 1, b, mass * p)
+        rec(i + 1, a, b + 1, mass * (1.0 - p))
+
+    rec(0, 0, 0, 1.0)
+    return {"p_win": p_win, "maps_dist": maps_dist}
+
+
 _PICK = re.compile(r"\bpick\s+([A-Za-z'\u2019 ]+?)\s*$", re.IGNORECASE)
 _REMAINS = re.compile(r"^\s*([A-Za-z'\u2019 ]+?)\s+remains?\s*$", re.IGNORECASE)
 

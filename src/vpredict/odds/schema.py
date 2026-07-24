@@ -28,6 +28,10 @@ class OddsCapture(BaseModel):
     source: str                    # "cloudbet" | "pinnacle" | ...
     capture_kind: str              # "freeze" | "close"
     market: str = "series_moneyline"
+    # For "maps_total" rows: the over/under line (e.g. 2.5), and by
+    # convention price_home = OVER, price_away = UNDER. Moneyline rows keep
+    # line = None and the book's real home/away orientation.
+    line: float | None = None
     # Book-side identity, stored verbatim for auditability:
     book_event_id: str
     book_home: str
@@ -66,11 +70,15 @@ def iter_captures(path: Path = config.ODDS_JSONL):
 
 
 def capture_state(path: Path = config.ODDS_JSONL) -> dict:
-    """{(source, match_id_or_book_event_id): {"freeze": bool, "close": bool}}
-    derived from the log — the only state the capture loop needs."""
+    """{(source, match_id_or_book_event_id, market, line):
+        {"freeze": bool, "close": bool}} derived from the log — the only
+    state the capture loop needs. Keyed per market/line so a moneyline
+    freeze doesn't suppress the totals freeze for the same match.
+    Pre-totals log rows have no line field and land under line=None."""
     state: dict = {}
     for c in iter_captures(path):
-        key = (c.source, c.match_id or f"book:{c.book_event_id}")
+        key = (c.source, c.match_id or f"book:{c.book_event_id}",
+               c.market, c.line)
         slot = state.setdefault(key, {"freeze": False, "close": False})
         if c.capture_kind in slot:
             slot[c.capture_kind] = True
