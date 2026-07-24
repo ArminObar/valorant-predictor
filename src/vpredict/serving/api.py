@@ -20,6 +20,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -98,17 +100,32 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         interval = int(os.environ.get("VPREDICT_REFRESH_INTERVAL_S", "21600"))
 
         def _loop() -> None:                                  # pragma: no cover
-            from ..serving.refresh import refresh_cycle
+            # Subprocess, not in-process: the cycle's memory returns to the
+            # OS when the child exits, and an OOM kill (exit 137 / SIGKILL)
+            # takes down the child while the API keeps serving — the
+            # in-process version died with it (LOG entry 22).
+            cmd = [sys.executable, "-m", "vpredict.serving.refresh"]
             while True:
+                t0 = time.monotonic()
                 try:
-                    refresh_cycle()
+                    rc = subprocess.run(cmd).returncode
+                    dur = time.monotonic() - t0
+                    if rc == 0:
+                        log.info("refresh subprocess ok in %.0fs", dur)
+                    elif rc in (137, -9):
+                        log.error("refresh subprocess OOM-killed after %.0fs "
+                                  "(exit %s); API unaffected, next attempt "
+                                  "in %ss", dur, rc, interval)
+                    else:
+                        log.error("refresh subprocess exited %s after %.0fs",
+                                  rc, dur)
                 except Exception as e:
-                    log.error("refresh cycle failed: %s", e)
+                    log.error("refresh subprocess failed to run: %s", e)
                 time.sleep(interval)
 
         threading.Thread(target=_loop, daemon=True,
                          name="vpredict-refresh").start()
-        log.info("in-process refresh enabled, every %ss", interval)
+        log.info("refresh scheduler enabled (subprocess), every %ss", interval)
 
     return app
 

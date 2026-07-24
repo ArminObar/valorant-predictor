@@ -1,0 +1,24 @@
+{
+  "tag": "mac-post-trim",
+  "cmd": [
+    "python",
+    "scripts/refresh.py",
+    "--no-crawl"
+  ],
+  "when": "2026-07-24T01:31:06-0400",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "extra_env": {},
+  "force_retrain": true,
+  "exit_code": 0,
+  "duration_s": 92.6,
+  "peaks_bytes": {
+    "wait4_child_tree": 345948160,
+    "memprof_getrusage": 345948160,
+    "cgroup_peak": null
+  },
+  "cgroup_limit_bytes": null,
+  "budget_mb": 440,
+  "within_budget": true,
+  "memprof_report_path": "memprof-out/memprof-mac-post-trim.json"
+}

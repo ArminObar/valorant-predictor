@@ -31,7 +31,7 @@ def _needs_retrain(now: datetime) -> tuple[bool, str]:
         trained_at = datetime.fromisoformat(b["trained_at"])
         if now - trained_at >= timedelta(days=config.RETRAIN_MAX_AGE_DAYS):
             return True, f"bundle older than {config.RETRAIN_MAX_AGE_DAYS}d"
-        n_now = len(store.load_matches(config.MATCHES_JSONL))
+        n_now = store.count_matches(config.MATCHES_JSONL)
         if n_now - int(b.get("n_matches", 0)) >= config.RETRAIN_NEW_MATCHES:
             return True, f"{n_now - int(b.get('n_matches', 0))} new matches"
         return False, "bundle fresh"
@@ -39,7 +39,7 @@ def _needs_retrain(now: datetime) -> tuple[bool, str]:
         return True, f"bundle unreadable ({e})"
 
 
-def topup_since(matches: list, now: datetime) -> datetime:
+def topup_since(matches, now: datetime) -> datetime:
     """Lower time bound for the scheduled top-up crawl (crawl_results).
 
     Anchored to the newest COMPLETED match already in the store, minus
@@ -64,10 +64,8 @@ def refresh_cycle(crawl: bool = True) -> dict:
         with phase("crawl"):
             try:
                 from ..scraping.crawl import crawl_results
-                # Transient full store load; the list is dropped as soon as
-                # topup_since returns, well before the memory-heavy steps.
-                since = topup_since(store.load_matches(config.MATCHES_JSONL),
-                                    now)
+                since = topup_since(
+                    store.iter_matches(config.MATCHES_JSONL), now)
                 out["crawl"] = {"since": since.isoformat(),
                                 "stored": crawl_results(since)}
             except Exception as e:
@@ -76,13 +74,12 @@ def refresh_cycle(crawl: bool = True) -> dict:
 
     with phase("grade"):
         try:
-            matches = store.load_matches(config.MATCHES_JSONL)
             led = Ledger()
-            out["graded"] = led.grade(matches)
+            out["graded"] = led.grade(store.iter_matches(config.MATCHES_JSONL))
             led.close()
         except Exception as e:
             log.error("grading failed: %s", e)
-            matches, out["graded"] = [], {"error": str(e)}
+            out["graded"] = {"error": str(e)}
 
     with phase("train"):
         try:
@@ -111,8 +108,9 @@ def refresh_cycle(crawl: bool = True) -> dict:
                 led = Ledger()
                 out["predict"] = __import__(
                     "vpredict.modeling.predict", fromlist=["run_predictions"]
-                ).run_predictions(bundle, matches or store.load_matches(
-                    config.MATCHES_JSONL), upcoming, led, now=now)
+                ).run_predictions(
+                    bundle, store.iter_matches(config.MATCHES_JSONL),
+                    upcoming, led, now=now)
                 led.close()
             else:
                 out["predict"] = {"upcoming": 0}
@@ -122,3 +120,33 @@ def refresh_cycle(crawl: bool = True) -> dict:
 
     log.info("refresh cycle: %s", out)
     return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI for one refresh cycle: `python -m vpredict.serving.refresh`.
+
+    The in-process scheduler (api.py, VPREDICT_REFRESH=1) spawns exactly this
+    module as a subprocess so the cycle's memory returns to the OS on exit
+    and an OOM kill takes down the child, never the API (LOG entry 22).
+    scripts/refresh.py delegates here so cron and the scheduler share one
+    entrypoint.
+    """
+    import argparse
+    import json as _json
+
+    logging.basicConfig(level=logging.INFO,
+                        format="%(levelname)s %(name)s %(message)s")
+    ap = argparse.ArgumentParser(
+        description="One full refresh cycle "
+                    "(crawl -> grade -> retrain if stale -> predict).")
+    ap.add_argument("--no-crawl", action="store_true",
+                    help="skip network steps (grade + retrain + predict "
+                         "from disk)")
+    args = ap.parse_args(argv)
+    print(_json.dumps(refresh_cycle(crawl=not args.no_crawl),
+                      indent=1, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -45,8 +45,10 @@ def _elo_p(pair) -> float:
     return 1.0 / (1.0 + 10.0 ** ((rb - ra) / config.ELO_SCALE))
 
 
-def predict_upcoming(bundle: dict, history: list[Match], upcoming: list[Match],
+def predict_upcoming(bundle: dict, history, upcoming: list[Match],
                      now: datetime | None = None) -> list[dict]:
+    # `history` may be any iterable of Match (the refresh cycle passes
+    # store.iter_matches); it is consumed exactly once, by maps_frame.
     now_ts = pd.Timestamp(now or datetime.now(timezone.utc))
     if now_ts.tzinfo is None:
         now_ts = now_ts.tz_localize("UTC")
@@ -121,7 +123,7 @@ def predict_upcoming(bundle: dict, history: list[Match], upcoming: list[Match],
     return out
 
 
-def run_predictions(bundle: dict, history: list[Match], upcoming: list[Match],
+def run_predictions(bundle: dict, history, upcoming: list[Match],
                     ledger, now: datetime | None = None,
                     json_path=None) -> dict:
     """Predict, write the ledger (freeze rules apply), and publish the JSON the

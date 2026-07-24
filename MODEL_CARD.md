@@ -74,15 +74,21 @@ figure regenerates from `scripts/evaluate.py`.
 
 ## Maintenance
 
-The refresh cycle (in-process on deploy, `scripts/refresh.py` on cron)
-tops up the crawl, grades the ledger, retrains when the bundle is ≥7 days
-old or ≥100 new matches arrived, and re-predicts. Retraining is safe by
+The refresh cycle (scheduled by the service itself on deploy, or
+`scripts/refresh.py` on cron — both spawn the same
+`python -m vpredict.serving.refresh` entrypoint as a subprocess) tops up
+the crawl, grades the ledger, retrains when the bundle is ≥7 days old or
+≥100 new matches arrived, and re-predicts. Retraining is safe by
 construction: ledger rows are frozen at first prediction, so model upgrades
 can never rewrite the public record.
 
-**Production note (2026-07-24).** The in-process refresh is currently
-disabled on the live deployment (`VPREDICT_REFRESH=0`): the cycle's
-measured peak memory exceeds the 512 MB instance budget, so updates are
-manual until the memory trim lands. Measurement wiring and phase
-attribution: `scripts/memharness.py`, `src/vpredict/memprof.py`, and
-`LOG.md` entry 22.
+**Production note (2026-07-24).** Automated refresh is still disabled on
+the live deployment (`VPREDICT_REFRESH=0`), but the memory trim that
+unblocks it has landed: the cycle streams the store instead of
+materializing it, dropping the measured full-store peak from 1,221 MB to
+296 MB with a growth slope of ~18 MB per 1,000 matches (sandbox
+measurement; `LOG.md` entries 22–23). Re-enabling awaits verification on
+the deployment. A separate production observation is on record: model
+selection flipped architecture between two consecutive retrains on nearly
+identical data — the stability finding in Limitations surfacing live
+(`LOG.md` entry 24); a selection-hysteresis fix is pending.

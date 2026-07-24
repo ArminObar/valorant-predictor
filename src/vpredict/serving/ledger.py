@@ -16,6 +16,7 @@ import math
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterable
 
 from .. import config
 from ..data.schema import Match
@@ -82,23 +83,32 @@ class Ledger:
         self._con.commit()
         return "inserted" if cur.rowcount == 1 else "frozen"
 
-    def grade(self, matches: list[Match], now: datetime | None = None) -> int:
+    def grade(self, matches: Iterable[Match], now: datetime | None = None) -> int:
         """Fill observed results for ungraded rows whose match completed with a
-        winner. Returns number graded."""
+        winner. Returns number graded.
+
+        Accepts any iterable and holds no Match objects: the ungraded-id set
+        (small) comes from sqlite first, then the stream is scanned once. The
+        old version built a dict of every completed match — a full-store
+        materialization inside the refresh cycle (LOG entry 22).
+        """
         now = now or _now()
-        by_id = {m.match_id: m for m in matches
-                 if m.status == "completed" and m.winner}
+        ungraded = {r["match_id"] for r in self._con.execute(
+            "SELECT match_id FROM predictions WHERE graded = 0")}
+        if not ungraded:
+            return 0
         graded = 0
-        for row in self._con.execute(
-                "SELECT match_id FROM predictions WHERE graded = 0"):
-            m = by_id.get(row["match_id"])
-            if m is None:
-                continue
-            self._con.execute(
-                "UPDATE predictions SET graded=1, team1_won=?, graded_at=? "
-                "WHERE match_id=? AND graded=0",
-                (int(m.winner == "team1"), _iso(now), row["match_id"]))
-            graded += 1
+        for m in matches:
+            if (m.match_id in ungraded and m.status == "completed"
+                    and m.winner):
+                self._con.execute(
+                    "UPDATE predictions SET graded=1, team1_won=?, graded_at=? "
+                    "WHERE match_id=? AND graded=0",
+                    (int(m.winner == "team1"), _iso(now), m.match_id))
+                graded += 1
+                ungraded.discard(m.match_id)
+                if not ungraded:
+                    break
         self._con.commit()
         return graded
 

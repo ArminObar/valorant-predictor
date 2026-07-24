@@ -1,0 +1,25 @@
+{
+  "points": [
+    {
+      "limit": 1700,
+      "wait4_peak_mb": 423.6
+    },
+    {
+      "limit": 3400,
+      "wait4_peak_mb": 684.3
+    },
+    {
+      "limit": 5100,
+      "wait4_peak_mb": 945.0
+    },
+    {
+      "limit": 6796,
+      "wait4_peak_mb": 1220.7
+    }
+  ],
+  "fit": {
+    "intercept_mb": 155.2,
+    "slope_mb_per_1000": 156.1
+  },
+  "note": "pre-trim curve, sandbox Linux py3.12; wait4 child-tree peaks; cgroup readings discarded (shared cgroup)"
+}

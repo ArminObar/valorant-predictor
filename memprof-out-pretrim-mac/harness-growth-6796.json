@@ -1,0 +1,27 @@
+{
+  "tag": "growth-6796",
+  "cmd": [
+    "python",
+    "scripts/refresh.py",
+    "--no-crawl"
+  ],
+  "when": "2026-07-24T01:00:02-0400",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "extra_env": {
+    "VPREDICT_STORE_LIMIT": "6796",
+    "VPREDICT_WORKSPACE": "/var/folders/w5/56p5sy_x7rz3yt9p40yr8h2h0000gn/T/vp-growth-6796-l7ckzdby"
+  },
+  "force_retrain": true,
+  "exit_code": 0,
+  "duration_s": 104.2,
+  "peaks_bytes": {
+    "wait4_child_tree": 1245986816,
+    "memprof_getrusage": 1245986816,
+    "cgroup_peak": null
+  },
+  "cgroup_limit_bytes": null,
+  "budget_mb": 440,
+  "within_budget": false,
+  "memprof_report_path": "memprof-out/memprof-growth-6796.json"
+}

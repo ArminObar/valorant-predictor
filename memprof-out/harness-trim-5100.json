@@ -1,0 +1,24 @@
+{
+  "tag": "trim-5100",
+  "cmd": [
+    "./.venv/bin/python",
+    "scripts/refresh.py",
+    "--no-crawl"
+  ],
+  "when": "2026-07-24T05:13:54+0000",
+  "platform": "Linux-6.18.5-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "extra_env": {},
+  "force_retrain": true,
+  "exit_code": 0,
+  "duration_s": 199.2,
+  "peaks_bytes": {
+    "wait4_child_tree": 274653184,
+    "memprof_getrusage": 274653184,
+    "cgroup_peak": 889769984
+  },
+  "cgroup_limit_bytes": 9223372036854771712,
+  "budget_mb": 440,
+  "within_budget": false,
+  "memprof_report_path": "memprof-out/memprof-trim-5100.json"
+}

@@ -1,0 +1,30 @@
+{
+  "points": [
+    {
+      "limit": 1700,
+      "peak_bytes": 446873600,
+      "exit_code": 0
+    },
+    {
+      "limit": 3400,
+      "peak_bytes": 701054976,
+      "exit_code": 0
+    },
+    {
+      "limit": 5100,
+      "peak_bytes": 989741056,
+      "exit_code": 0
+    },
+    {
+      "limit": 6796,
+      "peak_bytes": 1245986816,
+      "exit_code": 0
+    }
+  ],
+  "budget_mb": 440,
+  "fit": {
+    "intercept_mb": 166.02358106978204,
+    "slope_mb_per_match": 0.15078912248298845,
+    "budget_crossing_matches": 1816.9508146128187
+  }
+}

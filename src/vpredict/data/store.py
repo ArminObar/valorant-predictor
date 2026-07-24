@@ -10,7 +10,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 import pandas as pd
 
@@ -19,72 +19,124 @@ from .schema import Match
 
 
 # --------------------------------------------------------------------------- raw store
-def _read_matches(path: Path) -> list[Match]:
-    """Uncapped reader. upsert_matches MUST use this, never load_matches:
-    upsert rewrites the file from what it loaded, so a capped read would
-    silently truncate the store."""
-    if not Path(path).exists():
-        return []
-    out: list[Match] = []
+def _iter_lines(path: Path):
+    """(line_index, stripped_line) for every nonblank line."""
     with open(path, "r", encoding="utf-8") as f:
-        for line in f:
+        for i, line in enumerate(f):
             line = line.strip()
             if line:
-                out.append(Match.model_validate_json(line))
-    return out
+                yield i, line
+
+
+def _parse_ts(raw: str) -> datetime:
+    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+
+
+def _capped_line_indices(path: Path, n: int) -> set[int] | None:
+    """Line indices of the chronologically FIRST n records, or None when the
+    cap does not bite. Pass 1 of the capped read parses only start_ts per
+    line (per-line transient), so simulating a smaller store never costs a
+    full parse — the growth curve's dominant term must scale with n."""
+    stamps = [(_parse_ts(json.loads(line)["start_ts"]), i)
+              for i, line in _iter_lines(path)]
+    if n >= len(stamps):
+        return None
+    return {i for _, i in sorted(stamps)[:n]}
+
+
+def iter_matches(path: Path = config.MATCHES_JSONL) -> Iterator[Match]:
+    """Stream the store one validated Match at a time — the only way the
+    refresh cycle is allowed to read it. Nothing in the cycle may hold the
+    full store: two coexisting full materializations were ~85% of the OOM
+    footprint (LOG entry 22).
+
+    Honors VPREDICT_STORE_LIMIT with load_matches's exact semantics
+    (chronologically FIRST n, lean two-pass selection). Yield order is file
+    order, which upsert_matches keeps sorted by (start_ts, match_id).
+    """
+    if not Path(path).exists():
+        return
+    limit = os.environ.get("VPREDICT_STORE_LIMIT")
+    keep: set[int] | None = None
+    if limit and int(limit) > 0:
+        keep = _capped_line_indices(path, int(limit))
+    for i, line in _iter_lines(path):
+        if keep is None or i in keep:
+            yield Match.model_validate_json(line)
 
 
 def load_matches(path: Path = config.MATCHES_JSONL) -> list[Match]:
-    """Load the store. If VPREDICT_STORE_LIMIT=<n> is set (a measurement aid
-    for `memharness.py growth`, never set in production), return only the
-    chronologically FIRST n matches — simulating the store as it was when it
-    held n matches, which is what a peak-memory-vs-store-size curve needs.
+    """Materialized read — fine for scripts, tests, and small files
+    (upcoming.jsonl). The refresh cycle and the crawler must use
+    iter_matches / the streaming upsert instead."""
+    return list(iter_matches(path))
 
-    The capped path deliberately avoids materializing the full store: pass 1
-    reads only each line's start_ts (per-line transient), pass 2 validates
-    just the selected lines. Capping AFTER a full parse would make the
-    growth curve's dominant term (the parse itself) flat in n and the fit
-    meaningless — the failure mode memharness's spread warning describes.
-    """
+
+def count_matches(path: Path = config.MATCHES_JSONL) -> int:
+    """Record count without parsing records (one per nonblank line). Honors
+    VPREDICT_STORE_LIMIT so measurement runs see a consistent world."""
+    if not Path(path).exists():
+        return 0
+    total = sum(1 for _ in _iter_lines(path))
     limit = os.environ.get("VPREDICT_STORE_LIMIT")
-    if not limit:
-        return _read_matches(path)
-    n = int(limit)
-    if n <= 0 or not Path(path).exists():
-        return _read_matches(path)
-    stamps: list[tuple[datetime, int]] = []  # (start_ts, line_index)
-    with open(path, "r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            line = line.strip()
-            if line:
-                ts = json.loads(line)["start_ts"]
-                stamps.append(
-                    (datetime.fromisoformat(ts.replace("Z", "+00:00")), i))
-    if n >= len(stamps):
-        return _read_matches(path)
-    keep = {i for _, i in sorted(stamps)[:n]}
-    out: list[Match] = []
-    with open(path, "r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if i in keep:
-                out.append(Match.model_validate_json(line.strip()))
-    out.sort(key=lambda m: m.start_ts)
-    return out
+    if limit and 0 < int(limit) < total:
+        return int(limit)
+    return total
 
 
 def upsert_matches(new: Iterable[Match], path: Path = config.MATCHES_JSONL) -> int:
-    """Insert or replace by match_id. Returns number of new/updated records."""
-    existing = {m.match_id: m for m in _read_matches(path)}
+    """Insert or replace by match_id. Returns number of new/updated records.
+
+    Streaming sorted merge, memory O(batch). The store file is kept sorted by
+    (start_ts, match_id) — an invariant this function maintains — so the
+    existing file and the sorted new batch merge line-by-line into a tmp file
+    (atomic tmp+replace, unchanged). The old implementation materialized the
+    entire store on every call, which made each 250-match crawl flush cost a
+    full-store copy in memory (LOG entry 23). Pass-through lines are copied
+    verbatim without re-validation; only colliding lines are parsed into
+    Match, to preserve the exact changed-count semantics.
+    """
+    new_sorted = sorted(new, key=lambda m: (m.start_ts, m.match_id))
+    if not new_sorted:
+        return 0
+    new_ids = {m.match_id for m in new_sorted}
+    if len(new_ids) != len(new_sorted):
+        # last-wins within a batch, matching the old dict-build semantics
+        dedup: dict[str, Match] = {m.match_id: m for m in new_sorted}
+        new_sorted = sorted(dedup.values(), key=lambda m: (m.start_ts, m.match_id))
+
+    exists = Path(path).exists()
     changed = 0
-    for m in new:
-        prev = existing.get(m.match_id)
-        if prev is None or prev.model_dump() != m.model_dump():
-            existing[m.match_id] = m
-            changed += 1
+    colliding: set[str] = set()
+    if exists:
+        for _, line in _iter_lines(path):
+            mid = json.loads(line)["match_id"]
+            if mid in new_ids:
+                colliding.add(mid)
+    changed += len(new_ids - colliding)          # brand-new records
+
+    by_id = {m.match_id: m for m in new_sorted}
     tmp = Path(str(path) + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        for m in sorted(existing.values(), key=lambda x: (x.start_ts, x.match_id)):
-            f.write(m.model_dump_json() + "\n")
+    j = 0
+    with open(tmp, "w", encoding="utf-8") as out_f:
+        if exists:
+            for _, line in _iter_lines(path):
+                d = json.loads(line)
+                line_key = (_parse_ts(d["start_ts"]), d["match_id"])
+                while j < len(new_sorted) and (
+                        (new_sorted[j].start_ts, new_sorted[j].match_id)
+                        < line_key):
+                    out_f.write(new_sorted[j].model_dump_json() + "\n")
+                    j += 1
+                if d["match_id"] in colliding:
+                    prev = Match.model_validate_json(line)
+                    if prev.model_dump() != by_id[d["match_id"]].model_dump():
+                        changed += 1
+                    continue                      # replacement merges in sorted
+                out_f.write(line + "\n")
+        while j < len(new_sorted):
+            out_f.write(new_sorted[j].model_dump_json() + "\n")
+            j += 1
     tmp.replace(path)
     return changed
 
@@ -154,10 +206,10 @@ def _team_row(m: Match, mp, which: str) -> dict:
     }
 
 
-def maps_frame(matches: list[Match] | None = None, path: Path = config.MATCHES_JSONL) -> pd.DataFrame:
+def maps_frame(matches: Iterable[Match] | None = None, path: Path = config.MATCHES_JSONL) -> pd.DataFrame:
     """Long frame: one row per (completed match, map, team)."""
     if matches is None:
-        matches = load_matches(path)
+        matches = iter_matches(path)
     rows: list[dict] = []
     for m in matches:
         if m.status != "completed":
@@ -174,10 +226,10 @@ def maps_frame(matches: list[Match] | None = None, path: Path = config.MATCHES_J
     return df
 
 
-def matches_frame(matches: list[Match] | None = None, path: Path = config.MATCHES_JSONL) -> pd.DataFrame:
+def matches_frame(matches: Iterable[Match] | None = None, path: Path = config.MATCHES_JSONL) -> pd.DataFrame:
     """One row per completed match with series outcome."""
     if matches is None:
-        matches = load_matches(path)
+        matches = iter_matches(path)
     rows = []
     for m in matches:
         if m.status != "completed" or not m.winner:

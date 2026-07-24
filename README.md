@@ -98,9 +98,11 @@ minutes of scheduled start; the **first** prediction per match is immutable —
 later calls, even from retrained bundles, are ignored; Elo's probability is
 logged at the same instant so the public comparison is fixed at prediction
 time. Keep it current with `python scripts/refresh.py` on a 6-hour cron, or
-deploy `render.yaml` (single web service + persistent disk; the refresh loop
-runs in-process via `VPREDICT_REFRESH=1` because managed disks bind to one
-service). Railway: same Dockerfile, a Volume at `/data`, same env vars.
+deploy `render.yaml` (single web service + persistent disk; with
+`VPREDICT_REFRESH=1` the service schedules the same cycle itself because
+managed disks bind to one service — each run is spawned as a subprocess, so
+its memory returns to the OS and a failure can't take the API down).
+Railway: same Dockerfile, a Volume at `/data`, same env vars.
 
 ## Repository map
 
@@ -122,11 +124,14 @@ tests/          leakage, parsers, crawl, series, ledger, API, collinearity
 Live on a Render Starter instance (512 MB). 104 predictions are frozen in
 the public ledger; the first ones grade as their matches finish.
 
-- **Automated refresh is currently disabled** (`VPREDICT_REFRESH=0`): the
-  full refresh cycle's measured peak memory exceeds the instance budget, so
-  updates are manual until the trim lands. The measurement harness and the
-  phase-level attribution are in `scripts/memharness.py`,
-  `src/vpredict/memprof.py`, and `LOG.md` entry 22.
+- **Automated refresh is still off** (`VPREDICT_REFRESH=0`), but the memory
+  trim that unblocks it landed 2026-07-24: the cycle streams the store
+  instead of materializing it, and its measured full-store peak dropped
+  from 1,221 MB to 296 MB (sandbox measurement; growth slope 18 MB per
+  1,000 matches, ~2+ years of headroom — details in `LOG.md` entry 23).
+  Re-enabling awaits verification on the deployment; the scheduler now runs
+  each cycle as a subprocess, so a memory blow-up can no longer take the
+  API down with it.
 - **Uniform map-pool weights.** Upcoming-series probabilities average the
   current 7-map pool uniformly; team pick/ban tendencies are not modeled.
 - **Tier B features were never enabled.** The economy/clutch columns are

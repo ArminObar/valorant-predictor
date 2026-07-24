@@ -1,0 +1,241 @@
+{
+  "meta": {
+    "pid": 70121,
+    "argv": [
+      "scripts/refresh.py",
+      "--no-crawl"
+    ],
+    "python": "3.14.6",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "started_at": "2026-07-24T00:55:40-0400",
+    "duration_s": 27.75,
+    "env": {
+      "VPREDICT_STORE_LIMIT": "1700",
+      "VPREDICT_FORCE_RETRAIN": "1",
+      "VPREDICT_WORKSPACE": "/var/folders/w5/56p5sy_x7rz3yt9p40yr8h2h0000gn/T/vp-growth-1700-ush71bkb"
+    }
+  },
+  "peaks_bytes": {
+    "getrusage_self_max": 446873600,
+    "vmhwm": null,
+    "cgroup_peak": null,
+    "sampled_max": 445661184
+  },
+  "cgroup": {
+    "current": null,
+    "peak": null,
+    "limit": null,
+    "version": null
+  },
+  "phases": [
+    {
+      "name": "grade",
+      "path": "grade",
+      "t_start": 0.013566874957177788,
+      "rss_enter": 87375872,
+      "hwm_enter": 88145920,
+      "t_end": 0.8697867500013672,
+      "rss_exit": 208420864,
+      "hwm_exit": 208420864,
+      "sampled_peak": 86966272
+    },
+    {
+      "name": "load_store",
+      "path": "train/load_store",
+      "t_start": 1.8958168749813922,
+      "rss_enter": 289259520,
+      "hwm_enter": 290865152,
+      "t_end": 3.342834208975546,
+      "rss_exit": 293322752,
+      "hwm_exit": 402571264,
+      "sampled_peak": 372326400
+    },
+    {
+      "name": "build_features",
+      "path": "train/build_features",
+      "t_start": 3.350776584004052,
+      "rss_enter": 293404672,
+      "hwm_enter": 402571264,
+      "t_end": 22.34572845895309,
+      "rss_exit": 430505984,
+      "hwm_exit": 432603136,
+      "sampled_peak": 432259072
+    },
+    {
+      "name": "select_calibrate",
+      "path": "train/select_calibrate",
+      "t_start": 22.359131041972432,
+      "rss_enter": 431046656,
+      "hwm_enter": 432603136,
+      "t_end": 22.65668391698273,
+      "rss_exit": 445497344,
+      "hwm_exit": 445497344,
+      "sampled_peak": 441794560
+    },
+    {
+      "name": "train",
+      "path": "train",
+      "t_start": 0.8744174169842154,
+      "rss_enter": 208420864,
+      "hwm_enter": 208420864,
+      "t_end": 24.35526033397764,
+      "rss_exit": 395558912,
+      "hwm_exit": 446873600,
+      "sampled_peak": 445661184
+    },
+    {
+      "name": "predict",
+      "path": "predict",
+      "t_start": 24.36341133399401,
+      "rss_enter": 395558912,
+      "hwm_enter": 446873600,
+      "t_end": 27.68361108395038,
+      "rss_exit": 403783680,
+      "hwm_exit": 446873600,
+      "sampled_peak": 403816448
+    }
+  ],
+  "samples": [
+    {
+      "t": 0.005,
+      "rss": 86753280,
+      "phase": ""
+    },
+    {
+      "t": 0.015,
+      "rss": 86966272,
+      "phase": "grade"
+    },
+    {
+      "t": 1.027,
+      "rss": 221200384,
+      "phase": "train"
+    },
+    {
+      "t": 2.161,
+      "rss": 289751040,
+      "phase": "train/load_store"
+    },
+    {
+      "t": 3.245,
+      "rss": 372326400,
+      "phase": "train/load_store"
+    },
+    {
+      "t": 4.353,
+      "rss": 114507776,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 5.377,
+      "rss": 128106496,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 6.398,
+      "rss": 129024000,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 7.461,
+      "rss": 131121152,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 8.547,
+      "rss": 131629056,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 9.669,
+      "rss": 115032064,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 10.867,
+      "rss": 131776512,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 11.904,
+      "rss": 132857856,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 13.188,
+      "rss": 432259072,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 14.206,
+      "rss": 430751744,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 15.627,
+      "rss": 430604288,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 16.793,
+      "rss": 430981120,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 17.917,
+      "rss": 431177728,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 19.179,
+      "rss": 425476096,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 20.363,
+      "rss": 429998080,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 21.458,
+      "rss": 428392448,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 22.469,
+      "rss": 441794560,
+      "phase": "train/select_calibrate"
+    },
+    {
+      "t": 23.512,
+      "rss": 445661184,
+      "phase": "train"
+    },
+    {
+      "t": 24.549,
+      "rss": 403390464,
+      "phase": "predict"
+    },
+    {
+      "t": 25.595,
+      "rss": 403505152,
+      "phase": "predict"
+    },
+    {
+      "t": 26.62,
+      "rss": 403816448,
+      "phase": "predict"
+    },
+    {
+      "t": 27.642,
+      "rss": 403767296,
+      "phase": "predict"
+    },
+    {
+      "t": 27.722,
+      "rss": 399687680,
+      "phase": ""
+    }
+  ]
+}

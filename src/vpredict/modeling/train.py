@@ -170,8 +170,11 @@ def train_and_save(data_path=None, half_life_days: float | None = None,
     from .baselines import matches_lite_from_maps, tune_elo_k
 
     with phase("load_store"):
-        matches = _store.load_matches(data_path or config.MATCHES_JSONL)
-        maps_df = _store.maps_frame(matches)
+        # Streaming build: Match objects exist one at a time; only the long
+        # frame is retained. The old list here was the cycle's second full
+        # store copy (LOG entry 22).
+        maps_df = _store.maps_frame(
+            _store.iter_matches(data_path or config.MATCHES_JSONL))
     if maps_df.empty:
         raise ValueError("no completed matches — scrape before training")
     with phase("build_features"):

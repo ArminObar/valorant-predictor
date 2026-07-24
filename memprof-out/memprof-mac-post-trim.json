@@ -1,0 +1,519 @@
+{
+  "meta": {
+    "pid": 77557,
+    "argv": [
+      "scripts/refresh.py",
+      "--no-crawl"
+    ],
+    "python": "3.14.6",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "started_at": "2026-07-24T01:29:33-0400",
+    "duration_s": 92.099,
+    "env": {
+      "VPREDICT_FORCE_RETRAIN": "1"
+    }
+  },
+  "peaks_bytes": {
+    "getrusage_self_max": 345948160,
+    "vmhwm": null,
+    "cgroup_peak": null,
+    "sampled_max": 342900736
+  },
+  "cgroup": {
+    "current": null,
+    "peak": null,
+    "limit": null,
+    "version": null
+  },
+  "phases": [
+    {
+      "name": "grade",
+      "path": "grade",
+      "t_start": 0.013819416984915733,
+      "rss_enter": 87146496,
+      "hwm_enter": 87441408,
+      "t_end": 0.651091624982655,
+      "rss_exit": 90243072,
+      "hwm_exit": 90243072,
+      "sampled_peak": null
+    },
+    {
+      "name": "load_store",
+      "path": "train/load_store",
+      "t_start": 1.5092641669907607,
+      "rss_enter": 176521216,
+      "hwm_enter": 178012160,
+      "t_end": 2.672033582988661,
+      "rss_exit": 218529792,
+      "hwm_exit": 228589568,
+      "sampled_peak": 200065024
+    },
+    {
+      "name": "build_features",
+      "path": "train/build_features",
+      "t_start": 2.6783031249651685,
+      "rss_enter": 218529792,
+      "hwm_enter": 228589568,
+      "t_end": 71.42463770799804,
+      "rss_exit": 299712512,
+      "hwm_exit": 302268416,
+      "sampled_peak": 302252032
+    },
+    {
+      "name": "select_calibrate",
+      "path": "train/select_calibrate",
+      "t_start": 71.4408819169621,
+      "rss_enter": 299925504,
+      "hwm_enter": 302268416,
+      "t_end": 72.01965466700494,
+      "rss_exit": 320798720,
+      "hwm_exit": 323010560,
+      "sampled_peak": 312000512
+    },
+    {
+      "name": "train",
+      "path": "train",
+      "t_start": 0.6560775419929996,
+      "rss_enter": 90243072,
+      "hwm_enter": 90243072,
+      "t_end": 78.64756641699933,
+      "rss_exit": 306135040,
+      "hwm_exit": 323977216,
+      "sampled_peak": 321880064
+    },
+    {
+      "name": "predict",
+      "path": "predict",
+      "t_start": 78.65406312496634,
+      "rss_enter": 306135040,
+      "hwm_enter": 323977216,
+      "t_end": 92.06024666695157,
+      "rss_exit": 280461312,
+      "hwm_exit": 345948160,
+      "sampled_peak": 342900736
+    }
+  ],
+  "samples": [
+    {
+      "t": 0.007,
+      "rss": 86081536,
+      "phase": ""
+    },
+    {
+      "t": 0.012,
+      "rss": 86392832,
+      "phase": ""
+    },
+    {
+      "t": 1.027,
+      "rss": 134692864,
+      "phase": "train"
+    },
+    {
+      "t": 2.061,
+      "rss": 200065024,
+      "phase": "train/load_store"
+    },
+    {
+      "t": 3.111,
+      "rss": 223494144,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 4.313,
+      "rss": 210927616,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 5.463,
+      "rss": 169754624,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 6.518,
+      "rss": 174915584,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 7.674,
+      "rss": 178831360,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 8.76,
+      "rss": 184451072,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 9.827,
+      "rss": 222855168,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 10.849,
+      "rss": 224690176,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 11.943,
+      "rss": 226312192,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 13.013,
+      "rss": 227639296,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 14.042,
+      "rss": 229359616,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 15.066,
+      "rss": 230604800,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 16.105,
+      "rss": 232128512,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 17.182,
+      "rss": 204029952,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 18.242,
+      "rss": 196313088,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 19.269,
+      "rss": 163905536,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 20.328,
+      "rss": 161120256,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 21.359,
+      "rss": 162988032,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 22.381,
+      "rss": 164806656,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 23.418,
+      "rss": 166510592,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 24.455,
+      "rss": 168148992,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 26.089,
+      "rss": 206536704,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 27.262,
+      "rss": 268451840,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 28.593,
+      "rss": 289013760,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 29.827,
+      "rss": 290275328,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 31.012,
+      "rss": 292028416,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 32.3,
+      "rss": 293683200,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 33.438,
+      "rss": 302252032,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 34.618,
+      "rss": 301268992,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 35.891,
+      "rss": 301252608,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 36.968,
+      "rss": 301252608,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 38.053,
+      "rss": 301236224,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 39.113,
+      "rss": 301678592,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 40.156,
+      "rss": 301072384,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 41.233,
+      "rss": 301072384,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 42.263,
+      "rss": 301072384,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 43.404,
+      "rss": 301367296,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 44.56,
+      "rss": 301219840,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 45.636,
+      "rss": 296861696,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 46.949,
+      "rss": 296861696,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 48.015,
+      "rss": 296861696,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 49.164,
+      "rss": 296861696,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 50.338,
+      "rss": 296861696,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 51.441,
+      "rss": 296861696,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 52.547,
+      "rss": 292143104,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 53.652,
+      "rss": 292143104,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 54.788,
+      "rss": 292274176,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 55.972,
+      "rss": 292274176,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 57.164,
+      "rss": 292274176,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 58.295,
+      "rss": 287096832,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 59.45,
+      "rss": 286687232,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 60.924,
+      "rss": 289112064,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 62.355,
+      "rss": 289112064,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 63.376,
+      "rss": 288161792,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 64.421,
+      "rss": 294879232,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 65.721,
+      "rss": 294617088,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 66.885,
+      "rss": 294092800,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 68.211,
+      "rss": 293634048,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 69.249,
+      "rss": 293470208,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 70.515,
+      "rss": 292864000,
+      "phase": "train/build_features"
+    },
+    {
+      "t": 71.527,
+      "rss": 312000512,
+      "phase": "train/select_calibrate"
+    },
+    {
+      "t": 72.729,
+      "rss": 321880064,
+      "phase": "train"
+    },
+    {
+      "t": 73.84,
+      "rss": 317358080,
+      "phase": "train"
+    },
+    {
+      "t": 75.116,
+      "rss": 306036736,
+      "phase": "train"
+    },
+    {
+      "t": 76.272,
+      "rss": 305922048,
+      "phase": "train"
+    },
+    {
+      "t": 77.557,
+      "rss": 305823744,
+      "phase": "train"
+    },
+    {
+      "t": 78.579,
+      "rss": 305889280,
+      "phase": "train"
+    },
+    {
+      "t": 79.616,
+      "rss": 329924608,
+      "phase": "predict"
+    },
+    {
+      "t": 80.745,
+      "rss": 342900736,
+      "phase": "predict"
+    },
+    {
+      "t": 82.222,
+      "rss": 334954496,
+      "phase": "predict"
+    },
+    {
+      "t": 83.398,
+      "rss": 328384512,
+      "phase": "predict"
+    },
+    {
+      "t": 84.465,
+      "rss": 327204864,
+      "phase": "predict"
+    },
+    {
+      "t": 85.484,
+      "rss": 299515904,
+      "phase": "predict"
+    },
+    {
+      "t": 86.515,
+      "rss": 300384256,
+      "phase": "predict"
+    },
+    {
+      "t": 87.55,
+      "rss": 300417024,
+      "phase": "predict"
+    },
+    {
+      "t": 88.593,
+      "rss": 280346624,
+      "phase": "predict"
+    },
+    {
+      "t": 89.624,
+      "rss": 280346624,
+      "phase": "predict"
+    },
+    {
+      "t": 90.652,
+      "rss": 280444928,
+      "phase": "predict"
+    },
+    {
+      "t": 91.688,
+      "rss": 280444928,
+      "phase": "predict"
+    },
+    {
+      "t": 92.072,
+      "rss": 280477696,
+      "phase": ""
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "points": [
+    {
+      "limit": 1700,
+      "wait4_peak_mb": 203.6
+    },
+    {
+      "limit": 3400,
+      "wait4_peak_mb": 230.0
+    },
+    {
+      "limit": 5100,
+      "wait4_peak_mb": 261.9
+    },
+    {
+      "limit": 6796,
+      "wait4_peak_mb": 296.3
+    }
+  ],
+  "fit": {
+    "intercept_mb": 170.5,
+    "slope_mb_per_1000": 18.2
+  },
+  "budget_crossings": {
+    "440_mb": 14779,
+    "512_mb": 18727
+  },
+  "note": "POST-trim curve, sandbox Linux py3.12; wait4 child-tree peaks; cgroup discarded (shared cgroup)"
+}

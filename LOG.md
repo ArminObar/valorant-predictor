@@ -416,3 +416,90 @@ machines with ≥16 GB never surface a 512 MB ceiling. The measurement wiring
 only landed after the incident. The budget has to be made artificial to
 fail early: `smoke_container.sh` should run the cycle under
 `docker run --memory=512m`.
+
+## 23 — 2026-07-24 — memory trim: streaming store; cycle 1,221 → 296 MB, slope 156 → 18 MB per 1k matches
+
+**What changed.** The cycle no longer materializes the store anywhere.
+`store.iter_matches` streams validated records one at a time (honoring
+`VPREDICT_STORE_LIMIT` with the same lean two-pass cap); `maps_frame` /
+`matches_frame` consume any iterable and retain only their row dicts;
+`Ledger.grade` pulls the small ungraded-id set from sqlite first and scans
+the stream once; `train_and_save` builds the frame straight from the
+iterator (its private full copy — the cycle's second — is gone);
+`_needs_retrain` counts lines instead of loading; `upsert_matches` is now a
+streaming sorted merge with memory O(batch) — the old version loaded and
+rewrote the whole store on every call, so each 250-match crawl flush cost a
+full-store materialization inside the crawl phase (never visible in
+`--no-crawl` measurements, but it would have reintroduced the spike the
+moment crawling re-enabled). Two invariants now hold: the store file is
+sorted by `(start_ts, match_id)` (upsert maintains it; pass-through lines
+are copied verbatim, never re-validated), and nothing in the refresh cycle
+holds more than one Match at a time. The scheduler (`VPREDICT_REFRESH=1`)
+spawns `python -m vpredict.serving.refresh` as a subprocess instead of
+calling in-process: memory returns to the OS between cycles, and an OOM
+kill now takes the child, not the API.
+
+**Measured acceptance (sandbox Linux/py3.12, wait4 child-tree peaks;
+cgroup readings discarded — shared cgroup).** Full store (6,796 matches),
+forced retrain, `--no-crawl`: peak 296.3 MB against the 440 MB target
+(pre-trim: 1,220.7 MB). Per phase: grade flat at 79 MB; the streaming
+frame build holds ~68 MB; `build_features` remains the largest resident
+(~90 MB over 238 s); model fitting negligible. Post-trim growth curve
+(limits 1,700 / 3,400 / 5,100 / 6,796 → 203.6 / 230.0 / 261.9 / 296.3 MB,
+residuals < 2.5 MB): peak ≈ 170.5 MB + 18.2 MB per 1,000 matches, versus
+156.1 MB per 1,000 pre-trim. Extrapolated crossings — extrapolations, not
+measurements: 440 MB at ≈ 14,800 matches, 512 MB at ≈ 18,700; at the
+current ~65 matches/week that is 2+ years of headroom. Absolute numbers
+are environment-specific; Mac/Render verification and the
+`VPREDICT_REFRESH=1` flip are the owner's acceptance steps. Reproduce:
+`python scripts/memharness.py run --force-retrain -- python
+scripts/refresh.py --no-crawl`.
+
+**Why the old code was shaped that way.** Loading the store into a list was
+the natural first implementation and correct at 150 matches; nothing ever
+re-examined it as the store grew 45×, because no test or measurement put a
+budget on memory (entry 22). The eight new tests in
+`tests/test_streaming_store.py` pin the merge semantics (changed counts,
+collisions, a replacement whose timestamp moved must re-sort), the
+never-validates-pass-through guard, streamed grading, and the `-m`
+entrypoint the scheduler spawns.
+
+## 24 — 2026-07-24 — production: model selection flipped between consecutive retrains (LightGBM ↔ LR)
+
+**Symptom (owner-reported production logs).** Two refresh retrains ~3.5 h
+apart on nearly identical data selected different architectures:
+`lightgbm(best_iter=121)` at 01:06, `logistic_regression(C=1.0)` at 04:43,
+validation log loss 0.6591 both times (as printed, 4 dp). The deployed
+model can therefore silently change family between retrains. Frozen ledger
+rows are unaffected (model_version is stamped per row), but the public
+model-vs-Elo aggregate now mixes families.
+
+**Cause.** A near-tie with no switching hysteresis: `select_model` is a
+bare argmin over validation log loss, so any perturbation — a handful of
+new matches shifting rows and the chronological split boundary, or
+cross-environment numeric differences — flips the winner. Sandbox
+experiment on the seed snapshot (features built once, both candidates fit
+three times on bit-identical inputs): fully reproducible within this
+machine — LGBM 0.658507 and LR(C=0.3) 0.660068 all three runs, gap
+−0.0016. Within-machine training nondeterminism is therefore NOT the
+confirmed mechanism here; the flip is attributable to data deltas between
+the two production retrains and/or environment differences (LGBMClassifier
+sets `random_state` but not `deterministic`/`n_jobs`, so thread count and
+OpenMP/BLAS builds can move the fourth decimal across machines). This is
+the two-year report's validation/test stability finding (entry 17,
+WALKTHROUGH §7) surfacing in production, as that report predicted it could.
+
+**Fix.** Pending owner decision; options on record: (a) champion/challenger
+hysteresis — keep the incumbent unless the challenger beats its validation
+log loss by a margin (e.g. one paired SE of the per-row loss difference);
+(b) pin `deterministic=True` and a fixed `n_jobs` so identical data gives
+identical selection per machine; (c) rolling-origin selection — k expanding
+chronological folds, select on aggregate fold loss; measured cost is small
+(features build once; both candidates refit in ~1–2 s here, so k=5 adds
+roughly ten seconds per retrain). (c) reduces selection variance and (a)
+prevents silent flips outright; they compose.
+
+**Why testing missed it.** Selection was tested for correctness on fixed
+data, never for stability: nothing asserts that a retrain with no (or few)
+new matches keeps the same architecture. A regression test for (a) would
+encode exactly that.

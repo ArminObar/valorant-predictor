@@ -46,7 +46,7 @@ def main() -> int:
         print("No future matches to predict.")
         return 0
 
-    history = store.load_matches(args.data)
+    history = store.iter_matches(args.data)   # streamed; never materialized
     led = Ledger()
     counters = run_predictions(bundle, history, upcoming, led, now=now)
     led.close()

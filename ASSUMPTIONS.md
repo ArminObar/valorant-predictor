@@ -387,3 +387,74 @@ there; cgroup readings were discarded (shared cgroup, high-watermark
 poisoned by unrelated work); absolute numbers are environment-specific (the
 Mac measured ~0.69 GB for the same cycle) while the per-phase attribution
 and the linearity of the growth curve are the transferable findings.
+
+## 12. Memory trim invariants (2026-07-24)
+
+Full narrative and measurements in LOG entry 23; the *decisions* on record:
+
+**The cycle streams, always.** No step of the refresh cycle may hold more
+than one `Match` at a time: `iter_matches` is the only sanctioned reader
+inside the cycle, frame builders consume iterables, grading scans a stream
+against a small id set, and training builds its frame straight from the
+iterator. `load_matches` survives for scripts, tests, and small files
+(upcoming.jsonl), with a docstring saying exactly that. The risk accepted:
+the cycle now parses the store up to three times per run (top-up bound,
+grade, train) instead of sharing one list — ~20–25 s of CPU at the current
+store size, traded for a ~925 MB peak reduction.
+
+**The store file is sorted, and upsert keeps it that way.** Invariant:
+lines ordered by `(start_ts, match_id)`. The streaming merge relies on it
+and maintains it; the capped reader's yield order depends on it. A
+replacement whose timestamp moved re-merges to its new position (a test
+pins this). Pass-through lines are copied verbatim — never re-validated —
+so the changed-count semantics are preserved by parsing only colliding
+lines. Memory is O(batch); the old load-everything-rewrite made every
+250-match crawl flush cost a full-store materialization.
+
+**Refresh is a subprocess.** The scheduler spawns
+`python -m vpredict.serving.refresh` rather than calling in-process:
+memory returns to the OS between cycles, and an OOM kill takes the child,
+never the API. `scripts/refresh.py` delegates to the same entrypoint so
+cron and the scheduler cannot drift apart.
+
+**Acceptance protocol.** The sandbox measured 296.3 MB at full store
+against the 440 MB target and a growth slope of 18.2 MB per 1,000 matches
+(LOG 23), but sandbox numbers do not accept the deliverable: the owner's
+Mac harness run and the `VPREDICT_REFRESH=1` flip on the deployment are the
+acceptance steps, and the predict phase has not yet been measured with real
+upcoming matches (it shares the streaming path by construction).
+
+## 13. Odds capture, CLV, and the calibration monitor — pre-registered 2026-07-24, execution gated
+
+Owner-specified design, recorded before any code exists. Build order:
+odds capture first, then the calibration monitor; neither starts until the
+memory trim is verified and accepted on the deployment.
+
+**Capture runs locally (owner's Mac, Toronto), not on Render.** Geo-blocking
+is not a factor locally, and a real browser (Playwright) passes bot
+detection a bare request will not. Cloudbet's official free feed API is
+wired FIRST as a correctness harness for capture and de-vig, before
+anything points at a book that does not want to be read. Raw prices are
+stored append-only; nothing is de-vigged at capture time. De-vig happens at
+analysis time: Shin's method primary, multiplicative as a sensitivity
+column beside it. Capture fires at the same instant the ledger freezes each
+prediction, and again near scheduled start — the closing capture exists
+because CLV needs a close to compare against.
+
+**Evaluation framing: closing line value.** The use case is edge detection,
+so alongside log loss and Brier the market comparison reports CLV: did the
+de-vigged close move toward the frozen prediction relative to the de-vigged
+freeze-time line. That is the measurable proxy for genuine edge on far
+fewer matches than profit would need. Coverage honesty: the market will
+price roughly tier-1 only (~10 fixtures/week of ~65), so **Elo stays** — it
+is the only baseline for the ~85 % of matches with no line.
+
+**Calibration monitor over the ledger.** Bucketed predicted-vs-observed
+rates, per bucket and per tier. Reporting threshold n ≥ 30 per cell; action
+threshold n ≥ 100 per cell with a Wilson 95 % interval excluding the cell's
+mean predicted probability. Early warning with less data: one global
+Spiegelhalter Z over all graded rows (informative from ~50–100 graded).
+Explicitly rejected: per-match error correction — this is drift detection,
+not noise chasing. Predictions outside the calibration-validated range
+(~0.15–0.88 at series grain) are flagged `extrapolation` on the ledger row
+and in the UI; the probability itself is never modified.
