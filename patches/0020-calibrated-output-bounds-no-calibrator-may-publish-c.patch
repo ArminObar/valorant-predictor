@@ -1,0 +1,449 @@
+From 92b9056dcaa577e9c079630b7a74cd652432ad69 Mon Sep 17 00:00:00 2001
+From: "Claude (session)" <claude@session>
+Date: Fri, 24 Jul 2026 21:18:37 +0000
+Subject: [PATCH] calibrated-output bounds: no calibrator may publish certainty
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Field failure on the owner's Mac (LOG 32): the patch-0019 walk fixture
+published p_model == 1.0 exactly — a saturated PLATT step (slope -59 on
+3 separable validation rows) meeting 4-decimal rounding; the sandbox had
+passed the same test by numeric luck. Same pathology family as the
+July-2025 isotonic episode (LOG 31), different calibrator, which settles
+the hardening choice: an isotonic-vs-Platt margin rule fixes neither.
+
+Two independent bounds, both pinned by tests that construct the
+saturating fits explicitly: calibrator transforms clip to
+[CAL_OUTPUT_CLIP, 1-CAL_OUTPUT_CLIP] = [0.005, 0.995] (the measured
+healthy-Platt range, r41); published probabilities round then clamp one
+rounding-ulp inside (0,1), because series aggregation defeats the map
+clip alone (Bo5 of 0.995s = 0.999999 -> rounds to 1.0000). Plus
+BUNDLE_BEHAVIOR_REV in the version hash: the run-once gate correctly
+refused a --replace after a pure code change produced an identical
+version — behavior changes are now detectable.
+
+Measured: static report moves three fourth-decimal digits; the hardened
+sandbox walk improves exactly where the diagnosis said (tier2 2025H2
+0.7231 -> 0.6998; July monthly 0.8096 -> 0.7608; published range
+[0.0001, 1.0000] -> [0.0003, 0.9999]; 2026H2 cells byte-identical), and
+Elo still leads 3 of 4 tiers over the full walk — the finding stands,
+the certainty claims are gone. Decided BEFORE the first official
+backtest run (no published result existed to tune against);
+pre-hardening validation result archived by the gate. ASSUMPTIONS §17;
+tests 101 -> 106.
+---
+ APPLY.md                         | 23 +++++++++++
+ ASSUMPTIONS.md                   | 53 +++++++++++++++++++++++++
+ LOG.md                           | 54 +++++++++++++++++++++++++
+ MODEL_CARD.md                    | 11 +++++-
+ README.md                        |  6 ++-
+ src/vpredict/config.py           | 21 ++++++++++
+ src/vpredict/modeling/predict.py | 12 +++++-
+ src/vpredict/modeling/train.py   | 15 +++++--
+ tests/test_backtest.py           | 11 +++++-
+ tests/test_calibration_bounds.py | 68 ++++++++++++++++++++++++++++++++
+ 10 files changed, 265 insertions(+), 9 deletions(-)
+ create mode 100644 tests/test_calibration_bounds.py
+
+diff --git a/APPLY.md b/APPLY.md
+index bfc8f5c..77910b6 100644
+--- a/APPLY.md
++++ b/APPLY.md
+@@ -176,3 +176,26 @@ the old file stays in `data/reports/`). Expect small third-decimal
+ differences vs the sandbox validation numbers in the session report —
+ cross-machine numeric noise (ASSUMPTIONS §14/§16); anything bigger,
+ send both files.
++
++## 10. Patch 0020 — calibrated-output bounds (apply BEFORE your official backtest)
++
++Your red test (`p_model == 1.0` exactly) was a saturated PLATT step
++function meeting 4-decimal rounding — isotonic is impossible in that
++fixture (3 validation rows vs the 800-row gate), which is also why the
++isotonic-margin hardening was the wrong tool: it fixes neither observed
++failure. Patch 0020 bounds every calibrator's output to [0.005, 0.995]
++and clamps published probabilities one rounding-ulp inside (0, 1), with
++tests that construct both saturating fits explicitly. Full reasoning:
++`ASSUMPTIONS.md` §17, `LOG.md` entry 32.
++
++    git am patches/0020-*.patch
++    python -m pytest                 # expect 106 passed
++    python scripts/train.py          # new bundle version (behavior rev)
++
++Then run your official backtest per §9 — first run, no --replace needed,
++against the hardened model. It will differ from the session report's
++PRE-hardening sandbox numbers mainly in the July-2025 stretch; the
++POST-hardening sandbox numbers in the session report are your comparison
++baseline. Push the site afterwards (`git push`; Render adopts the clip on
++deploy — interim delta is nil for in-band predictions, and the next
++cadence retrain stamps the new version).
+diff --git a/ASSUMPTIONS.md b/ASSUMPTIONS.md
+index e7cdac6..a2a208a 100644
+--- a/ASSUMPTIONS.md
++++ b/ASSUMPTIONS.md
+@@ -679,3 +679,56 @@ probability vs genuinely captured prices, labeled BACKTEST, populated
+ only where the local odds log links a capture — near-empty until odds
+ accumulate, and stated as such rather than padded. Entry/close/EV/CLV
+ definitions are §15's, unchanged.
++
++## 17. Calibrated-output bounds, decided before the first official backtest run (2026-07-24, late)
++
++**Timing: hardening BEFORE the official run does not touch run-once.**
++Run-once protects published results from being tuned against and quietly
++regenerated. No official backtest result exists yet — the owner's Mac run
++was blocked by the very failure that forced this decision — so hardening
++now means the FIRST published record is of a model whose outputs the
++project would defend, instead of a knowingly defective one followed
++immediately by a labeled re-run. The pre-hardening sandbox validation run
++was archived by the `--replace` machinery (its numbers stay quoted in the
++session record), and the owner's official run happens once, against the
++hardened model. Deciding the change on the basis of a diagnosed mechanism
++and a red test is a bug-class fix; deciding it on the basis of which
++backtest numbers improve would have been tuning. The July-2025 result
++itself is unchanged in the archived record.
++
++**Clip over isotonic-margin, because the failures decide it.** Two
++saturation modes were observed in the field: isotonic plateauing at 0/1
++the week it first cleared its 800-row admission gate (LOG 31), and Platt
++becoming a −59-slope step function on a 3-row separable slice (LOG 32).
++An "isotonic must beat Platt by a margin" rule addresses only admission
++churn: it would have fixed neither observed failure and bounds nothing.
++The clip bounds ANY calibrator's claims, which is the actual invariant
++the ledger needs. The margin rule stays on record as a possible future
++addition if calibrator selection ever proves churny — it solves a
++different problem than the one that occurred.
++
++**Constants and their provenance.** `CAL_OUTPUT_CLIP = 0.005`: the range
++a healthy Platt fit spans on its own (~[0.0049, 0.9952], measured on
++retrain r41's 783-row slice) — the most any calibrator may claim is what
++a sane fit could evidence. Judgment anchored to a measurement, not a
++tuned value. `PROB_DECIMALS = 4` names the existing ledger rounding; the
++publish clamp sits one rounding-ulp inside (0, 1) because series
++aggregation defeats the map-grain clip alone (Bo5 of 0.995s = 0.999999 →
++rounds to 1.0000). Probabilities of exactly 0/1 are evidentially
++indefensible and break log-loss accounting; both bounds are pinned by
++tests that construct the saturating fits explicitly.
++
++**`BUNDLE_BEHAVIOR_REV` exists because the gate caught its own blind
++spot.** The bundle version was date + parameter/data hash; a pure code
++change on unchanged data produced an identical version, and the backtest's
++run-once gate — correctly — refused a `--replace` it could not
++distinguish from a same-model re-run. The revision constant (rev 2 = this
++hardening) feeds the version hash so behavior changes are detectable; the
++cost is a human obligation to bump it, recorded in the constant's comment.
++
++**Deployment semantics.** Calibrator behavior lives in code, not pickled
++state: deployed bundles adopt the clip on deploy without a version bump.
++Interim delta is nil for in-band predictions (live upcoming calls sit
++inside 0.15–0.88); the next cadence retrain stamps the behavior-rev'd
++version. Static-report impact, measured: three fourth-decimal digits;
++every headline number unchanged.
+diff --git a/LOG.md b/LOG.md
+index a6b13d7..d340bb6 100644
+--- a/LOG.md
++++ b/LOG.md
+@@ -761,3 +761,57 @@ background children are reaped when the invoking sandbox shell exits —
+ not OOM (260 MB RSS, no kernel kill records). `setsid` detaches cleanly;
+ recorded here because a half-written rows file from a reaped run looks
+ exactly like a crash.
++
++## Entry 32 — Field failure on patch 0019: a saturated Platt published exactly 1.0; outputs are now bounded (2026-07-24)
++
++**Symptom.** On the owner's Mac, `test_walk_produces_ledger_shaped_graded_rows`
++failed with `p_model == 1.0` exactly. The same test passed in the build
++sandbox.
++
++**Cause.** Not isotonic — the fixture's validation slice is 3 rows against
++the 800-row admission gate, so both walk retrains fit Platt. Platt on a
++tiny, linearly separable slice explodes: the reproduced fixture bundle has
++slope −59.4 on the logit scale — a step function whose tails are 0/1 to
++float precision — and on the sandbox 34/99 of the raw-score grid already
++sat within rounding distance of 1.0. The sandbox test passed by NUMERIC
++LUCK: this machine's lbfgs/BLAS happened to land every fixture row's raw
++score on the sub-0.99995 side of the step; the Mac's landed one on the
++other side, and `round(·, 4)` published certainty. Same pathology FAMILY
++as entry 31's July-2025 episode (a saturated calibrator meeting a rounding
++boundary), different calibrator — which settled the hardening choice: an
++isotonic-beats-Platt-by-margin rule would have fixed neither this failure
++nor bounded Platt.
++
++**Fix (patch 0020), two independent bounds.** (1) Both calibrator
++transforms clip to `[CAL_OUTPUT_CLIP, 1 − CAL_OUTPUT_CLIP]` = [0.005,
++0.995] — the range a HEALTHY Platt fit spans on its own (entry 31's r41
++measurement), i.e. the most a calibrator can claim is what a sane fit
++could evidence. (2) Published probabilities are rounded then clamped one
++rounding-ulp inside (0, 1), because series aggregation defeats the map
++clip alone: a Bo5 of 0.995s is 0.999999, which rounds to 1.0000. Both
++bounds are pinned by tests that construct the saturating fits explicitly.
++Measured impact on the static report: three fourth-decimal digits (ECE
++0.0274→0.0275, one GC cell, one tier-1-arm cell); every headline number
++unchanged.
++
++**The gate then caught its own blind spot.** Re-running the sandbox
++backtest under `--replace` was REFUSED: the bundle version is date +
++parameter/data hash, so a pure BEHAVIOR change on the same data and day
++produced an identical version — "model changed" detection could not see
++code. `BUNDLE_BEHAVIOR_REV` (config, rev 2 = this hardening) now feeds the
++version hash; bump it whenever prediction-affecting behavior changes
++without data changing. A refusal doing exactly its job, one level up from
++where it was aimed.
++
++**Why testing missed it.** The assertion `0.0 < p < 1.0` was correct as a
++SPEC, but the code did not guarantee it — the test encoded a hope, and the
++sandbox numerics happened to honor it. The lesson is the same one entry 29
++taught about the timezone attribute: a property that has never been
++falsified is not a property that has been verified. The bound is now a
++guarantee, so the assertion holds on every machine for a reason.
++
++**Pickled-bundle note.** Calibrator behavior lives in code, not pickle
++state, so deployed bundles adopt the clip on deploy without a version
++change; the interim delta is nil for in-band predictions (live upcoming
++calls sit within 0.15–0.88), and the next retrain stamps the
++behavior-rev'd version.
+diff --git a/MODEL_CARD.md b/MODEL_CARD.md
+index cae2d16..c649f81 100644
+--- a/MODEL_CARD.md
++++ b/MODEL_CARD.md
+@@ -18,7 +18,14 @@
+   bundle contains the fitted pipeline, calibrator, feature schema, feature
+   parameters (half-life 90 d, roster factor 0.8, feature Elo K=32), the
+   tuned baseline K, the selection decision with its margin, training-data
+-  fingerprint, and a version string.
++  fingerprint, and a version string (which also encodes a behavior
++  revision, so pure code changes to prediction behavior are visible to the
++  backtest's run-once gate). Calibrated outputs are clipped to
++  [0.005, 0.995] and published probabilities clamped one rounding-ulp
++  inside (0, 1): a saturated calibrator (isotonic at its admission
++  boundary, Platt on a degenerate slice) can otherwise claim exact
++  certainty, which is evidentially indefensible — the two field episodes
++  are `LOG.md` entries 31–32.
+ - **Features.** Differenced team form as of match start: time-decayed round
+   share, attack/defense side efficiencies, first-kill diff per 12 rounds,
+   shrunk pistol win rate, rest days, roster stability, overall and
+@@ -86,7 +93,7 @@ corrected data its LR-vs-LightGBM choice is a dead heat decided by 8e-5 —
+ this session's regeneration selected plain LR, a re-run on other hardware
+ may legitimately select LightGBM with third-decimal differences; the
+ SERVING bundle remains LightGBM under hysteresis — see Architecture). Map grain: log loss 0.6672,
+-Brier 0.2375, accuracy 59.3%, ECE 0.0274 — versus tuned Elo (K=24) 0.6704
++Brier 0.2375, accuracy 59.3%, ECE 0.0275 — versus tuned Elo (K=24) 0.6704
+ / 0.2388 / 59.0%. Series grain (824 series, veto-completed map sets): log
+ loss **0.6530**, Brier **0.2294**, accuracy **62.5%** — ahead of the
+ map-effective Elo DP baseline (0.6555 / 0.2317 / 61.7%) at the deliverable
+diff --git a/README.md b/README.md
+index a7e7474..1ab8c64 100644
+--- a/README.md
++++ b/README.md
+@@ -110,8 +110,10 @@ Its first run earned its keep immediately: it caught a July-2025
+ calibration pathology (isotonic saturating to 0/1 plateaus the week its
+ admission threshold was first crossed) that the static protocol
+ structurally cannot see, because a static split only ever meets one
+-validation size. Documented as found, not silently patched —
+-`LOG.md` entry 31.
++validation size. Documented as found, not silently patched — and the subsequent
++hardening (calibrated outputs bounded so no calibrator can publish exact
++certainty) shipped as a labeled model change with the prior result
++archived, per the run-once rule (`LOG.md` entries 31–32).
+ 
+ ## Quickstart
+ 
+diff --git a/src/vpredict/config.py b/src/vpredict/config.py
+index 5551c19..f61039b 100644
+--- a/src/vpredict/config.py
++++ b/src/vpredict/config.py
+@@ -50,6 +50,27 @@ HALF_LIFE_GRID_DAYS = [30, 60, 90, 180, 365]
+ ROSTER_FACTOR_GRID = [0.5, 0.8, 1.0]      # per-changed-player weight multiplier; 1.0 = off
+ DEFAULT_HALF_LIFE_DAYS = 90
+ DEFAULT_ROSTER_FACTOR = 0.8
++# Calibrated probabilities are clipped to [CAL_OUTPUT_CLIP, 1 - CAL_OUTPUT_CLIP]
++# at transform time. Provenance (LOG entries 31-32): a healthy Platt fit on
++# ~800 validation rows spans ~[0.005, 0.995] on its own; a SATURATED
++# calibrator (isotonic freshly past its admission gate, or Platt on a tiny
++# separable slice) otherwise claims 0/1 exactly, which 4-decimal rounding
++# then publishes as certainty. The clip bounds any calibrator's claims at
++# what a healthy fit could evidence. Chosen by judgment from the r41
++# measurement, not tuned.
++CAL_OUTPUT_CLIP = 0.005
++# Bumped whenever prediction-affecting BEHAVIOR changes without the data or
++# feature params changing (the version hash otherwise cannot see code):
++# rev 2 = calibrated-output clip + publish clamp (LOG entry 32). The
++# backtest's run-once gate keys on the bundle version, so this is what
++# makes "the model changed" detectable for pure code changes.
++BUNDLE_BEHAVIOR_REV = 2
++# Published probabilities (ledger, upcoming JSON, backtest rows) are rounded
++# to this many decimals and then clamped inside (0, 1) by one ulp of that
++# rounding — a probability of exactly 0.0000 or 1.0000 is an evidentially
++# indefensible claim and breaks log-loss accounting.
++PROB_DECIMALS = 4
++
+ SHRINK_M_ROUNDS = 60        # pseudo-rounds pulled toward league mean for round-rate stats
+ SHRINK_M_PISTOLS = 16       # pseudo-pistol-rounds (~8 maps) for pistol win rate
+ MIN_MAPS_FOR_MAP_ELO = 8    # below this, per-map Elo is blended toward overall Elo
+diff --git a/src/vpredict/modeling/predict.py b/src/vpredict/modeling/predict.py
+index c9fe55d..f2868fa 100644
+--- a/src/vpredict/modeling/predict.py
++++ b/src/vpredict/modeling/predict.py
+@@ -45,6 +45,16 @@ def _elo_p(pair) -> float:
+     return 1.0 / (1.0 + 10.0 ** ((rb - ra) / config.ELO_SCALE))
+ 
+ 
++def _pub(x: float) -> float:
++    """Publish a probability: round to the ledger precision, then clamp one
++    rounding-ulp inside (0, 1). Series aggregation can push a map-clipped
++    probability back within rounding distance of 1.0 (a Bo5 of 0.995s is
++    0.999999), so the bound must sit at the published boundary, not only in
++    the calibrator."""
++    lo = 10.0 ** -config.PROB_DECIMALS
++    return min(max(round(float(x), config.PROB_DECIMALS), lo), 1.0 - lo)
++
++
+ def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
+                 pool: list[str], um: Match, now_ts: pd.Timestamp) -> dict:
+     """One pre-veto prediction at cutoff `now_ts` — the shared body of live
+@@ -108,7 +118,7 @@ def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
+         "event": um.event, "series": um.series, "best_of": um.best_of,
+         "team1": a, "team2": b,
+         "team1_name": um.team1_name, "team2_name": um.team2_name,
+-        "p_model": round(p_model, 4), "p_elo": round(p_elo, 4),
++        "p_model": _pub(p_model), "p_elo": _pub(p_elo),
+         "maps_dist": {str(k): round(v, 4)
+                       for k, v in sorted(dist["maps_dist"].items())},
+         "per_map": {m: round(float(p), 4) for m, p in zip(kept_maps, p_maps)},
+diff --git a/src/vpredict/modeling/train.py b/src/vpredict/modeling/train.py
+index 7aad76d..742d267 100644
+--- a/src/vpredict/modeling/train.py
++++ b/src/vpredict/modeling/train.py
+@@ -51,7 +51,11 @@ class PlattCalibrator:
+ 
+     def transform(self, p: np.ndarray) -> np.ndarray:
+         z = np.log(_clip(p) / (1 - _clip(p))).reshape(-1, 1)
+-        return self._lr.predict_proba(z)[:, 1]
++        out = self._lr.predict_proba(z)[:, 1]
++        # A near-separable fit makes the slope explode into a step function
++        # whose tails are 0/1 to float precision (LOG entry 32); bound the
++        # claim at what a healthy fit could evidence.
++        return np.clip(out, config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP)
+ 
+ 
+ class IsotonicCalibrator:
+@@ -62,7 +66,11 @@ class IsotonicCalibrator:
+         return self
+ 
+     def transform(self, p: np.ndarray) -> np.ndarray:
+-        return _clip(self._iso.predict(p))
++        # Isotonic's end plateaus sit AT 0/1 whenever the extreme validation
++        # bins are pure — the July-2025 walk episode (LOG entry 31); same
++        # bound, same reason.
++        return np.clip(self._iso.predict(p),
++                       config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP)
+ 
+ 
+ def fit_calibrator(p_val: np.ndarray, y_val: np.ndarray):
+@@ -246,7 +254,8 @@ def save_bundle(sel: dict, feature_names: list[str], params: dict,
+         "model": sel["model"], "calibrator": sel["calibrator"],
+         "model_name": sel["name"], "cal_name": sel["cal_name"],
+         "feature_names": feature_names, "params": params,
+-        "version": make_version({**params, "model": sel["name"]}),
++        "version": make_version({**params, "model": sel["name"],
++                                 "behavior_rev": config.BUNDLE_BEHAVIOR_REV}),
+         "trained_at": datetime.now(timezone.utc).isoformat(),
+         **extra,
+     }
+diff --git a/tests/test_backtest.py b/tests/test_backtest.py
+index 95e23a5..4549dd3 100644
+--- a/tests/test_backtest.py
++++ b/tests/test_backtest.py
+@@ -66,7 +66,16 @@ def test_walk_produces_ledger_shaped_graded_rows():
+                 "model_version", "made_at", "tier", "team1_won",
+                 "maps_played", "retrain_index"):
+         assert key in r
+-    assert 0.0 < r["p_model"] < 1.0
++    # Guaranteed by the publish clamp (LOG entry 32) — the pre-hardening
++    # assertion `0.0 < p < 1.0` failed on the owner's Mac when a saturated
++    # Platt step crossed the rounding threshold; now every published
++    # probability is bounded one rounding-ulp inside (0, 1), so this holds
++    # on every machine, not by numeric luck.
++    from vpredict import config as _cfg
++    lo = 10.0 ** -_cfg.PROB_DECIMALS
++    for rr in rows:
++        assert lo <= rr["p_model"] <= 1.0 - lo
++        assert lo <= rr["p_elo"] <= 1.0 - lo
+     assert r["model_version"].startswith("backtest-r")
+     # Calls are made at start - freeze margin, strictly before the start.
+     assert pd.Timestamp(r["made_at"]) < pd.Timestamp(r["start_ts"])
+diff --git a/tests/test_calibration_bounds.py b/tests/test_calibration_bounds.py
+new file mode 100644
+index 0000000..9e11b62
+--- /dev/null
++++ b/tests/test_calibration_bounds.py
+@@ -0,0 +1,68 @@
++"""Calibrated-probability bounds (LOG entries 31-32).
++
++Two saturation modes were observed in the field: isotonic freshly past its
++admission gate plateaus AT 0/1 (July 2025, the walk-forward backtest), and
++Platt on a tiny separable validation slice becomes a step function whose
++tails are 0/1 to float precision (the patch-0019 fixture failing on the
++owner's Mac with p_model == 1.0 exactly). The hardening is two independent
++bounds: calibrator transforms are clipped to [CAL_OUTPUT_CLIP, 1-...], and
++published probabilities are clamped one rounding-ulp inside (0, 1) —
++because series aggregation can push map-clipped probabilities back within
++rounding distance of 1.0 (a Bo5 of 0.995s is 0.999999).
++"""
++from __future__ import annotations
++
++import numpy as np
++
++from vpredict import config
++from vpredict.modeling.predict import _pub
++from vpredict.modeling.series import series_prob
++from vpredict.modeling.train import (IsotonicCalibrator, PlattCalibrator,
++                                     fit_calibrator)
++
++LO, HI = config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP
++
++
++def test_platt_step_function_is_bounded():
++    # Perfectly separable tiny validation slice -> exploding slope. The
++    # transform must still never claim more than the clip allows.
++    p_val = np.array([0.30, 0.35, 0.40, 0.60, 0.65, 0.70])
++    y_val = np.array([0, 0, 0, 1, 1, 1])
++    cal = PlattCalibrator().fit(p_val, y_val)
++    out = cal.transform(np.linspace(0.001, 0.999, 999))
++    assert out.min() >= LO and out.max() <= HI
++
++
++def test_isotonic_plateaus_are_bounded():
++    # Pure extreme bins make isotonic's end plateaus sit at exactly 0/1
++    # without the clip.
++    rng = np.random.default_rng(0)
++    p_val = np.sort(rng.uniform(0.05, 0.95, 200))
++    y_val = (p_val > 0.5).astype(int)          # perfectly pure ends
++    cal = IsotonicCalibrator().fit(p_val, y_val)
++    out = cal.transform(np.linspace(0.0, 1.0, 1001))
++    assert out.min() >= LO and out.max() <= HI
++
++
++def test_fit_calibrator_selection_respects_bounds():
++    p_val = np.array([0.2, 0.3, 0.7, 0.8] * 3)
++    y_val = np.array([0, 0, 1, 1] * 3)
++    _, cal = fit_calibrator(p_val, y_val)
++    out = cal.transform(np.array([1e-9, 0.5, 1 - 1e-9]))
++    assert out.min() >= LO and out.max() <= HI
++
++
++def test_publish_clamp_never_emits_certainty():
++    lo = 10.0 ** -config.PROB_DECIMALS
++    assert _pub(1.0) == 1.0 - lo
++    assert _pub(0.0) == lo
++    assert _pub(0.99999) == 1.0 - lo           # rounds to 1.0, clamped back
++    assert _pub(0.6431) == 0.6431              # in-band values untouched
++
++
++def test_bo5_compounding_cannot_round_to_one():
++    # The reason the publish clamp exists at the series boundary: a Bo5 of
++    # map-clipped 0.995s aggregates to 0.999999 -> rounds to 1.0000.
++    s = series_prob([HI] * 5)
++    assert s > 1 - 10.0 ** -config.PROB_DECIMALS    # the hazard is real
++    assert _pub(s) == 1 - 10.0 ** -config.PROB_DECIMALS
+-- 
+2.43.0
+
