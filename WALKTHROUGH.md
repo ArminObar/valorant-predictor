@@ -108,7 +108,7 @@ LightGBM + isotonic, which beats Elo at both grains (series 0.6500 vs
 
 The sweep surfaced a subtler finding worth more than the original question:
 plain LR beat the selected LightGBM on the untouched test window at both
-grains (map 0.6619 vs 0.6671; series 0.6375 vs 0.6500) while losing the
+grains (map 0.6620 vs 0.6671; series 0.6375 vs 0.6500) while losing the
 validation comparison. The tempting move — ship LR because test prefers it —
 is exactly the sin this walkthrough exists to name: selecting on the test
 window makes it a second validation set and un-earns every number reported

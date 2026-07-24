@@ -7,6 +7,14 @@ from pathlib import Path
 # --------------------------------------------------------------------------- paths
 ROOT = Path(os.environ.get("VPREDICT_ROOT", Path(__file__).resolve().parents[2]))
 DATA_DIR = Path(os.environ.get("VPREDICT_DATA", ROOT / "data"))
+# Measurement workspaces (`memharness.py growth`) re-root ALL data paths —
+# store, models bundle, ledger — at $VPREDICT_WORKSPACE/data. Deliberately
+# takes precedence over VPREDICT_DATA so a lingering deploy env var can never
+# aim a size-limited retrain at the real bundle or freeze garbage predictions
+# into the real ledger. Never set in production.
+_ws = os.environ.get("VPREDICT_WORKSPACE")
+if _ws:
+    DATA_DIR = Path(_ws) / "data"
 CACHE_DIR = DATA_DIR / "cache"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
@@ -106,3 +114,12 @@ FEATURE_TO_HAND_METRIC = {
 # --- serving refresh policy -------------------------------------------------
 RETRAIN_MAX_AGE_DAYS = 7      # retrain at least weekly
 RETRAIN_NEW_MATCHES = 100     # ...or when this many new matches arrived
+# Scheduled top-up crawl window (judgment constants, untuned — see LOG entry 20).
+# The top-up's `since` is anchored to the newest COMPLETED match in the store,
+# minus an overlap margin: listings are newest-first, but entries occasionally
+# appear slightly out of order, and the margin also self-heals arbitrary
+# outage gaps. On an EMPTY store there is nothing to anchor to; bound that
+# first crawl to a fixed bootstrap window (deepening history further is
+# backfill_results's job, not the scheduler's).
+TOPUP_OVERLAP_DAYS = 3
+TOPUP_BOOTSTRAP_DAYS = 30

@@ -245,11 +245,11 @@ walking up from the module, `<cwd>/frontend/dist`; a candidate must contain
 var that is set but invalid logs a warning and falls through to the
 candidates rather than failing hard — serving the site beats dying on a
 typo, and the warning keeps the misconfiguration visible. Absence is never
-silent: a warning lists every path tried (LOG entry 12).
+silent: a warning lists every path tried (LOG entry 19).
 
 **Smoke tests exercise the committed tree, not the working tree.** The
 container smoke test builds from `git archive HEAD` because both deploy
-bugs (LOG entries 11–12) lived precisely in the gap between working tree
+bugs (LOG entries 18–19) lived precisely in the gap between working tree
 and committed-tree-installed-as-package. A working-tree mode exists for
 pre-commit iteration, but the deploy-shaped build is the default.
 
@@ -325,3 +325,65 @@ strongest), multiplicative as a sensitivity column, per-tier mean overround
 reported as its own table. One headline book per row by fixed sharpness
 priority (Pinnacle > GG.BET > Bet365 > Thunderpick > any), priority pinned
 in config, all captured books stored, never silently averaged.
+
+## 11. Session decisions, 2026-07-24 — crawl-since fix, measurement wiring, doc alignment
+
+**README amended, not rewritten.** The rewrite task assumed the README still
+carried stale small-data claims; origin/main's README already holds the
+two-year results, verified figure-by-figure against
+`results-2yr-2026-07-23.md` (STATE.md's bug 3 is stale on this point).
+Amendments only: live URL under the title, the LR-vs-LightGBM stability
+finding surfaced with the non-switch rationale, a dated
+status-and-limitations section, test count corrected to the suite's actual
+40. The requested single merged results table was declined in favour of the
+existing two: the map table's map-effective-blend row has no series
+analogue, and merging grains would blur exactly the distinction the project
+is careful about.
+
+**0.6620, not 0.6619.** MODEL_CARD and WALKTHROUGH cited plain LR's test map
+log loss from the flat C ≥ 0.1 sweep rows (0.6619). The validation-selected
+LR is C = 0.03, whose test map figure is 0.6620. All documents now cite the
+★-selected row — the number the selection protocol actually earns — for a
+cosmetic 0.0001 in the honest direction.
+
+**LOG renumbering.** Two deploy-era entries titled "Entry 11/12" collided
+with existing entries 11/12; renumbered to 18/19 with all cross-references
+updated (including two in this file).
+
+**Top-up window constants.** `TOPUP_OVERLAP_DAYS = 3` and
+`TOPUP_BOOTSTRAP_DAYS = 30` (config.py) are judgment calls, untuned. The
+`since` bound is anchored to the newest completed *stored* match rather than
+to "now minus a fixed window" so a top-up self-heals after an outage of any
+length; the overlap covers listings gaining entries slightly out of order.
+
+**Store-limit semantics (measurement wiring D).** `VPREDICT_STORE_LIMIT=n`
+returns the chronologically FIRST n matches — simulating the store as it was
+when it held n matches, which is what a peak-vs-store-size curve needs. The
+capped path is a deliberate two-pass read (timestamps first, validate only
+selected lines): capping after a full parse would leave the curve's dominant
+term flat in n and the fit meaningless — the first implementation did
+exactly that and measured 730 MB at a 1,700 limit; the two-pass version
+measures 424 MB. `upsert_matches` reads via an uncapped private reader:
+upsert rewrites the file from what it loads, so a capped read there would
+silently truncate the real store if the env var leaked into a crawl. A test
+pins both behaviours.
+
+**Workspace precedence (measurement wiring E).** `VPREDICT_WORKSPACE`
+re-roots every data path and deliberately takes precedence over
+`VPREDICT_DATA`, so a lingering deploy variable can never aim a
+size-limited retrain at the real bundle or freeze garbage predictions into
+the real ledger.
+
+**Wiring reconstructed from the harness contract.** PATCH_NOTES.md lives
+only on the dev Mac, not in the repository; edits C–F were implemented to
+the contract `scripts/memharness.py` and `src/vpredict/memprof.py` document
+(exact env-var names, growth-mode semantics, phase reporting). If the local
+PATCH_NOTES prose differs in detail, it should win — but the harness
+enforces this contract mechanically, so drift risk is low.
+
+**Measurement caveats, stated once.** The 2026-07-24 numbers in LOG entry 22
+come from a Linux/py3.12 sandbox: wait4 child-tree peaks are authoritative
+there; cgroup readings were discarded (shared cgroup, high-watermark
+poisoned by unrelated work); absolute numbers are environment-specific (the
+Mac measured ~0.69 GB for the same cycle) while the per-phase attribution
+and the linearity of the growth curve are the transferable findings.

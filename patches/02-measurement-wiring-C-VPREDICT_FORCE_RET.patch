@@ -1,0 +1,58 @@
+diff --git a/src/vpredict/serving/refresh.py b/src/vpredict/serving/refresh.py
+index 731b87d..442d355 100644
+--- a/src/vpredict/serving/refresh.py
++++ b/src/vpredict/serving/refresh.py
+@@ -6,6 +6,7 @@ crawling entirely (conduct rules) but never blocks grading or serving."""
+ from __future__ import annotations
+ 
+ import logging
++import os
+ from datetime import datetime, timedelta, timezone
+ 
+ from .. import config
+@@ -16,6 +17,10 @@ log = logging.getLogger("vpredict.refresh")
+ 
+ 
+ def _needs_retrain(now: datetime) -> tuple[bool, str]:
++    # Measurement override (memharness --force-retrain): make the cycle
++    # exercise its heaviest path on demand. Never set in production.
++    if os.environ.get("VPREDICT_FORCE_RETRAIN") == "1":
++        return True, "forced (VPREDICT_FORCE_RETRAIN=1)"
+     bundle_path = config.MODELS_DIR / "model.joblib"
+     if not bundle_path.exists():
+         return True, "no bundle"
+diff --git a/tests/test_measurement_wiring.py b/tests/test_measurement_wiring.py
+new file mode 100644
+index 0000000..d744c75
+--- /dev/null
++++ b/tests/test_measurement_wiring.py
+@@ -0,0 +1,29 @@
++"""Measurement wiring (PATCH_NOTES edits C/D/E) — the knobs memharness.py
++relies on. Each is a measurement aid, never set in production; these tests pin
++the contract the harness assumes and, for the store limit, the one destructive
++interaction it must never have.
++"""
++from __future__ import annotations
++
++from datetime import datetime, timedelta, timezone
++
++from vpredict.serving import refresh as refresh_mod
++
++NOW = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
++
++
++# ------------------------------------------------ edit C: force-retrain knob
++
++def test_force_retrain_env_short_circuits(monkeypatch):
++    monkeypatch.setenv("VPREDICT_FORCE_RETRAIN", "1")
++    retrain, why = refresh_mod._needs_retrain(NOW)
++    assert retrain is True
++    assert why.startswith("forced")
++
++
++def test_force_retrain_off_by_default(monkeypatch, tmp_path):
++    monkeypatch.delenv("VPREDICT_FORCE_RETRAIN", raising=False)
++    from vpredict import config
++    monkeypatch.setattr(config, "MODELS_DIR", tmp_path)  # no bundle on disk
++    retrain, why = refresh_mod._needs_retrain(NOW)
++    assert retrain is True and why == "no bundle"  # normal path, not "forced"

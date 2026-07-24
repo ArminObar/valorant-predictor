@@ -1,5 +1,7 @@
 # vpredict — Valorant pro-match win probabilities, called in advance
 
+**Live: <https://vpredict.onrender.com>**
+
 Scrapes vlr.gg politely, builds leakage-safe features, trains a calibrated
 map-level model, aggregates to series probabilities over the veto, and logs
 every upcoming-match prediction to a frozen public ledger **before** the match
@@ -59,11 +61,23 @@ strength-signal features — coefficients are not marginal effects) are in
 synthetic mode (`make demo`) exists so the pipeline is demoable offline; its
 numbers are labelled loudly and say nothing about real Valorant.
 
+## The finding this project deliberately did not act on
+
+Plain logistic regression beat the shipped LightGBM on the untouched test
+window at **both** grains (map log loss 0.6620 vs 0.6671; series 0.6375 vs
+0.6500) — while losing the validation comparison that selects the model.
+Switching because the test window prefers LR would turn the test set into a
+second validation set and un-earn every number above, so the shipped bundle
+stays the validation choice, the disagreement is reported as a stability
+finding, and the frozen prediction ledger — data neither model has seen —
+arbitrates in public. The mechanism and the planned protocol upgrade
+(rolling-origin validation) are walked through in `WALKTHROUGH.md` §7.
+
 ## Quickstart
 
 ```bash
 pip install -e . && pip install pytest httpx   # or: make setup
-make test                                      # 32 tests
+make test                                      # 40 tests
 make backfill                                  # deep history walk (resumable)
 make evaluate                                  # writes data/reports/
 ```
@@ -102,6 +116,24 @@ scripts/        evaluate | train | predict_upcoming | refresh | demo
 frontend/       Vite/React scoreboard UI
 tests/          leakage, parsers, crawl, series, ledger, API, collinearity
 ```
+
+## Status & limitations (2026-07-24)
+
+Live on a Render Starter instance (512 MB). 104 predictions are frozen in
+the public ledger; the first ones grade as their matches finish.
+
+- **Automated refresh is currently disabled** (`VPREDICT_REFRESH=0`): the
+  full refresh cycle's measured peak memory exceeds the instance budget, so
+  updates are manual until the trim lands. The measurement harness and the
+  phase-level attribution are in `scripts/memharness.py`,
+  `src/vpredict/memprof.py`, and `LOG.md` entry 22.
+- **Uniform map-pool weights.** Upcoming-series probabilities average the
+  current 7-map pool uniformly; team pick/ban tendencies are not modeled.
+- **Tier B features were never enabled.** The economy/clutch columns are
+  designed and auto-drop cleanly, but the source tabs aren't scraped, so the
+  live model runs on Tier A alone.
+- **Low-history flags.** Teams with fewer than 3 prior maps get predictions,
+  flagged `low_history` in the ledger and UI.
 
 ## Project rules
 

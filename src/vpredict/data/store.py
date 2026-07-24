@@ -7,6 +7,8 @@ one row per (match, map, team).
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -17,7 +19,10 @@ from .schema import Match
 
 
 # --------------------------------------------------------------------------- raw store
-def load_matches(path: Path = config.MATCHES_JSONL) -> list[Match]:
+def _read_matches(path: Path) -> list[Match]:
+    """Uncapped reader. upsert_matches MUST use this, never load_matches:
+    upsert rewrites the file from what it loaded, so a capped read would
+    silently truncate the store."""
     if not Path(path).exists():
         return []
     out: list[Match] = []
@@ -29,9 +34,47 @@ def load_matches(path: Path = config.MATCHES_JSONL) -> list[Match]:
     return out
 
 
+def load_matches(path: Path = config.MATCHES_JSONL) -> list[Match]:
+    """Load the store. If VPREDICT_STORE_LIMIT=<n> is set (a measurement aid
+    for `memharness.py growth`, never set in production), return only the
+    chronologically FIRST n matches — simulating the store as it was when it
+    held n matches, which is what a peak-memory-vs-store-size curve needs.
+
+    The capped path deliberately avoids materializing the full store: pass 1
+    reads only each line's start_ts (per-line transient), pass 2 validates
+    just the selected lines. Capping AFTER a full parse would make the
+    growth curve's dominant term (the parse itself) flat in n and the fit
+    meaningless — the failure mode memharness's spread warning describes.
+    """
+    limit = os.environ.get("VPREDICT_STORE_LIMIT")
+    if not limit:
+        return _read_matches(path)
+    n = int(limit)
+    if n <= 0 or not Path(path).exists():
+        return _read_matches(path)
+    stamps: list[tuple[datetime, int]] = []  # (start_ts, line_index)
+    with open(path, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if line:
+                ts = json.loads(line)["start_ts"]
+                stamps.append(
+                    (datetime.fromisoformat(ts.replace("Z", "+00:00")), i))
+    if n >= len(stamps):
+        return _read_matches(path)
+    keep = {i for _, i in sorted(stamps)[:n]}
+    out: list[Match] = []
+    with open(path, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if i in keep:
+                out.append(Match.model_validate_json(line.strip()))
+    out.sort(key=lambda m: m.start_ts)
+    return out
+
+
 def upsert_matches(new: Iterable[Match], path: Path = config.MATCHES_JSONL) -> int:
     """Insert or replace by match_id. Returns number of new/updated records."""
-    existing = {m.match_id: m for m in load_matches(path)}
+    existing = {m.match_id: m for m in _read_matches(path)}
     changed = 0
     for m in new:
         prev = existing.get(m.match_id)

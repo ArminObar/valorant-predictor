@@ -267,7 +267,7 @@ runtime leakage spot-checks were exercised separately at full scale (pass).
 Deploy implication recorded: 512 MB instances cannot run the
 retrain/predict cycle (~0.7 GB peak); serving alone is light.
 
-## Entry 11 — 2026-07-23 — unanchored `data/` in .gitignore excluded package source
+## 18 — 2026-07-23 — unanchored `data/` in .gitignore excluded package source
 
 *(Numbering assumes the file currently ends at entry 10, per the references
 in ASSUMPTIONS §1–3; renumber if it has drifted.)*
@@ -288,15 +288,15 @@ directory is ignored; committed the previously-excluded
 
 **Why testing missed it.** The entire test suite runs against the local
 working tree, where the files exist. Nothing ever exercised the *committed*
-tree installed as a package. Remediation shared with entry 12:
+tree installed as a package. Remediation shared with entry 19:
 `scripts/smoke_container.sh` now builds the image from `git archive HEAD`
 (deploy-shaped context) and imports every `vpredict.*` submodule inside the
 container, so a file missing from git fails the smoke test locally instead
 of the deploy.
 
-## Entry 12 — 2026-07-23 — frontend mount silently skipped in the container; site served 404 at /
+## 19 — 2026-07-23 — frontend mount silently skipped in the container; site served 404 at /
 
-**Symptom.** After fixing entry 11 the deploy came up and `/api/*` worked,
+**Symptom.** After fixing entry 18 the deploy came up and `/api/*` worked,
 but `/` returned "Not Found". No error or warning anywhere in the logs.
 
 **Cause.** `api.py` resolved the frontend as
@@ -319,10 +319,100 @@ to the candidates (serving the site beats failing on a typo, but the
 misconfiguration stays visible). `api.py` now calls
 `locate_frontend_dist()` and mounts `if dist is not None`.
 
-**Why testing missed it.** Same blind spot as entry 11 from a different
+**Why testing missed it.** Same blind spot as entry 18 from a different
 angle: tests ran where the relative path resolves and the files exist;
 nothing verified that the *installed* package in the *container* actually
 serves its frontend. The `dist.exists()` guard converted a deployment fault
 into silence. Remediation: the same `scripts/smoke_container.sh` boots the
 built container and asserts `GET /api/health` returns 200 and `GET /`
 returns 200 with an HTML body.
+
+## 20 — 2026-07-23 — production: LightGBM bundle unpickle dies on missing libgomp.so.1
+
+**Symptom.** First Render deploy: container built, static frontend served,
+but the API died loading the model bundle — `OSError: libgomp.so.1: cannot
+open shared object file` raised from joblib unpickling the LightGBM booster.
+
+**Cause.** The runtime stage of the Dockerfile (`python:3.12-slim`) ships no
+GNU OpenMP runtime; LightGBM's native library links against it. The import
+cost is deferred — nothing touches `lightgbm` until the bundle is first
+unpickled — so the container "works" right up to the moment it serves.
+
+**Fix.** Install `libgomp1` (and `curl`, for the healthcheck) in the runtime
+stage. Redeployed green.
+
+**Why testing missed it.** Same blind spot as entries 18–19: nothing
+exercises the committed tree, installed as a package, inside the runtime
+container. The dev Mac has Homebrew's `libomp`, so the dependency is
+invisible locally. Remediation is `smoke_container.sh` (build the image, run
+a `--no-crawl` cycle and hit `/api/model` inside it) — pending a Docker
+install on the Mac.
+
+## 21 — 2026-07-24 — production: refresh cycle called crawl_results() without its required `since`
+
+**Symptom.** Every scheduled cycle logged `results crawl failed:
+crawl_results() missing 1 required positional argument: 'since'`. The store
+never topped up; the site sat frozen at its seed data. The cycle otherwise
+"succeeded" — fault isolation converted the TypeError into a log line.
+
+**Cause.** Call-site drift. Entry 10 split the crawler into top-up/backfill
+modes and made `since` a required positional on both; the call in
+`src/vpredict/serving/refresh.py` kept the old zero-argument form. No test
+ever executed `refresh_cycle` — crawler and ledger were each unit-tested,
+and the integration seam between them ran for the first time in production.
+
+**Fix.** `topup_since()` in serving/refresh.py: anchor the crawl's lower
+bound to the newest *completed* stored match minus
+`config.TOPUP_OVERLAP_DAYS` (3 d — listings are newest-first but entries can
+appear slightly out of order, and store-anchoring self-heals an outage of
+any length); with an empty store, bound the first crawl to
+`config.TOPUP_BOOTSTRAP_DAYS` (30 d). Both constants are judgment calls,
+untuned (ASSUMPTIONS §11). The cycle now records the `since` it used in its
+output.
+
+**Why testing missed it.** The seam itself was untested. The regression test
+(`tests/test_refresh_contract.py`) runs the real `refresh_cycle` with heavy
+steps stubbed, records the crawler call, and binds it against the *real*
+`crawl_results` signature — verified to fail on the pre-fix code with the
+production message verbatim, and to catch the next signature drift the same
+way.
+
+## 22 — 2026-07-24 — production: in-process refresh OOM-killed at 512 MB (exit 137)
+
+**Symptom.** With `VPREDICT_REFRESH=1` on the Render Starter instance
+(512 MB), the worker died exit 137 (128 + SIGKILL: the cgroup OOM killer)
+mid-cycle. Mitigation in place: `VPREDICT_REFRESH=0` and manual updates
+(run predictions locally, gzip the ledger into `seed/`, push, re-download in
+the Render shell).
+
+**Cause — measured, not guessed.** With the measurement wiring (edits C–F)
+applied, `scripts/memharness.py` on a Linux/py3.12 sandbox attributes the
+footprint per phase. Full store (6,796 matches), `refresh.py --no-crawl`,
+forced retrain: peak 1,221 MB (wait4, child process tree). Attribution:
+`grade` climbs 79→565 MB parsing the whole store into pydantic `Match`
+objects and keeps the list alive for the predict step; `train/load_store`
+then parses the entire store a *second* time (+~550 MB coexisting);
+`build_features` adds only ~90 MB over 240 s; model fitting is negligible.
+Roughly 85–90 % of the peak is the match store materialized twice — the ML
+is nearly free. A four-point growth curve (store limits 1,700 / 3,400 /
+5,100 / 6,796) is linear: peak ≈ 155 MB + 156 MB per 1,000 matches
+(residuals < 7 MB), i.e. on that environment the untrimmed cycle outgrew
+512 MB around ~2,300 matches. Absolute numbers are environment-specific
+(the dev Mac measured ~0.69 GB for the same cycle: different allocator,
+Python, and library builds); the *attribution shape* is the robust finding.
+Reproduce: `python scripts/memharness.py run --force-retrain -- python
+scripts/refresh.py --no-crawl`.
+
+**Fix.** Not yet applied — trim design proposed and awaiting sign-off:
+stream store consumption (an `iter_matches` generator; `grade` consuming
+one match at a time; the maps frame built incrementally without retaining
+the object graph) so no full materialization exists anywhere in the cycle,
+plus running refresh as a subprocess so memory returns to the OS between
+cycles. Post-trim, rerun the growth curve for the real "when does it
+outgrow 512 MB again" answer.
+
+**Why testing missed it.** No test enforces a memory budget, and dev
+machines with ≥16 GB never surface a 512 MB ceiling. The measurement wiring
+only landed after the incident. The budget has to be made artificial to
+fail early: `smoke_container.sh` should run the cycle under
+`docker run --memory=512m`.

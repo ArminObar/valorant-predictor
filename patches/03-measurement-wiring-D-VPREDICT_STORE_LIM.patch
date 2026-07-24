@@ -1,0 +1,88 @@
+diff --git a/src/vpredict/data/store.py b/src/vpredict/data/store.py
+index 6a80c02..5f2e6e6 100644
+--- a/src/vpredict/data/store.py
++++ b/src/vpredict/data/store.py
+@@ -7,6 +7,7 @@ one row per (match, map, team).
+ from __future__ import annotations
+ 
+ import json
++import os
+ from pathlib import Path
+ from typing import Iterable
+ 
+@@ -17,7 +18,10 @@ from .schema import Match
+ 
+ 
+ # --------------------------------------------------------------------------- raw store
+-def load_matches(path: Path = config.MATCHES_JSONL) -> list[Match]:
++def _read_matches(path: Path) -> list[Match]:
++    """Uncapped reader. upsert_matches MUST use this, never load_matches:
++    upsert rewrites the file from what it loaded, so a capped read would
++    silently truncate the store."""
+     if not Path(path).exists():
+         return []
+     out: list[Match] = []
+@@ -29,9 +33,24 @@ def load_matches(path: Path = config.MATCHES_JSONL) -> list[Match]:
+     return out
+ 
+ 
++def load_matches(path: Path = config.MATCHES_JSONL) -> list[Match]:
++    """Load the store. If VPREDICT_STORE_LIMIT=<n> is set (a measurement aid
++    for `memharness.py growth`, never set in production), return only the
++    chronologically FIRST n matches — simulating the store as it was when it
++    held n matches, which is what a peak-memory-vs-store-size curve needs."""
++    out = _read_matches(path)
++    limit = os.environ.get("VPREDICT_STORE_LIMIT")
++    if limit:
++        n = int(limit)
++        if 0 < n < len(out):
++            out.sort(key=lambda m: m.start_ts)
++            out = out[:n]
++    return out
++
++
+ def upsert_matches(new: Iterable[Match], path: Path = config.MATCHES_JSONL) -> int:
+     """Insert or replace by match_id. Returns number of new/updated records."""
+-    existing = {m.match_id: m for m in load_matches(path)}
++    existing = {m.match_id: m for m in _read_matches(path)}
+     changed = 0
+     for m in new:
+         prev = existing.get(m.match_id)
+diff --git a/tests/test_measurement_wiring.py b/tests/test_measurement_wiring.py
+index d744c75..ac21de7 100644
+--- a/tests/test_measurement_wiring.py
++++ b/tests/test_measurement_wiring.py
+@@ -27,3 +27,33 @@ def test_force_retrain_off_by_default(monkeypatch, tmp_path):
+     monkeypatch.setattr(config, "MODELS_DIR", tmp_path)  # no bundle on disk
+     retrain, why = refresh_mod._needs_retrain(NOW)
+     assert retrain is True and why == "no bundle"  # normal path, not "forced"
++
++
++# ------------------------------------------------- edit D: store size limit
++
++def _mk(mid: str, days_ago: int):
++    from vpredict.data.schema import Match
++    return Match(match_id=mid, start_ts=NOW - timedelta(days=days_ago),
++                 status="completed")
++
++
++def test_store_limit_keeps_chronologically_first_n(monkeypatch, tmp_path):
++    from vpredict.data import store
++    p = tmp_path / "m.jsonl"
++    store.upsert_matches([_mk("new", 1), _mk("old", 9), _mk("mid", 5)], path=p)
++    monkeypatch.setenv("VPREDICT_STORE_LIMIT", "2")
++    got = store.load_matches(p)
++    assert [m.match_id for m in got] == ["old", "mid"]
++
++
++def test_store_limit_never_truncates_via_upsert(monkeypatch, tmp_path):
++    """THE destructive interaction the split reader exists to prevent: upsert
++    rewrites the file from what it read, so it must read uncapped even when
++    the limit env var is set."""
++    from vpredict.data import store
++    p = tmp_path / "m.jsonl"
++    store.upsert_matches([_mk("a", 9), _mk("b", 5), _mk("c", 1)], path=p)
++    monkeypatch.setenv("VPREDICT_STORE_LIMIT", "1")
++    store.upsert_matches([_mk("d", 0)], path=p)  # would truncate if buggy
++    monkeypatch.delenv("VPREDICT_STORE_LIMIT")
++    assert {m.match_id for m in store.load_matches(p)} == {"a", "b", "c", "d"}

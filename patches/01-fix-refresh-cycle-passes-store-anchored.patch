@@ -1,0 +1,178 @@
+diff --git a/src/vpredict/config.py b/src/vpredict/config.py
+index acbcbc3..a8e5d84 100644
+--- a/src/vpredict/config.py
++++ b/src/vpredict/config.py
+@@ -106,3 +106,12 @@ FEATURE_TO_HAND_METRIC = {
+ # --- serving refresh policy -------------------------------------------------
+ RETRAIN_MAX_AGE_DAYS = 7      # retrain at least weekly
+ RETRAIN_NEW_MATCHES = 100     # ...or when this many new matches arrived
++# Scheduled top-up crawl window (judgment constants, untuned — see LOG entry 20).
++# The top-up's `since` is anchored to the newest COMPLETED match in the store,
++# minus an overlap margin: listings are newest-first, but entries occasionally
++# appear slightly out of order, and the margin also self-heals arbitrary
++# outage gaps. On an EMPTY store there is nothing to anchor to; bound that
++# first crawl to a fixed bootstrap window (deepening history further is
++# backfill_results's job, not the scheduler's).
++TOPUP_OVERLAP_DAYS = 3
++TOPUP_BOOTSTRAP_DAYS = 30
+diff --git a/src/vpredict/serving/refresh.py b/src/vpredict/serving/refresh.py
+index 9aa8dbf..731b87d 100644
+--- a/src/vpredict/serving/refresh.py
++++ b/src/vpredict/serving/refresh.py
+@@ -33,6 +33,23 @@ def _needs_retrain(now: datetime) -> tuple[bool, str]:
+         return True, f"bundle unreadable ({e})"
+ 
+ 
++def topup_since(matches: list, now: datetime) -> datetime:
++    """Lower time bound for the scheduled top-up crawl (crawl_results).
++
++    Anchored to the newest COMPLETED match already in the store, minus
++    ``config.TOPUP_OVERLAP_DAYS`` — listings are newest-first, but entries can
++    appear slightly out of order, and anchoring to the store (rather than to
++    "now minus a fixed window") means a top-up self-heals after an outage of
++    any length. With an empty store there is nothing to anchor to: bound the
++    first crawl to ``config.TOPUP_BOOTSTRAP_DAYS``; deepening history beyond
++    that is backfill_results's job, not the scheduler's.
++    """
++    completed = [m.start_ts for m in matches if m.status == "completed"]
++    if completed:
++        return max(completed) - timedelta(days=config.TOPUP_OVERLAP_DAYS)
++    return now - timedelta(days=config.TOPUP_BOOTSTRAP_DAYS)
++
++
+ def refresh_cycle(crawl: bool = True) -> dict:
+     now = datetime.now(timezone.utc)
+     out: dict = {"ts": now.isoformat()}
+@@ -40,7 +57,11 @@ def refresh_cycle(crawl: bool = True) -> dict:
+     if crawl:
+         try:
+             from ..scraping.crawl import crawl_results
+-            out["crawl"] = crawl_results()
++            # Transient full store load; the list is dropped as soon as
++            # topup_since returns, well before the memory-heavy steps.
++            since = topup_since(store.load_matches(config.MATCHES_JSONL), now)
++            out["crawl"] = {"since": since.isoformat(),
++                            "stored": crawl_results(since)}
+         except Exception as e:
+             log.error("results crawl failed: %s", e)
+             out["crawl"] = {"error": str(e)}
+diff --git a/tests/test_refresh_contract.py b/tests/test_refresh_contract.py
+new file mode 100644
+index 0000000..51d1e89
+--- /dev/null
++++ b/tests/test_refresh_contract.py
+@@ -0,0 +1,114 @@
++"""The refresh cycle's call contract with the crawler.
++
++Field-found bug (production, first deploy): serving/refresh.py called
++``crawl_results()`` with no arguments after the top-up/backfill split made
++``since`` a required positional — every scheduled cycle logged
++"crawl_results() missing 1 required positional argument: 'since'" and the
++store never topped up. Nothing had ever imported and dry-run the cycle, so the
++TypeError first fired on Render.
++
++These tests pin two things:
++1. ``topup_since`` semantics: anchored to the newest COMPLETED stored match
++   minus the overlap margin; bootstrap window on an empty store.
++2. The cycle end-to-end (heavy steps stubbed) passes the crawler arguments
++   that BIND against the real ``crawl_results`` signature — so the next
++   signature drift fails here, not in production.
++"""
++from __future__ import annotations
++
++import inspect
++from datetime import datetime, timedelta, timezone
++
++from vpredict import config
++from vpredict.data import store
++from vpredict.data.schema import Match
++from vpredict.scraping import crawl
++from vpredict.serving import refresh as refresh_mod
++
++NOW = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
++
++
++def _m(mid: str, start: datetime, status: str = "completed") -> Match:
++    return Match(match_id=mid, start_ts=start, status=status)
++
++
++# --------------------------------------------------------------- topup_since
++
++def test_topup_since_anchors_to_newest_completed():
++    matches = [
++        _m("1", NOW - timedelta(days=40)),
++        _m("2", NOW - timedelta(days=10)),                # newest completed
++        _m("3", NOW + timedelta(days=1), status="upcoming"),  # must be ignored
++    ]
++    got = refresh_mod.topup_since(matches, NOW)
++    assert got == (NOW - timedelta(days=10)
++                   - timedelta(days=config.TOPUP_OVERLAP_DAYS))
++
++
++def test_topup_since_empty_store_uses_bootstrap_window():
++    got = refresh_mod.topup_since([], NOW)
++    assert got == NOW - timedelta(days=config.TOPUP_BOOTSTRAP_DAYS)
++    assert got.tzinfo is not None
++
++
++# ------------------------------------------------- cycle -> crawler contract
++
++def test_refresh_cycle_calls_crawl_results_with_bindable_args(tmp_path, monkeypatch):
++    """Run the real refresh_cycle with heavy steps stubbed and assert the
++    crawler call binds against the REAL crawl_results signature.
++
++    On the pre-fix code this fails exactly the way production did: the stub is
++    invoked with no arguments and signature binding raises
++    ``missing a required argument: 'since'``.
++    """
++    # Real (tiny) store on disk so the since computation exercises load_matches.
++    newest = NOW - timedelta(days=2)
++    matches_path = tmp_path / "matches.jsonl"
++    store.upsert_matches(
++        [_m("1", NOW - timedelta(days=9)), _m("2", newest)], path=matches_path)
++    monkeypatch.setattr(config, "MATCHES_JSONL", matches_path)
++    monkeypatch.setattr(config, "UPCOMING_JSONL", tmp_path / "upcoming.jsonl")
++    monkeypatch.setattr(config, "MODELS_DIR", tmp_path)  # no bundle on disk
++
++    calls: list[tuple[tuple, dict]] = []
++
++    def fake_crawl_results(*args, **kwargs):
++        calls.append((args, kwargs))
++        return 7
++
++    # Capture the REAL signature before patching — the recorded call is bound
++    # against it below, which is what catches the next signature drift.
++    real_sig = inspect.signature(crawl.crawl_results)
++
++    # refresh_cycle imports these lazily from their home modules, so patching
++    # the home-module attributes intercepts the calls.
++    monkeypatch.setattr(crawl, "crawl_results", fake_crawl_results)
++    monkeypatch.setattr(crawl, "crawl_upcoming", lambda *a, **k: [])
++    import vpredict.modeling.train as train_mod
++    monkeypatch.setattr(train_mod, "train_and_save",
++                        lambda *a, **k: {"stub": True}, raising=False)
++    monkeypatch.setattr(train_mod, "load_bundle",
++                        lambda *a, **k: {"stub": True}, raising=False)
++
++    class StubLedger:
++        def grade(self, matches, now=None):
++            return 0
++
++        def close(self):
++            return None
++
++    monkeypatch.setattr(refresh_mod, "Ledger", StubLedger)
++
++    out = refresh_mod.refresh_cycle(crawl=True)
++
++    assert len(calls) == 1, f"crawl_results not called exactly once: {out}"
++    args, kwargs = calls[0]
++
++    # The contract: whatever the cycle passes must bind against the real
++    # signature. On the pre-fix code this raises the production error verbatim.
++    ba = real_sig.bind(*args, **kwargs)
++
++    since = ba.arguments["since"]
++    assert isinstance(since, datetime) and since.tzinfo is not None
++    assert since == newest - timedelta(days=config.TOPUP_OVERLAP_DAYS)
++    assert out["crawl"] == {"since": since.isoformat(), "stored": 7}

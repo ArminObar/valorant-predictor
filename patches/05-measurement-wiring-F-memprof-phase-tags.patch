@@ -1,0 +1,165 @@
+diff --git a/src/vpredict/modeling/train.py b/src/vpredict/modeling/train.py
+index 8cd8f69..2f6a07d 100644
+--- a/src/vpredict/modeling/train.py
++++ b/src/vpredict/modeling/train.py
+@@ -166,22 +166,26 @@ def train_and_save(data_path=None, half_life_days: float | None = None,
+     column uses the same baseline the report did."""
+     from ..data import store as _store
+     from ..features.build import augment_swapped, build_features, chronological_split
++    from ..memprof import phase
+     from .baselines import matches_lite_from_maps, tune_elo_k
+ 
+-    matches = _store.load_matches(data_path or config.MATCHES_JSONL)
+-    maps_df = _store.maps_frame(matches)
++    with phase("load_store"):
++        matches = _store.load_matches(data_path or config.MATCHES_JSONL)
++        maps_df = _store.maps_frame(matches)
+     if maps_df.empty:
+         raise ValueError("no completed matches — scrape before training")
+-    fs = build_features(
+-        maps_df,
+-        half_life_days=half_life_days or config.DEFAULT_HALF_LIFE_DAYS,
+-        roster_factor=roster_factor or config.DEFAULT_ROSTER_FACTOR)
++    with phase("build_features"):
++        fs = build_features(
++            maps_df,
++            half_life_days=half_life_days or config.DEFAULT_HALF_LIFE_DAYS,
++            roster_factor=roster_factor or config.DEFAULT_ROSTER_FACTOR)
+     splits = chronological_split(fs.meta)
+     tr, va = splits["train"], splits["val"]
+     y = fs.y.to_numpy()
+     n_train = int(fs.meta.loc[tr, "match_id"].nunique())
+-    X_tr, y_tr = augment_swapped(fs.X[tr], fs.y[tr])
+-    sel = select_model(X_tr, y_tr, fs.X[va], y[va], n_train)
++    with phase("select_calibrate"):
++        X_tr, y_tr = augment_swapped(fs.X[tr], fs.y[tr])
++        sel = select_model(X_tr, y_tr, fs.X[va], y[va], n_train)
+     best_k, _, _ = tune_elo_k(matches_lite_from_maps(maps_df), fs.meta, y, va)
+     synthetic = bool(fs.meta["synthetic"].any())
+     path = save_bundle(
+diff --git a/src/vpredict/serving/refresh.py b/src/vpredict/serving/refresh.py
+index 442d355..7430c73 100644
+--- a/src/vpredict/serving/refresh.py
++++ b/src/vpredict/serving/refresh.py
+@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
+ 
+ from .. import config
+ from ..data import store
++from ..memprof import phase
+ from .ledger import Ledger
+ 
+ log = logging.getLogger("vpredict.refresh")
+@@ -60,59 +61,64 @@ def refresh_cycle(crawl: bool = True) -> dict:
+     out: dict = {"ts": now.isoformat()}
+ 
+     if crawl:
++        with phase("crawl"):
++            try:
++                from ..scraping.crawl import crawl_results
++                # Transient full store load; the list is dropped as soon as
++                # topup_since returns, well before the memory-heavy steps.
++                since = topup_since(store.load_matches(config.MATCHES_JSONL),
++                                    now)
++                out["crawl"] = {"since": since.isoformat(),
++                                "stored": crawl_results(since)}
++            except Exception as e:
++                log.error("results crawl failed: %s", e)
++                out["crawl"] = {"error": str(e)}
++
++    with phase("grade"):
+         try:
+-            from ..scraping.crawl import crawl_results
+-            # Transient full store load; the list is dropped as soon as
+-            # topup_since returns, well before the memory-heavy steps.
+-            since = topup_since(store.load_matches(config.MATCHES_JSONL), now)
+-            out["crawl"] = {"since": since.isoformat(),
+-                            "stored": crawl_results(since)}
++            matches = store.load_matches(config.MATCHES_JSONL)
++            led = Ledger()
++            out["graded"] = led.grade(matches)
++            led.close()
+         except Exception as e:
+-            log.error("results crawl failed: %s", e)
+-            out["crawl"] = {"error": str(e)}
++            log.error("grading failed: %s", e)
++            matches, out["graded"] = [], {"error": str(e)}
+ 
+-    try:
+-        matches = store.load_matches(config.MATCHES_JSONL)
+-        led = Ledger()
+-        out["graded"] = led.grade(matches)
+-        led.close()
+-    except Exception as e:
+-        log.error("grading failed: %s", e)
+-        matches, out["graded"] = [], {"error": str(e)}
+-
+-    try:
+-        retrain, why = _needs_retrain(now)
+-        out["retrain"] = why
+-        if retrain:
+-            from ..modeling.train import train_and_save
+-            out["train"] = {k: v for k, v in train_and_save().items()
+-                            if k != "path"}
+-    except Exception as e:
+-        log.error("retrain failed: %s", e)
+-        out["train"] = {"error": str(e)}
++    with phase("train"):
++        try:
++            retrain, why = _needs_retrain(now)
++            out["retrain"] = why
++            if retrain:
++                from ..modeling.train import train_and_save
++                out["train"] = {k: v for k, v in train_and_save().items()
++                                if k != "path"}
++        except Exception as e:
++            log.error("retrain failed: %s", e)
++            out["train"] = {"error": str(e)}
+ 
+-    try:
+-        from ..modeling.train import load_bundle
+-        bundle = load_bundle()
+-        if crawl:
+-            from ..scraping.crawl import crawl_upcoming
+-            upcoming = crawl_upcoming()
+-        else:
+-            upcoming = store.load_matches(config.UPCOMING_JSONL)
+-        upcoming = [m for m in upcoming
+-                    if m.start_ts > now and m.status in ("upcoming", "live")]
+-        if upcoming:
+-            led = Ledger()
+-            out["predict"] = __import__(
+-                "vpredict.modeling.predict", fromlist=["run_predictions"]
+-            ).run_predictions(bundle, matches or store.load_matches(
+-                config.MATCHES_JSONL), upcoming, led, now=now)
+-            led.close()
+-        else:
+-            out["predict"] = {"upcoming": 0}
+-    except Exception as e:
+-        log.error("prediction failed: %s", e)
+-        out["predict"] = {"error": str(e)}
++    with phase("predict"):
++        try:
++            from ..modeling.train import load_bundle
++            bundle = load_bundle()
++            if crawl:
++                from ..scraping.crawl import crawl_upcoming
++                upcoming = crawl_upcoming()
++            else:
++                upcoming = store.load_matches(config.UPCOMING_JSONL)
++            upcoming = [m for m in upcoming
++                        if m.start_ts > now and m.status in ("upcoming", "live")]
++            if upcoming:
++                led = Ledger()
++                out["predict"] = __import__(
++                    "vpredict.modeling.predict", fromlist=["run_predictions"]
++                ).run_predictions(bundle, matches or store.load_matches(
++                    config.MATCHES_JSONL), upcoming, led, now=now)
++                led.close()
++            else:
++                out["predict"] = {"upcoming": 0}
++        except Exception as e:
++            log.error("prediction failed: %s", e)
++            out["predict"] = {"error": str(e)}
+ 
+     log.info("refresh cycle: %s", out)
+     return out

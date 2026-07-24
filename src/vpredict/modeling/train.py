@@ -166,22 +166,26 @@ def train_and_save(data_path=None, half_life_days: float | None = None,
     column uses the same baseline the report did."""
     from ..data import store as _store
     from ..features.build import augment_swapped, build_features, chronological_split
+    from ..memprof import phase
     from .baselines import matches_lite_from_maps, tune_elo_k
 
-    matches = _store.load_matches(data_path or config.MATCHES_JSONL)
-    maps_df = _store.maps_frame(matches)
+    with phase("load_store"):
+        matches = _store.load_matches(data_path or config.MATCHES_JSONL)
+        maps_df = _store.maps_frame(matches)
     if maps_df.empty:
         raise ValueError("no completed matches — scrape before training")
-    fs = build_features(
-        maps_df,
-        half_life_days=half_life_days or config.DEFAULT_HALF_LIFE_DAYS,
-        roster_factor=roster_factor or config.DEFAULT_ROSTER_FACTOR)
+    with phase("build_features"):
+        fs = build_features(
+            maps_df,
+            half_life_days=half_life_days or config.DEFAULT_HALF_LIFE_DAYS,
+            roster_factor=roster_factor or config.DEFAULT_ROSTER_FACTOR)
     splits = chronological_split(fs.meta)
     tr, va = splits["train"], splits["val"]
     y = fs.y.to_numpy()
     n_train = int(fs.meta.loc[tr, "match_id"].nunique())
-    X_tr, y_tr = augment_swapped(fs.X[tr], fs.y[tr])
-    sel = select_model(X_tr, y_tr, fs.X[va], y[va], n_train)
+    with phase("select_calibrate"):
+        X_tr, y_tr = augment_swapped(fs.X[tr], fs.y[tr])
+        sel = select_model(X_tr, y_tr, fs.X[va], y[va], n_train)
     best_k, _, _ = tune_elo_k(matches_lite_from_maps(maps_df), fs.meta, y, va)
     synthetic = bool(fs.meta["synthetic"].any())
     path = save_bundle(
