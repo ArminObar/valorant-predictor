@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { fmtTime } from "./time.js";
 
 const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
 const fmt4 = (v) => (v == null ? "—" : v.toFixed(4));
-const fmtTime = (iso) =>
-  new Date(iso).toLocaleString(undefined, {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
 
 function useApi(path) {
   const [data, setData] = useState(null);

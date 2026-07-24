@@ -67,6 +67,20 @@ def refresh_cycle(crawl: bool = True) -> dict:
     now = datetime.now(timezone.utc)
     out: dict = {"ts": now.isoformat()}
 
+    # Run-once, marker-guarded (LOG entry 29). Must precede the crawl so a
+    # store written by the old parser is corrected before rows from the fixed
+    # parser can mix in; a marker file makes every later call a no-op.
+    with phase("tz_migration"):
+        try:
+            from ..data.migrate import migrate_tz_if_needed, tz_migration_applied
+            already = tz_migration_applied()
+            rep = migrate_tz_if_needed()
+            if not already:
+                out["tz_migration"] = rep
+        except Exception as e:
+            log.error("tz migration failed: %s", e)
+            out["tz_migration"] = {"error": str(e)}
+
     if crawl:
         with phase("crawl"):
             try:

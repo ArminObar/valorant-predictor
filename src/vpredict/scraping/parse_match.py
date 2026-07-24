@@ -14,10 +14,15 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag
 
 from ..data.schema import Match, MapResult, PlayerMapStats, RoundResult
+
+# vlr.gg renders `data-utc-ts` in its default display timezone for clients
+# with no timezone cookie — US Eastern. See _parse_utc_ts.
+VLR_SITE_TZ = ZoneInfo("America/New_York")
 
 _HREF_ID = re.compile(r"^/(?:team/)?(\d+)/")
 
@@ -38,14 +43,30 @@ def _num(s: str, cast=float):
 
 
 def _parse_utc_ts(soup: BeautifulSoup) -> datetime | None:
+    """Despite its name, vlr.gg's `data-utc-ts` attribute carries the match's
+    wall-clock time in the SITE'S display timezone — US Eastern for a
+    cookieless client like this scraper — and the site's own moment-tz JS
+    converts it for browsers. Treating it as UTC shifted every stored start
+    4 h (EDT) / 5 h (EST) early (LOG entry 29; confirmed live 2026-07-24 by
+    the RRQ–ZETA match: attribute 04:00, true start 08:00 UTC, and by every
+    Cloudbet `startTime` on the 16 linked fixtures). So: parse the naive wall
+    time, localize to America/New_York, convert to UTC.
+
+    DST notes, bounded and accepted: the nonexistent spring-forward hour is
+    mapped forward by zoneinfo; the ambiguous fall-back hour resolves to the
+    first occurrence (fold=0, EDT) — a ≤1 h error possible only for matches
+    scheduled inside that single hour per year.
+    """
     el = soup.select_one(".moment-tz-convert[data-utc-ts]")
     if el:
         raw = el.get("data-utc-ts", "").strip()
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
             try:
-                return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+                naive = datetime.strptime(raw, fmt)
             except ValueError:
                 continue
+            local = naive.replace(tzinfo=VLR_SITE_TZ)
+            return local.astimezone(timezone.utc)
     return None
 
 

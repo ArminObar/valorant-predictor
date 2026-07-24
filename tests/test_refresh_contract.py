@@ -69,6 +69,11 @@ def test_refresh_cycle_calls_crawl_results_with_bindable_args(tmp_path, monkeypa
     monkeypatch.setattr(config, "MATCHES_JSONL", matches_path)
     monkeypatch.setattr(config, "UPCOMING_JSONL", tmp_path / "upcoming.jsonl")
     monkeypatch.setattr(config, "MODELS_DIR", tmp_path)  # no bundle on disk
+    # This fixture store is written in true UTC (post-fix data), so declare
+    # the one-time tz migration already applied — otherwise the cycle's
+    # marker-guarded migration step would shift these timestamps (LOG 29).
+    monkeypatch.setattr(config, "RAW_DIR", tmp_path)
+    (tmp_path / ".tz_migration_v1.json").write_text("{}")
 
     calls: list[tuple[tuple, dict]] = []
 
