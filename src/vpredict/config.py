@@ -50,6 +50,27 @@ HALF_LIFE_GRID_DAYS = [30, 60, 90, 180, 365]
 ROSTER_FACTOR_GRID = [0.5, 0.8, 1.0]      # per-changed-player weight multiplier; 1.0 = off
 DEFAULT_HALF_LIFE_DAYS = 90
 DEFAULT_ROSTER_FACTOR = 0.8
+# Calibrated probabilities are clipped to [CAL_OUTPUT_CLIP, 1 - CAL_OUTPUT_CLIP]
+# at transform time. Provenance (LOG entries 31-32): a healthy Platt fit on
+# ~800 validation rows spans ~[0.005, 0.995] on its own; a SATURATED
+# calibrator (isotonic freshly past its admission gate, or Platt on a tiny
+# separable slice) otherwise claims 0/1 exactly, which 4-decimal rounding
+# then publishes as certainty. The clip bounds any calibrator's claims at
+# what a healthy fit could evidence. Chosen by judgment from the r41
+# measurement, not tuned.
+CAL_OUTPUT_CLIP = 0.005
+# Bumped whenever prediction-affecting BEHAVIOR changes without the data or
+# feature params changing (the version hash otherwise cannot see code):
+# rev 2 = calibrated-output clip + publish clamp (LOG entry 32). The
+# backtest's run-once gate keys on the bundle version, so this is what
+# makes "the model changed" detectable for pure code changes.
+BUNDLE_BEHAVIOR_REV = 2
+# Published probabilities (ledger, upcoming JSON, backtest rows) are rounded
+# to this many decimals and then clamped inside (0, 1) by one ulp of that
+# rounding — a probability of exactly 0.0000 or 1.0000 is an evidentially
+# indefensible claim and breaks log-loss accounting.
+PROB_DECIMALS = 4
+
 SHRINK_M_ROUNDS = 60        # pseudo-rounds pulled toward league mean for round-rate stats
 SHRINK_M_PISTOLS = 16       # pseudo-pistol-rounds (~8 maps) for pistol win rate
 MIN_MAPS_FOR_MAP_ELO = 8    # below this, per-map Elo is blended toward overall Elo

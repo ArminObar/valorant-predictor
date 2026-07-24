@@ -66,7 +66,16 @@ def test_walk_produces_ledger_shaped_graded_rows():
                 "model_version", "made_at", "tier", "team1_won",
                 "maps_played", "retrain_index"):
         assert key in r
-    assert 0.0 < r["p_model"] < 1.0
+    # Guaranteed by the publish clamp (LOG entry 32) — the pre-hardening
+    # assertion `0.0 < p < 1.0` failed on the owner's Mac when a saturated
+    # Platt step crossed the rounding threshold; now every published
+    # probability is bounded one rounding-ulp inside (0, 1), so this holds
+    # on every machine, not by numeric luck.
+    from vpredict import config as _cfg
+    lo = 10.0 ** -_cfg.PROB_DECIMALS
+    for rr in rows:
+        assert lo <= rr["p_model"] <= 1.0 - lo
+        assert lo <= rr["p_elo"] <= 1.0 - lo
     assert r["model_version"].startswith("backtest-r")
     # Calls are made at start - freeze margin, strictly before the start.
     assert pd.Timestamp(r["made_at"]) < pd.Timestamp(r["start_ts"])

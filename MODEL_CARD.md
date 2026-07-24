@@ -18,7 +18,14 @@
   bundle contains the fitted pipeline, calibrator, feature schema, feature
   parameters (half-life 90 d, roster factor 0.8, feature Elo K=32), the
   tuned baseline K, the selection decision with its margin, training-data
-  fingerprint, and a version string.
+  fingerprint, and a version string (which also encodes a behavior
+  revision, so pure code changes to prediction behavior are visible to the
+  backtest's run-once gate). Calibrated outputs are clipped to
+  [0.005, 0.995] and published probabilities clamped one rounding-ulp
+  inside (0, 1): a saturated calibrator (isotonic at its admission
+  boundary, Platt on a degenerate slice) can otherwise claim exact
+  certainty, which is evidentially indefensible — the two field episodes
+  are `LOG.md` entries 31–32.
 - **Features.** Differenced team form as of match start: time-decayed round
   share, attack/defense side efficiencies, first-kill diff per 12 rounds,
   shrunk pistol win rate, rest days, roster stability, overall and
@@ -86,7 +93,7 @@ corrected data its LR-vs-LightGBM choice is a dead heat decided by 8e-5 —
 this session's regeneration selected plain LR, a re-run on other hardware
 may legitimately select LightGBM with third-decimal differences; the
 SERVING bundle remains LightGBM under hysteresis — see Architecture). Map grain: log loss 0.6672,
-Brier 0.2375, accuracy 59.3%, ECE 0.0274 — versus tuned Elo (K=24) 0.6704
+Brier 0.2375, accuracy 59.3%, ECE 0.0275 — versus tuned Elo (K=24) 0.6704
 / 0.2388 / 59.0%. Series grain (824 series, veto-completed map sets): log
 loss **0.6530**, Brier **0.2294**, accuracy **62.5%** — ahead of the
 map-effective Elo DP baseline (0.6555 / 0.2317 / 61.7%) at the deliverable

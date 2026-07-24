@@ -45,6 +45,16 @@ def _elo_p(pair) -> float:
     return 1.0 / (1.0 + 10.0 ** ((rb - ra) / config.ELO_SCALE))
 
 
+def _pub(x: float) -> float:
+    """Publish a probability: round to the ledger precision, then clamp one
+    rounding-ulp inside (0, 1). Series aggregation can push a map-clipped
+    probability back within rounding distance of 1.0 (a Bo5 of 0.995s is
+    0.999999), so the bound must sit at the published boundary, not only in
+    the calibrator."""
+    lo = 10.0 ** -config.PROB_DECIMALS
+    return min(max(round(float(x), config.PROB_DECIMALS), lo), 1.0 - lo)
+
+
 def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
                 pool: list[str], um: Match, now_ts: pd.Timestamp) -> dict:
     """One pre-veto prediction at cutoff `now_ts` — the shared body of live
@@ -108,7 +118,7 @@ def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
         "event": um.event, "series": um.series, "best_of": um.best_of,
         "team1": a, "team2": b,
         "team1_name": um.team1_name, "team2_name": um.team2_name,
-        "p_model": round(p_model, 4), "p_elo": round(p_elo, 4),
+        "p_model": _pub(p_model), "p_elo": _pub(p_elo),
         "maps_dist": {str(k): round(v, 4)
                       for k, v in sorted(dist["maps_dist"].items())},
         "per_map": {m: round(float(p), 4) for m, p in zip(kept_maps, p_maps)},

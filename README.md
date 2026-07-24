@@ -110,8 +110,10 @@ Its first run earned its keep immediately: it caught a July-2025
 calibration pathology (isotonic saturating to 0/1 plateaus the week its
 admission threshold was first crossed) that the static protocol
 structurally cannot see, because a static split only ever meets one
-validation size. Documented as found, not silently patched —
-`LOG.md` entry 31.
+validation size. Documented as found, not silently patched — and the subsequent
+hardening (calibrated outputs bounded so no calibrator can publish exact
+certainty) shipped as a labeled model change with the prior result
+archived, per the run-once rule (`LOG.md` entries 31–32).
 
 ## Quickstart
 

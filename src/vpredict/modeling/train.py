@@ -51,7 +51,11 @@ class PlattCalibrator:
 
     def transform(self, p: np.ndarray) -> np.ndarray:
         z = np.log(_clip(p) / (1 - _clip(p))).reshape(-1, 1)
-        return self._lr.predict_proba(z)[:, 1]
+        out = self._lr.predict_proba(z)[:, 1]
+        # A near-separable fit makes the slope explode into a step function
+        # whose tails are 0/1 to float precision (LOG entry 32); bound the
+        # claim at what a healthy fit could evidence.
+        return np.clip(out, config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP)
 
 
 class IsotonicCalibrator:
@@ -62,7 +66,11 @@ class IsotonicCalibrator:
         return self
 
     def transform(self, p: np.ndarray) -> np.ndarray:
-        return _clip(self._iso.predict(p))
+        # Isotonic's end plateaus sit AT 0/1 whenever the extreme validation
+        # bins are pure — the July-2025 walk episode (LOG entry 31); same
+        # bound, same reason.
+        return np.clip(self._iso.predict(p),
+                       config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP)
 
 
 def fit_calibrator(p_val: np.ndarray, y_val: np.ndarray):
@@ -246,7 +254,8 @@ def save_bundle(sel: dict, feature_names: list[str], params: dict,
         "model": sel["model"], "calibrator": sel["calibrator"],
         "model_name": sel["name"], "cal_name": sel["cal_name"],
         "feature_names": feature_names, "params": params,
-        "version": make_version({**params, "model": sel["name"]}),
+        "version": make_version({**params, "model": sel["name"],
+                                 "behavior_rev": config.BUNDLE_BEHAVIOR_REV}),
         "trained_at": datetime.now(timezone.utc).isoformat(),
         **extra,
     }

@@ -679,3 +679,56 @@ probability vs genuinely captured prices, labeled BACKTEST, populated
 only where the local odds log links a capture — near-empty until odds
 accumulate, and stated as such rather than padded. Entry/close/EV/CLV
 definitions are §15's, unchanged.
+
+## 17. Calibrated-output bounds, decided before the first official backtest run (2026-07-24, late)
+
+**Timing: hardening BEFORE the official run does not touch run-once.**
+Run-once protects published results from being tuned against and quietly
+regenerated. No official backtest result exists yet — the owner's Mac run
+was blocked by the very failure that forced this decision — so hardening
+now means the FIRST published record is of a model whose outputs the
+project would defend, instead of a knowingly defective one followed
+immediately by a labeled re-run. The pre-hardening sandbox validation run
+was archived by the `--replace` machinery (its numbers stay quoted in the
+session record), and the owner's official run happens once, against the
+hardened model. Deciding the change on the basis of a diagnosed mechanism
+and a red test is a bug-class fix; deciding it on the basis of which
+backtest numbers improve would have been tuning. The July-2025 result
+itself is unchanged in the archived record.
+
+**Clip over isotonic-margin, because the failures decide it.** Two
+saturation modes were observed in the field: isotonic plateauing at 0/1
+the week it first cleared its 800-row admission gate (LOG 31), and Platt
+becoming a −59-slope step function on a 3-row separable slice (LOG 32).
+An "isotonic must beat Platt by a margin" rule addresses only admission
+churn: it would have fixed neither observed failure and bounds nothing.
+The clip bounds ANY calibrator's claims, which is the actual invariant
+the ledger needs. The margin rule stays on record as a possible future
+addition if calibrator selection ever proves churny — it solves a
+different problem than the one that occurred.
+
+**Constants and their provenance.** `CAL_OUTPUT_CLIP = 0.005`: the range
+a healthy Platt fit spans on its own (~[0.0049, 0.9952], measured on
+retrain r41's 783-row slice) — the most any calibrator may claim is what
+a sane fit could evidence. Judgment anchored to a measurement, not a
+tuned value. `PROB_DECIMALS = 4` names the existing ledger rounding; the
+publish clamp sits one rounding-ulp inside (0, 1) because series
+aggregation defeats the map-grain clip alone (Bo5 of 0.995s = 0.999999 →
+rounds to 1.0000). Probabilities of exactly 0/1 are evidentially
+indefensible and break log-loss accounting; both bounds are pinned by
+tests that construct the saturating fits explicitly.
+
+**`BUNDLE_BEHAVIOR_REV` exists because the gate caught its own blind
+spot.** The bundle version was date + parameter/data hash; a pure code
+change on unchanged data produced an identical version, and the backtest's
+run-once gate — correctly — refused a `--replace` it could not
+distinguish from a same-model re-run. The revision constant (rev 2 = this
+hardening) feeds the version hash so behavior changes are detectable; the
+cost is a human obligation to bump it, recorded in the constant's comment.
+
+**Deployment semantics.** Calibrator behavior lives in code, not pickled
+state: deployed bundles adopt the clip on deploy without a version bump.
+Interim delta is nil for in-band predictions (live upcoming calls sit
+inside 0.15–0.88); the next cadence retrain stamps the behavior-rev'd
+version. Static-report impact, measured: three fourth-decimal digits;
+every headline number unchanged.

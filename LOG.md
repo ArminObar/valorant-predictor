@@ -761,3 +761,57 @@ background children are reaped when the invoking sandbox shell exits —
 not OOM (260 MB RSS, no kernel kill records). `setsid` detaches cleanly;
 recorded here because a half-written rows file from a reaped run looks
 exactly like a crash.
+
+## Entry 32 — Field failure on patch 0019: a saturated Platt published exactly 1.0; outputs are now bounded (2026-07-24)
+
+**Symptom.** On the owner's Mac, `test_walk_produces_ledger_shaped_graded_rows`
+failed with `p_model == 1.0` exactly. The same test passed in the build
+sandbox.
+
+**Cause.** Not isotonic — the fixture's validation slice is 3 rows against
+the 800-row admission gate, so both walk retrains fit Platt. Platt on a
+tiny, linearly separable slice explodes: the reproduced fixture bundle has
+slope −59.4 on the logit scale — a step function whose tails are 0/1 to
+float precision — and on the sandbox 34/99 of the raw-score grid already
+sat within rounding distance of 1.0. The sandbox test passed by NUMERIC
+LUCK: this machine's lbfgs/BLAS happened to land every fixture row's raw
+score on the sub-0.99995 side of the step; the Mac's landed one on the
+other side, and `round(·, 4)` published certainty. Same pathology FAMILY
+as entry 31's July-2025 episode (a saturated calibrator meeting a rounding
+boundary), different calibrator — which settled the hardening choice: an
+isotonic-beats-Platt-by-margin rule would have fixed neither this failure
+nor bounded Platt.
+
+**Fix (patch 0020), two independent bounds.** (1) Both calibrator
+transforms clip to `[CAL_OUTPUT_CLIP, 1 − CAL_OUTPUT_CLIP]` = [0.005,
+0.995] — the range a HEALTHY Platt fit spans on its own (entry 31's r41
+measurement), i.e. the most a calibrator can claim is what a sane fit
+could evidence. (2) Published probabilities are rounded then clamped one
+rounding-ulp inside (0, 1), because series aggregation defeats the map
+clip alone: a Bo5 of 0.995s is 0.999999, which rounds to 1.0000. Both
+bounds are pinned by tests that construct the saturating fits explicitly.
+Measured impact on the static report: three fourth-decimal digits (ECE
+0.0274→0.0275, one GC cell, one tier-1-arm cell); every headline number
+unchanged.
+
+**The gate then caught its own blind spot.** Re-running the sandbox
+backtest under `--replace` was REFUSED: the bundle version is date +
+parameter/data hash, so a pure BEHAVIOR change on the same data and day
+produced an identical version — "model changed" detection could not see
+code. `BUNDLE_BEHAVIOR_REV` (config, rev 2 = this hardening) now feeds the
+version hash; bump it whenever prediction-affecting behavior changes
+without data changing. A refusal doing exactly its job, one level up from
+where it was aimed.
+
+**Why testing missed it.** The assertion `0.0 < p < 1.0` was correct as a
+SPEC, but the code did not guarantee it — the test encoded a hope, and the
+sandbox numerics happened to honor it. The lesson is the same one entry 29
+taught about the timezone attribute: a property that has never been
+falsified is not a property that has been verified. The bound is now a
+guarantee, so the assertion holds on every machine for a reason.
+
+**Pickled-bundle note.** Calibrator behavior lives in code, not pickle
+state, so deployed bundles adopt the clip on deploy without a version
+change; the interim delta is nil for in-band predictions (live upcoming
+calls sit within 0.15–0.88), and the next retrain stamps the
+behavior-rev'd version.

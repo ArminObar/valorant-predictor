@@ -176,3 +176,26 @@ the old file stays in `data/reports/`). Expect small third-decimal
 differences vs the sandbox validation numbers in the session report —
 cross-machine numeric noise (ASSUMPTIONS §14/§16); anything bigger,
 send both files.
+
+## 10. Patch 0020 — calibrated-output bounds (apply BEFORE your official backtest)
+
+Your red test (`p_model == 1.0` exactly) was a saturated PLATT step
+function meeting 4-decimal rounding — isotonic is impossible in that
+fixture (3 validation rows vs the 800-row gate), which is also why the
+isotonic-margin hardening was the wrong tool: it fixes neither observed
+failure. Patch 0020 bounds every calibrator's output to [0.005, 0.995]
+and clamps published probabilities one rounding-ulp inside (0, 1), with
+tests that construct both saturating fits explicitly. Full reasoning:
+`ASSUMPTIONS.md` §17, `LOG.md` entry 32.
+
+    git am patches/0020-*.patch
+    python -m pytest                 # expect 106 passed
+    python scripts/train.py          # new bundle version (behavior rev)
+
+Then run your official backtest per §9 — first run, no --replace needed,
+against the hardened model. It will differ from the session report's
+PRE-hardening sandbox numbers mainly in the July-2025 stretch; the
+POST-hardening sandbox numbers in the session report are your comparison
+baseline. Push the site afterwards (`git push`; Render adopts the clip on
+deploy — interim delta is nil for in-band predictions, and the next
+cadence retrain stamps the new version).
