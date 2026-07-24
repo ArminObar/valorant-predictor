@@ -1,0 +1,24 @@
+{
+  "tag": "item2-true-steady-predict104",
+  "cmd": [
+    "./.venv/bin/python",
+    "scripts/refresh.py",
+    "--no-crawl"
+  ],
+  "when": "2026-07-24T06:25:58+0000",
+  "platform": "Linux-6.18.5-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "extra_env": {},
+  "force_retrain": false,
+  "exit_code": 0,
+  "duration_s": 40.4,
+  "peaks_bytes": {
+    "wait4_child_tree": 250519552,
+    "memprof_getrusage": 250519552,
+    "cgroup_peak": 488345600
+  },
+  "cgroup_limit_bytes": 9223372036854771712,
+  "budget_mb": 440,
+  "within_budget": false,
+  "memprof_report_path": "memprof-out/memprof-item2-true-steady-predict104.json"
+}

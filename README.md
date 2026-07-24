@@ -77,7 +77,7 @@ arbitrates in public. The mechanism and the planned protocol upgrade
 
 ```bash
 pip install -e . && pip install pytest httpx   # or: make setup
-make test                                      # 40 tests
+make test                                      # 76 tests
 make backfill                                  # deep history walk (resumable)
 make evaluate                                  # writes data/reports/
 ```

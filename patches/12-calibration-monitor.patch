@@ -1,0 +1,232 @@
+diff --git a/scripts/calibration_monitor.py b/scripts/calibration_monitor.py
+new file mode 100644
+index 0000000..73f8955
+--- /dev/null
++++ b/scripts/calibration_monitor.py
+@@ -0,0 +1,19 @@
++#!/usr/bin/env python3
++"""Print the calibration monitor over the graded ledger (ASSUMPTIONS §13)."""
++import json
++
++from vpredict.evaluation.calibration import monitor_report
++from vpredict.evaluation.tiers import classify_tier
++from vpredict.serving.ledger import Ledger
++
++
++def main() -> int:
++    led = Ledger()
++    rows = led.rows(graded=True, limit=100000)
++    led.close()
++    print(json.dumps(monitor_report(rows, tier_of=classify_tier), indent=1))
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/src/vpredict/evaluation/calibration.py b/src/vpredict/evaluation/calibration.py
+new file mode 100644
+index 0000000..3e6a122
+--- /dev/null
++++ b/src/vpredict/evaluation/calibration.py
+@@ -0,0 +1,103 @@
++"""Calibration monitor over the graded ledger (ASSUMPTIONS §13).
++
++Drift DETECTION, never per-match correction: bucketed predicted-vs-observed
++rates per bucket and per tier, with hard thresholds — a cell is reported at
++n >= 30, actionable only at n >= 100 AND a Wilson 95% interval excluding the
++cell's mean predicted probability. The early warning with less data is one
++global Spiegelhalter Z over all graded rows (interpretable from roughly
++50-100 rows). Predictions outside the calibration-validated series range
++(p < 0.15 or p > 0.88) are counted as EXTRAPOLATION and excluded from the
++inner cells; the probabilities themselves are never modified anywhere.
++
++Stdlib + sqlite only, so the API endpoint stays import-light.
++"""
++from __future__ import annotations
++
++import math
++
++REPORT_MIN_N = 30
++ACT_MIN_N = 100
++EXTRAP_LO = 0.15
++EXTRAP_HI = 0.88
++INNER_EDGES = [0.15, 0.35, 0.50, 0.65, 0.88]   # 4 inner cells
++
++
++def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
++    """95% Wilson score interval for k successes in n trials."""
++    if n <= 0:
++        return (0.0, 1.0)
++    phat = k / n
++    denom = 1 + z * z / n
++    centre = (phat + z * z / (2 * n)) / denom
++    half = z * math.sqrt(phat * (1 - phat) / n + z * z / (4 * n * n)) / denom
++    return (max(0.0, centre - half), min(1.0, centre + half))
++
++
++def spiegelhalter_z(ps: list[float], ys: list[int]) -> float | None:
++    """Spiegelhalter's calibration Z: 0 for perfect calibration, positive
++    when outcomes systematically undershoot the stated probabilities."""
++    num = sum((y - p) * (1 - 2 * p) for p, y in zip(ps, ys))
++    den = sum(((1 - 2 * p) ** 2) * p * (1 - p) for p in ps)
++    if den <= 0:
++        return None
++    return num / math.sqrt(den)
++
++
++def _bucket_of(p: float) -> str:
++    if p < EXTRAP_LO:
++        return "extrapolation_low"
++    if p > EXTRAP_HI:
++        return "extrapolation_high"
++    for lo, hi in zip(INNER_EDGES[:-1], INNER_EDGES[1:]):
++        if p <= hi:
++            return f"[{lo:.2f},{hi:.2f}]"
++    return f"[{INNER_EDGES[-2]:.2f},{INNER_EDGES[-1]:.2f}]"
++
++
++def _cell_report(rows: list[tuple[float, int]]) -> dict:
++    n = len(rows)
++    if n == 0:
++        return {"n": 0, "status": "empty"}
++    mean_p = sum(p for p, _ in rows) / n
++    k = sum(y for _, y in rows)
++    obs = k / n
++    lo, hi = wilson_interval(k, n)
++    if n < REPORT_MIN_N:
++        status = "insufficient"
++    elif n < ACT_MIN_N:
++        status = "reported"
++    elif not (lo <= mean_p <= hi):
++        status = "DRIFT"
++    else:
++        status = "ok"
++    return {"n": n, "mean_p": round(mean_p, 4), "observed": round(obs, 4),
++            "wilson95": [round(lo, 4), round(hi, 4)], "status": status}
++
++
++def monitor_report(graded_rows: list[dict],
++                   tier_of=None) -> dict:
++    """graded_rows: dicts with p_model, team1_won, event (ledger rows).
++    tier_of: optional callable event -> tier name."""
++    pairs = [(float(r["p_model"]), int(r["team1_won"])) for r in graded_rows]
++    out: dict = {"n_graded": len(pairs)}
++    z = spiegelhalter_z([p for p, _ in pairs], [y for _, y in pairs]) \
++        if pairs else None
++    out["spiegelhalter_z"] = None if z is None else round(z, 3)
++    out["spiegelhalter_note"] = (
++        "global early warning; interpret from ~50-100 graded rows")
++
++    def bucketed(rows: list[tuple[float, int]]) -> dict:
++        cells: dict[str, list] = {}
++        for p, y in rows:
++            cells.setdefault(_bucket_of(p), []).append((p, y))
++        return {name: _cell_report(rs) for name, rs in sorted(cells.items())}
++
++    out["buckets"] = bucketed(pairs)
++    out["extrapolation_count"] = sum(
++        1 for p, _ in pairs if p < EXTRAP_LO or p > EXTRAP_HI)
++    if tier_of is not None:
++        by_tier: dict[str, list] = {}
++        for r, pr in zip(graded_rows, pairs):
++            by_tier.setdefault(tier_of(r.get("event") or ""), []).append(pr)
++        out["tiers"] = {t: bucketed(rs) for t, rs in sorted(by_tier.items())}
++    return out
+diff --git a/src/vpredict/serving/api.py b/src/vpredict/serving/api.py
+index 1a5ab3d..961269b 100644
+--- a/src/vpredict/serving/api.py
++++ b/src/vpredict/serving/api.py
+@@ -78,6 +78,17 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
+         return JSONResponse({"generated_at": None, "model_version": None,
+                              "predictions": []})
+ 
++    @app.get("/api/calibration")
++    def calibration() -> dict:
++        from ..evaluation.calibration import monitor_report
++        from ..evaluation.tiers import classify_tier
++        led = Ledger(ledger_path)
++        try:
++            return monitor_report(led.rows(graded=True, limit=100000),
++                                  tier_of=classify_tier)
++        finally:
++            led.close()
++
+     @app.get("/api/scoreboard")
+     def scoreboard() -> dict:
+         led = Ledger(ledger_path)
+diff --git a/tests/test_calibration_monitor.py b/tests/test_calibration_monitor.py
+new file mode 100644
+index 0000000..5cbcee5
+--- /dev/null
++++ b/tests/test_calibration_monitor.py
+@@ -0,0 +1,70 @@
++"""Calibration monitor (ASSUMPTIONS §13): Wilson interval, Spiegelhalter Z,
++threshold semantics, extrapolation flagging — drift detection only."""
++from __future__ import annotations
++
++import pytest
++
++from vpredict.evaluation.calibration import (monitor_report, spiegelhalter_z,
++                                             wilson_interval)
++
++
++def _rows(p, y, n, event="VCT Masters"):
++    return [{"p_model": p, "team1_won": y, "event": event}] * n
++
++
++def test_wilson_known_value():
++    lo, hi = wilson_interval(8, 10)
++    assert lo == pytest.approx(0.4901, abs=2e-3)
++    assert hi == pytest.approx(0.9433, abs=2e-3)
++    assert wilson_interval(0, 0) == (0.0, 1.0)
++
++
++def test_spiegelhalter_zero_for_exactly_calibrated_construction():
++    ps = [0.7] * 100
++    ys = [1] * 70 + [0] * 30
++    assert spiegelhalter_z(ps, ys) == pytest.approx(0.0, abs=1e-12)
++
++
++def test_spiegelhalter_sign_for_overconfident_favourites():
++    z = spiegelhalter_z([0.9] * 60, [0] * 60)   # said 0.9, never happened
++    assert z is not None and abs(z) > 3
++
++
++def test_thresholds_insufficient_reported_actionable():
++    r = monitor_report(_rows(0.60, 1, 29))
++    (only,) = r["buckets"].values()
++    assert only["status"] == "insufficient"
++    r = monitor_report(_rows(0.60, 1, 30))
++    (only,) = r["buckets"].values()
++    assert only["status"] == "reported"          # CI shown, no action yet
++    # n=120, mean_p=0.60, observed=1.0 -> Wilson CI excludes 0.60 -> DRIFT
++    r = monitor_report(_rows(0.60, 1, 120))
++    (only,) = r["buckets"].values()
++    assert only["status"] == "DRIFT"
++    # n=120 at 60% observed matches mean_p -> ok
++    rows = _rows(0.60, 1, 72) + _rows(0.60, 0, 48)
++    (only,) = monitor_report(rows)["buckets"].values()
++    assert only["status"] == "ok"
++
++
++def test_extrapolation_cells_are_separate_and_counted():
++    rows = _rows(0.10, 0, 5) + _rows(0.95, 1, 7) + _rows(0.5, 1, 3)
++    r = monitor_report(rows)
++    assert r["extrapolation_count"] == 12
++    assert "extrapolation_low" in r["buckets"]
++    assert "extrapolation_high" in r["buckets"]
++
++
++def test_per_tier_split_uses_classifier():
++    rows = _rows(0.6, 1, 40, event="VCT Champions") + \
++           _rows(0.6, 0, 40, event="Game Changers NA")
++    r = monitor_report(rows, tier_of=lambda e: "gc" if "Changers" in e
++                       else "t1")
++    assert set(r["tiers"]) == {"gc", "t1"}
++
++
++def test_probabilities_are_never_modified():
++    rows = _rows(0.60, 1, 50)
++    r = monitor_report(rows)
++    (only,) = r["buckets"].values()
++    assert only["mean_p"] == 0.60                # reported, untouched

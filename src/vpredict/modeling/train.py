@@ -13,6 +13,8 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 import joblib
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
@@ -95,6 +97,11 @@ def fit_lgbm(X_tr, y_tr, X_val, y_val) -> dict | None:
         min_child_samples=40, feature_fraction=0.8, subsample=0.9,
         subsample_freq=1, reg_alpha=1.0, reg_lambda=5.0,
         random_state=config.RANDOM_SEED, verbose=-1,
+        # Deterministic pins (LOG entry 24): identical data must give an
+        # identical fit on a given machine. n_jobs=1 removes the threaded
+        # histogram FP-reduction wobble; the fit is ~1-2 s here, so the
+        # single-thread cost is seconds per retrain.
+        deterministic=True, force_row_wise=True, n_jobs=1,
     )
     cb = [lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)]
     try:  # lightgbm >= 4.7
@@ -108,16 +115,105 @@ def fit_lgbm(X_tr, y_tr, X_val, y_val) -> dict | None:
             "val_ll": ll(y_val, model.predict_proba(X_val)[:, 1])}
 
 
-def select_model(X_tr, y_tr, X_val, y_val, n_train_matches: int) -> dict:
+# ----------------------------------------------------------- selection policy
+def _per_row_ll(y, p) -> np.ndarray:
+    p = _clip(np.asarray(p, dtype=float))
+    y = np.asarray(y, dtype=float)
+    return -(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+
+def _family(name: str) -> str:
+    return name.split("(", 1)[0]
+
+
+def rolling_origin_scores(X, y, n_train_matches: int,
+                          n_folds: int = 5, first_frac: float = 0.5,
+                          augment=None) -> dict[str, np.ndarray]:
+    """Pooled out-of-sample per-row losses per candidate FAMILY, from
+    expanding-window chronological folds (LOG entry 24's protocol upgrade).
+
+    Rows must be in chronological order (they are: the feature frame is
+    sorted by start_ts). Fold f trains on everything before boundary b_f and
+    validates on [b_f, b_{f+1}); boundaries split the last (1-first_frac) of
+    the rows into n_folds equal slices. Each family's own procedure runs per
+    fold (LR re-picks C, LightGBM re-early-stops), so what is compared is
+    the deployable procedure, not one frozen hyperparameter. Never touches
+    the test window: callers pass train+val rows only.
+    """
+    import pandas as pd
+    n = len(y)
+    y = pd.Series(np.asarray(y)).reset_index(drop=True)
+    edges = [int(round(n * (first_frac + (1 - first_frac) * i / n_folds)))
+             for i in range(n_folds + 1)]
+    losses: dict[str, list[np.ndarray]] = {}
+    for b0, b1 in zip(edges[:-1], edges[1:]):
+        if b1 <= b0:
+            continue
+        X_tr, y_tr = X[:b0], y[:b0]
+        if augment is not None:
+            X_tr, y_tr = augment(X_tr, y_tr)
+        X_va, y_va = X[b0:b1], y[b0:b1]
+        cands = [fit_lr(X_tr, y_tr, X_va, y_va)]
+        if n_train_matches >= config.GATE_SIMPLE_MAX:
+            g = fit_lgbm(X_tr, y_tr, X_va, y_va)
+            if g:
+                cands.append(g)
+        for c in cands:
+            p = c["model"].predict_proba(X_va)[:, 1]
+            losses.setdefault(_family(c["name"]), []).append(
+                _per_row_ll(y_va, p))
+    return {fam: np.concatenate(chunks) for fam, chunks in losses.items()}
+
+
+def choose_family(scores: dict[str, np.ndarray],
+                  incumbent_family: str | None) -> dict:
+    """Hysteresis (LOG entry 24): keep the incumbent unless the challenger
+    beats it by more than one standard error of the PAIRED per-row loss
+    differences. With no incumbent (first train, or its family missing from
+    the menu), plain argmin of pooled mean loss.
+    """
+    pooled = {f: float(v.mean()) for f, v in scores.items()}
+    best = min(pooled, key=pooled.get)
+    out = {"pooled_ll": pooled, "candidates": sorted(scores)}
+    if incumbent_family is None or incumbent_family not in scores:
+        out.update({"chosen": best, "rule": "argmin (no incumbent)",
+                    "switched": None, "margin_se": None})
+        return out
+    if best == incumbent_family:
+        out.update({"chosen": incumbent_family, "rule": "incumbent is best",
+                    "switched": False, "margin_se": None})
+        return out
+    d = scores[incumbent_family] - scores[best]      # >0 where challenger wins
+    se = float(d.std(ddof=1) / np.sqrt(len(d))) if len(d) > 1 else float("inf")
+    margin = float(d.mean() / se) if se > 0 else 0.0
+    if margin > 1.0:
+        out.update({"chosen": best, "rule": "challenger beat incumbent by "
+                    f"{margin:.2f} paired SE (> 1)", "switched": True,
+                    "margin_se": margin})
+    else:
+        out.update({"chosen": incumbent_family,
+                    "rule": f"challenger margin {margin:.2f} paired SE "
+                            "(<= 1): incumbent kept", "switched": False,
+                    "margin_se": margin})
+    return out
+
+
+def select_model(X_tr, y_tr, X_val, y_val, n_train_matches: int,
+                 families: list[str] | None = None) -> dict:
     """Fit the gated menu, pick by validation log loss, calibrate on val.
     Returns {model, calibrator, cal_name, name, gate_note, val_ll}."""
-    cands = [fit_lr(X_tr, y_tr, X_val, y_val)]
+    cands = []
+    if families is None or "logistic_regression" in families:
+        cands.append(fit_lr(X_tr, y_tr, X_val, y_val))
     gate_note = f"{n_train_matches} usable matches -> logistic regression"
-    if n_train_matches >= config.GATE_SIMPLE_MAX:
+    if n_train_matches >= config.GATE_SIMPLE_MAX and (
+            families is None or "lightgbm" in families):
         g = fit_lgbm(X_tr, y_tr, X_val, y_val)
         if g:
             cands.append(g)
             gate_note += " + regularized LightGBM"
+    if not cands:
+        cands.append(fit_lr(X_tr, y_tr, X_val, y_val))
     chosen = min(cands, key=lambda c: c["val_ll"])
     p_val = chosen["model"].predict_proba(X_val)[:, 1]
     cal_name, cal = fit_calibrator(p_val, np.asarray(y_val))
@@ -186,18 +282,43 @@ def train_and_save(data_path=None, half_life_days: float | None = None,
     tr, va = splits["train"], splits["val"]
     y = fs.y.to_numpy()
     n_train = int(fs.meta.loc[tr, "match_id"].nunique())
+
+    # Selection policy (LOG entry 24): rolling-origin family choice with
+    # champion/challenger hysteresis against the currently shipped bundle.
+    incumbent = None
+    try:
+        prev_path = bundle_path or (config.MODELS_DIR / "model.joblib")
+        if Path(str(prev_path)).exists():
+            incumbent = _family(load_bundle(prev_path)["model_name"])
+    except Exception:
+        incumbent = None                     # unreadable bundle: no incumbent
+
     with phase("select_calibrate"):
+        sel_mask = np.asarray(tr) | np.asarray(va)   # boolean masks, OR them
+        decision = choose_family(
+            rolling_origin_scores(
+                fs.X[sel_mask].reset_index(drop=True),
+                y[sel_mask], n_train, augment=augment_swapped),
+            incumbent)
         X_tr, y_tr = augment_swapped(fs.X[tr], fs.y[tr])
-        sel = select_model(X_tr, y_tr, fs.X[va], y[va], n_train)
+        sel = select_model(X_tr, y_tr, fs.X[va], y[va], n_train,
+                           families=[decision["chosen"]])
     best_k, _, _ = tune_elo_k(matches_lite_from_maps(maps_df), fs.meta, y, va)
     synthetic = bool(fs.meta["synthetic"].any())
     path = save_bundle(
         sel, fs.feature_names, fs.params,
-        extra={"elo_k_baseline": float(best_k),
+        extra={"n_store_records": _store.count_matches(
+                   data_path or config.MATCHES_JSONL),
+               "selection": {**decision, "incumbent": incumbent,
+                             "protocol": "rolling5-expanding + 1SE-hysteresis"},
+               "elo_k_baseline": float(best_k),
                "n_matches": int(fs.meta["match_id"].nunique()),
                "data_max_ts": str(fs.meta["start_ts"].max()),
                "synthetic_data": synthetic},
         path=bundle_path)
     return {"path": path, "model": sel["name"], "calibrator": sel["cal_name"],
             "val_ll": sel["val_ll"], "elo_k_baseline": best_k,
+            "selection": {"chosen": decision["chosen"],
+                          "incumbent": incumbent,
+                          "rule": decision["rule"]},
             "synthetic": synthetic}

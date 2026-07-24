@@ -31,9 +31,16 @@ def _needs_retrain(now: datetime) -> tuple[bool, str]:
         trained_at = datetime.fromisoformat(b["trained_at"])
         if now - trained_at >= timedelta(days=config.RETRAIN_MAX_AGE_DAYS):
             return True, f"bundle older than {config.RETRAIN_MAX_AGE_DAYS}d"
+        # Compare like with like: count_matches counts TOTAL store records,
+        # so the baseline must too. Bundles from before this fix carry only
+        # n_matches (USABLE matches, ~1.3k lower), which made "new matches"
+        # permanently >= 100 and retrained every cycle (LOG entry 26).
         n_now = store.count_matches(config.MATCHES_JSONL)
-        if n_now - int(b.get("n_matches", 0)) >= config.RETRAIN_NEW_MATCHES:
-            return True, f"{n_now - int(b.get('n_matches', 0))} new matches"
+        base = b.get("n_store_records")
+        if base is None:
+            return True, "pre-fix bundle (no n_store_records): retrain once"
+        if n_now - int(base) >= config.RETRAIN_NEW_MATCHES:
+            return True, f"{n_now - int(base)} new matches"
         return False, "bundle fresh"
     except Exception as e:
         return True, f"bundle unreadable ({e})"

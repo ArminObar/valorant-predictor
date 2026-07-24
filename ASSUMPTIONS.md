@@ -232,9 +232,11 @@ map-pool window 60 d / size 7 for the deferred serving milestone.
   at the same moment as the model's, so the public model-vs-Elo comparison
   cannot be recomputed favourably later.
 - **Single-service deploy.** Managed persistent disks (Render/Railway) bind
-  to one service; the refresh loop therefore runs in-process
+  to one service; the refresh loop therefore runs from inside the service
   (`VPREDICT_REFRESH=1`) rather than as a separate cron that couldn't see
-  the ledger.
+  the ledger. (Refined 2026-07-24: each cycle is now spawned as a
+  subprocess of the service rather than run in-process — see §12 and LOG
+  entry 23.)
 
 ## 9. Deploy fixes and the memory measurement standard (2026-07-23)
 
@@ -458,3 +460,62 @@ Explicitly rejected: per-match error correction — this is drift detection,
 not noise chasing. Predictions outside the calibration-validated range
 (~0.15–0.88 at series grain) are flagged `extrapolation` on the ledger row
 and in the UI; the probability itself is never modified.
+
+## 14. Odds, selection, and monitor — implementation decisions (2026-07-24)
+
+§13 pre-registered the designs; these are the calls made while building.
+
+**Book priority is Pinnacle, then Cloudbet — fixed, for the headline
+column only.** Pinnacle is the sharpest widely referenced book and the
+standard CLV yardstick, so when both books price a match, the headline
+model-vs-market comparison uses Pinnacle. Every captured book is stored in
+full; nothing is averaged, silently or otherwise (`ODDS_BOOK_PRIORITY`).
+
+**Shin by bisection, not closed form.** The two-outcome closed form
+exists, but bisection on the insider fraction z is robust for any outcome
+count and its monotonicity is trivially testable. Multiplicative is always
+computed beside it; the gap between the columns is itself reported, since
+it measures margin-model sensitivity.
+
+**Capture state lives in the log.** "Has this (source, match) a freeze? a
+close?" is derived by scanning the append-only capture log — no state
+file, so a crashed or re-run cron pass is idempotent by construction. A
+freeze is the first capture after a prediction appears; a close is the
+first capture within `ODDS_CLOSE_WINDOW_MIN` = 20 minutes of start; a
+match already started is counted as a missed close, never backfilled.
+
+**Linking never guesses.** Exact normalised names (both orientations),
+then the user-edited alias table, else the capture is stored UNLINKED with
+the fixture named in the log. A fuzzy matcher would occasionally be
+confidently wrong in a file that exists to be an audit trail.
+
+**Cloudbet's Valorant market key is discovered, not assumed.** The docs'
+samples don't show esports, so the client accepts any two-outcome
+home/away market whose key matches winner/moneyline hints, logs every key
+seen, and stores raw responses; the first Mac run pins the real key
+(LOG entry 25).
+
+**Selection: procedure-level comparison.** Each rolling fold re-runs each
+family's full procedure (LR re-picks C, LightGBM re-early-stops), because
+the deployable object is the procedure, not one frozen hyperparameter.
+Folds are 5 expanding windows over the last half of train+val, in
+chronological order, test window untouched. Hysteresis compares pooled
+per-row losses PAIRED (same rows), switching only past one SE — the
+paired SE is the right scale because both models score identical rows.
+`n_jobs=1` costs seconds and buys within-machine determinism; cross-
+machine numerics can still differ, which hysteresis absorbs.
+
+**Monitor cells are fixed-edge, not quantile.** Quantile bins move as data
+arrives — a monitor wants stable cells, so edges are pinned at
+[0.15, 0.35, 0.50, 0.65, 0.88] with extrapolation zones outside. The
+action rule (n ≥ 100 AND Wilson 95% excluding the cell's mean prediction)
+is deliberately two-keyed so small samples cannot page anyone.
+
+**EV "unvalidated" threshold, pre-registered for item 4:** the EV column's
+unvalidated label drops at n ≥ 100 graded, market-covered picks —
+matching the monitor's action threshold — with per-tier reporting
+regardless of n. Recorded now so the scoreboard build cannot tune it.
+
+**Cadence-fix semantics.** Bundles record `n_store_records`; a pre-fix
+bundle triggers exactly one labelled "retrain once" so every deployment
+converges to honest counting without manual surgery (LOG entry 26).

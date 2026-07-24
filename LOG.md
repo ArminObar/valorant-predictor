@@ -503,3 +503,115 @@ prevents silent flips outright; they compose.
 data, never for stability: nothing asserts that a retrain with no (or few)
 new matches keeps the same architecture. A regression test for (a) would
 encode exactly that.
+
+## Entry 25 — Odds capture built, offline-validated; first live run is on the Mac (2026-07-24)
+
+The §13 pre-registration is now code: `src/vpredict/odds/` (Shin de-vig by
+bisection with multiplicative always computed beside it; append-only capture
+log with freeze/close state derived from the log itself; conservative
+fixture linking — exact-normalised, then the alias table, else stored
+UNLINKED and reported, never fuzzy), a Cloudbet Feed API client written
+against the current public docs, a Pinnacle source that intercepts the JSON
+the matchups page loads for itself rather than scraping its DOM, and
+`scripts/capture_odds.py` for a 10-minute cron. 14 tests, all offline.
+
+The build sandbox cannot reach either book, so two surfaces are
+UNVALIDATED until the first Mac run — the same protocol that shipped the
+scraper (entries 9/10, which that first run then caught two bugs in;
+expect the same class here): (a) Cloudbet's actual Valorant market key —
+the client discovers any two-outcome home/away market matching
+winner/moneyline hints and logs every key it saw, so the first run pins the
+real one; (b) Pinnacle's guest-API shapes — a zero-parse run logs loudly
+and `--debug` dumps every intercepted body to disk for a one-paste fix.
+
+## Entry 26 — Retrain-cadence bug: every production cycle retrained (2026-07-24)
+
+**Symptom.** The item-2 steady-state measurement retrained despite a
+minutes-old bundle; the cycle JSON said "1307 new matches". 1307 is not a
+count of new matches — it is 6,796 total store records minus 5,489 usable
+matches, a constant.
+
+**Cause.** `save_bundle` recorded `n_matches` = USABLE matches (after the
+≥3-prior-maps rule) while `_needs_retrain` compared it against
+`count_matches()` = TOTAL store records. Like versus unlike, permanently
+≥100 apart — so every 6-hour cycle retrained, on Render too: wasted CPU
+and maximal exposure to entry 24's selection-flip surface.
+
+**Fix.** Bundles now record `n_store_records` at train time and
+`_needs_retrain` compares like with like. A pre-fix bundle (no field)
+triggers exactly one labelled "retrain once", so the fleet converges
+without manual bundle surgery. Verified: the next plain cycle skipped
+retrain and predicted 104 upcoming.
+
+**Why testing missed it.** The retrain decision and the save path were
+each tested in isolation, with hand-built bundle dicts whose `n_matches`
+happened to equal the store count. No test ever fed `_needs_retrain` a
+bundle produced by the real `save_bundle` against the real store.
+
+A second, smaller bug from the same measurement: the synthetic upcoming
+fixture used `winner=None` where the schema demands `Literal["team1",
+"team2", ""]`, so predict failed instantly — and the harness's fault
+isolation reported it only as a 0.0 s phase in the timing table, which
+nearly hid it. Measurement fixtures now use `winner=""`; the lesson (an
+errored phase should be loud, not fast) is noted here rather than papered
+over.
+
+## Entry 27 — Render OOM root cause: the API unpickles the bundle on every health probe (2026-07-24)
+
+**Symptom.** The trim passed on the Mac (329.9 MB vs the 440 budget) yet
+Render OOM-killed with `VPREDICT_REFRESH=1` plus a shell-run cycle.
+
+**Cause.** The 440 budget assumed the cycle had the box to itself; it
+shares the 512 MB cgroup with the API. And the API is not small:
+`_bundle_meta` unpickles the FULL bundle — importing sklearn, LightGBM,
+NumPy — on every `/api/health` call, which Render's health probes hit
+constantly. Measured (sandbox, uvicorn + seed bundle): 49 MB at startup,
+174 MB after the first health call, stable there; 49–51 MB when no bundle
+file exists. The unpickle path costs ~125 MB of permanently resident
+libraries. A scheduler cycle plus the shell cycle the owner ran means
+174 + 2×~300 MB — the kill was arithmetic, not bad luck.
+
+**Measurements** (post-trim code, full 6,796-match store, 104-match
+realistic upcoming; sandbox — the Mac ran ~10% above sandbox on the trim):
+steady-state cycle (grade + predict 104, no retrain) 238.9 MB peak / 40 s;
+retrain cycle ~302 MB peak / ~240 s, and predict's internal peak (~251 MB)
+is below training's, so retrain bounds the cycle. Reproduce the API
+numbers with `scripts/measure_api_rss.sh`, the cycle numbers with
+`scripts/memharness.py`.
+
+**Verdict, recorded.** On Starter, current code does not fit: 174 + ~300 +
+margin > 512. Two exits, owner's choice pending: (a) Standard ($25, 2 GB)
+— fits everything with ~4× headroom, zero further engineering; (b) stay on
+Starter and build the meta-sidecar fix (`save_bundle` writes
+`model.meta.json`; the API reads JSON and never unpickles), dropping the
+API to ~55 MB and the child budget to ~407 MB, which fits even the retrain
+cycle with real headroom. The sidecar is worth building eventually on
+either instance — probes should not unpickle models — but only (a) requires
+no new code. Until one of the two lands, `VPREDICT_REFRESH` stays 0.
+
+## Entry 28 — Selection policy and calibration monitor landed (2026-07-24)
+
+Entry 24's three options composed, exactly as recommended there:
+deterministic pins (`deterministic=True, force_row_wise=True, n_jobs=1` —
+seconds of cost), rolling-origin family selection (5 expanding
+chronological folds over the last half of train+val, per-family pooled
+per-row losses, ~3 s per retrain), and champion/challenger hysteresis
+(keep the incumbent unless the challenger wins by more than one paired SE).
+The regression test entry 24 demanded exists: identical data keeps the
+incumbent architecture. And the policy has already been observed doing its
+job live: the first workspace retrain under it logged "challenger margin
+0.63 paired SE (<= 1): incumbent kept" — LR ahead on the folds, inside
+noise, flip absorbed. Selection diagnostics are stamped into the bundle
+and the cycle JSON, so any future switch arrives with its margin attached.
+
+The §13 calibration monitor also landed: Wilson-interval cells at fixed
+edges with report/act thresholds (n ≥ 30 / n ≥ 100), one global
+Spiegelhalter Z as the early warning, extrapolation cells outside
+[0.15, 0.88], per tier, probabilities never modified, served at
+`/api/calibration`.
+
+One divergence, deliberate and temporary: `scripts/evaluate.py` still uses
+the old single-shot validation selection, so the serving protocol and the
+frozen two-year report now differ. The next full evaluation run adopts the
+rolling+hysteresis protocol and produces a new dated results file; the old
+file stays frozen as the record of the old protocol.

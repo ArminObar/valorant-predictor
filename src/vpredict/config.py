@@ -123,3 +123,17 @@ RETRAIN_NEW_MATCHES = 100     # ...or when this many new matches arrived
 # backfill_results's job, not the scheduler's).
 TOPUP_OVERLAP_DAYS = 3
 TOPUP_BOOTSTRAP_DAYS = 30
+
+# --------------------------------------------------------------------------- odds capture (runs on the owner's Mac, never on Render)
+ODDS_DIR = DATA_DIR / "odds"
+ODDS_JSONL = ODDS_DIR / "odds.jsonl"          # append-only capture log
+ODDS_RAW_DIR = ODDS_DIR / "raw"               # append-only raw API responses
+ODDS_ALIASES_JSON = ODDS_DIR / "aliases.json" # book-name -> vlr-name overrides
+ODDS_UPCOMING_URL = "https://vpredict.onrender.com/api/upcoming"
+ODDS_CLOSE_WINDOW_MIN = 20    # a capture within this window of start_ts is the "close"
+ODDS_MIN_INTERVAL_S = 1.0     # politeness floor between odds-source requests
+CLOUDBET_BASE_URL = "https://sports-api.cloudbet.com/pub/v2/odds"
+# Headline column: first source in this list that priced the match wins.
+# Pinnacle first: sharpest widely-referenced book, the standard CLV yardstick.
+# All captured books are stored; nothing is ever averaged.
+ODDS_BOOK_PRIORITY = ["pinnacle", "cloudbet"]

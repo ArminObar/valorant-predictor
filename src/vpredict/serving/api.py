@@ -78,6 +78,17 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         return JSONResponse({"generated_at": None, "model_version": None,
                              "predictions": []})
 
+    @app.get("/api/calibration")
+    def calibration() -> dict:
+        from ..evaluation.calibration import monitor_report
+        from ..evaluation.tiers import classify_tier
+        led = Ledger(ledger_path)
+        try:
+            return monitor_report(led.rows(graded=True, limit=100000),
+                                  tier_of=classify_tier)
+        finally:
+            led.close()
+
     @app.get("/api/scoreboard")
     def scoreboard() -> dict:
         led = Ledger(ledger_path)

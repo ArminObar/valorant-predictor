@@ -27,6 +27,24 @@ audit trail, and a worked example of leakage-safe evaluation. **Not betting
 advice**; no wagering use is intended or supported. Not affiliated with
 Riot Games or vlr.gg.
 
+## Market scope (2026-07-24)
+
+The market-facing comparison is limited to **series moneyline and
+over/under total maps**. Map totals derive from the same exact best-of DP
+that already produces the series probability (the scoreline distribution is
+the identical recursion with score bookkeeping), so they inherit — and are
+more sensitive to — the stated pre-veto assumptions: uniform map-pool
+weights and independence across maps. **Kill totals, first blood, map
+handicaps, and player props are explicitly out of scope**: they are
+different prediction targets that would need their own training and
+calibration runs, not derivations of this model's output. Odds are captured
+raw and append-only at prediction freeze and again near start; de-vigging
+happens at analysis time (Shin primary, multiplicative as the sensitivity
+column); the market comparison reports closing line value alongside
+accuracy metrics. Market coverage is expected to be roughly tier-1 only, so
+the Elo baseline remains the universal comparison for the ~85% of matches
+without a line. None of this is betting advice.
+
 ## Training data
 
 Scraped politely from vlr.gg (robots.txt honored, ≥1.1 s spacing, disk
@@ -91,4 +109,12 @@ measurement; `LOG.md` entries 22–23). Re-enabling awaits verification on
 the deployment. A separate production observation is on record: model
 selection flipped architecture between two consecutive retrains on nearly
 identical data — the stability finding in Limitations surfacing live
-(`LOG.md` entry 24); a selection-hysteresis fix is pending.
+(`LOG.md` entry 24). The fix landed 2026-07-24: deterministic fits,
+rolling-origin family selection, and one-paired-SE champion/challenger
+hysteresis, with the decision and its margin stamped into every bundle
+(`LOG.md` entry 28). Until the next full evaluation run,
+`scripts/evaluate.py` still uses the older single-shot selection, so the
+serving protocol and the frozen two-year report deliberately diverge; the
+next dated results file re-aligns them. A calibration monitor now serves
+drift detection at `/api/calibration` (report at n ≥ 30, act at n ≥ 100
+per cell, Spiegelhalter Z globally; probabilities never modified).

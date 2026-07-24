@@ -1,0 +1,841 @@
+{
+  "meta": {
+    "pid": 532,
+    "argv": [
+      "scripts/refresh.py",
+      "--no-crawl"
+    ],
+    "python": "3.12.3",
+    "platform": "Linux-6.18.5-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "started_at": "2026-07-24T06:25:19+0000",
+    "duration_s": 38.834,
+    "env": {
+      "VPREDICT_WORKSPACE": "/tmp/vp-item2"
+    }
+  },
+  "peaks_bytes": {
+    "getrusage_self_max": 250519552,
+    "vmhwm": 250519552,
+    "cgroup_peak": 488345600,
+    "sampled_max": 250605568
+  },
+  "cgroup": {
+    "current": 537227264,
+    "peak": 488345600,
+    "limit": 9223372036854771712,
+    "version": "v1"
+  },
+  "phases": [
+    {
+      "name": "grade",
+      "path": "grade",
+      "t_start": 0.01481129999999986,
+      "rss_enter": 78852096,
+      "hwm_enter": 78852096,
+      "t_end": 2.4476511069999995,
+      "rss_exit": 81674240,
+      "hwm_exit": 81674240,
+      "sampled_peak": 81653760
+    },
+    {
+      "name": "train",
+      "path": "train",
+      "t_start": 2.4478439639999996,
+      "rss_enter": 81674240,
+      "hwm_enter": 81674240,
+      "t_end": 4.7970314069999995,
+      "rss_exit": 167792640,
+      "hwm_exit": 167792640,
+      "sampled_peak": 167792640
+    },
+    {
+      "name": "predict",
+      "path": "predict",
+      "t_start": 4.797199814,
+      "rss_enter": 167792640,
+      "hwm_enter": 167792640,
+      "t_end": 38.830311282000004,
+      "rss_exit": 229769216,
+      "hwm_exit": 250519552,
+      "sampled_peak": 250605568
+    }
+  ],
+  "samples": [
+    {
+      "t": 0.001,
+      "rss": 77340672,
+      "phase": ""
+    },
+    {
+      "t": 0.002,
+      "rss": 77365248,
+      "phase": ""
+    },
+    {
+      "t": 0.252,
+      "rss": 79486976,
+      "phase": "grade"
+    },
+    {
+      "t": 0.503,
+      "rss": 80891904,
+      "phase": "grade"
+    },
+    {
+      "t": 0.753,
+      "rss": 81092608,
+      "phase": "grade"
+    },
+    {
+      "t": 1.003,
+      "rss": 81346560,
+      "phase": "grade"
+    },
+    {
+      "t": 1.254,
+      "rss": 81403904,
+      "phase": "grade"
+    },
+    {
+      "t": 1.504,
+      "rss": 81555456,
+      "phase": "grade"
+    },
+    {
+      "t": 1.76,
+      "rss": 81641472,
+      "phase": "grade"
+    },
+    {
+      "t": 2.01,
+      "rss": 81645568,
+      "phase": "grade"
+    },
+    {
+      "t": 2.261,
+      "rss": 81653760,
+      "phase": "grade"
+    },
+    {
+      "t": 2.511,
+      "rss": 82735104,
+      "phase": "train"
+    },
+    {
+      "t": 2.764,
+      "rss": 93102080,
+      "phase": "train"
+    },
+    {
+      "t": 3.015,
+      "rss": 103510016,
+      "phase": "train"
+    },
+    {
+      "t": 3.267,
+      "rss": 114216960,
+      "phase": "train"
+    },
+    {
+      "t": 3.522,
+      "rss": 127381504,
+      "phase": "train"
+    },
+    {
+      "t": 3.774,
+      "rss": 133767168,
+      "phase": "train"
+    },
+    {
+      "t": 4.038,
+      "rss": 140791808,
+      "phase": "train"
+    },
+    {
+      "t": 4.291,
+      "rss": 147320832,
+      "phase": "train"
+    },
+    {
+      "t": 4.542,
+      "rss": 156860416,
+      "phase": "train"
+    },
+    {
+      "t": 4.792,
+      "rss": 167792640,
+      "phase": "train"
+    },
+    {
+      "t": 5.043,
+      "rss": 172384256,
+      "phase": "predict"
+    },
+    {
+      "t": 5.293,
+      "rss": 177278976,
+      "phase": "predict"
+    },
+    {
+      "t": 5.544,
+      "rss": 181223424,
+      "phase": "predict"
+    },
+    {
+      "t": 5.794,
+      "rss": 186376192,
+      "phase": "predict"
+    },
+    {
+      "t": 6.045,
+      "rss": 191643648,
+      "phase": "predict"
+    },
+    {
+      "t": 6.296,
+      "rss": 196005888,
+      "phase": "predict"
+    },
+    {
+      "t": 6.549,
+      "rss": 201056256,
+      "phase": "predict"
+    },
+    {
+      "t": 6.799,
+      "rss": 204238848,
+      "phase": "predict"
+    },
+    {
+      "t": 7.05,
+      "rss": 209227776,
+      "phase": "predict"
+    },
+    {
+      "t": 7.3,
+      "rss": 214478848,
+      "phase": "predict"
+    },
+    {
+      "t": 7.56,
+      "rss": 227713024,
+      "phase": "predict"
+    },
+    {
+      "t": 7.815,
+      "rss": 236548096,
+      "phase": "predict"
+    },
+    {
+      "t": 8.08,
+      "rss": 244682752,
+      "phase": "predict"
+    },
+    {
+      "t": 8.348,
+      "rss": 245051392,
+      "phase": "predict"
+    },
+    {
+      "t": 8.6,
+      "rss": 245211136,
+      "phase": "predict"
+    },
+    {
+      "t": 8.852,
+      "rss": 245329920,
+      "phase": "predict"
+    },
+    {
+      "t": 9.103,
+      "rss": 245501952,
+      "phase": "predict"
+    },
+    {
+      "t": 9.354,
+      "rss": 245678080,
+      "phase": "predict"
+    },
+    {
+      "t": 9.606,
+      "rss": 245706752,
+      "phase": "predict"
+    },
+    {
+      "t": 9.918,
+      "rss": 245706752,
+      "phase": "predict"
+    },
+    {
+      "t": 10.171,
+      "rss": 245706752,
+      "phase": "predict"
+    },
+    {
+      "t": 10.425,
+      "rss": 245772288,
+      "phase": "predict"
+    },
+    {
+      "t": 10.677,
+      "rss": 245915648,
+      "phase": "predict"
+    },
+    {
+      "t": 10.927,
+      "rss": 245972992,
+      "phase": "predict"
+    },
+    {
+      "t": 11.179,
+      "rss": 245972992,
+      "phase": "predict"
+    },
+    {
+      "t": 11.43,
+      "rss": 245977088,
+      "phase": "predict"
+    },
+    {
+      "t": 11.682,
+      "rss": 245977088,
+      "phase": "predict"
+    },
+    {
+      "t": 11.932,
+      "rss": 246083584,
+      "phase": "predict"
+    },
+    {
+      "t": 12.183,
+      "rss": 246181888,
+      "phase": "predict"
+    },
+    {
+      "t": 12.433,
+      "rss": 246181888,
+      "phase": "predict"
+    },
+    {
+      "t": 12.685,
+      "rss": 246190080,
+      "phase": "predict"
+    },
+    {
+      "t": 12.938,
+      "rss": 246190080,
+      "phase": "predict"
+    },
+    {
+      "t": 13.189,
+      "rss": 246239232,
+      "phase": "predict"
+    },
+    {
+      "t": 13.441,
+      "rss": 246398976,
+      "phase": "predict"
+    },
+    {
+      "t": 13.693,
+      "rss": 246403072,
+      "phase": "predict"
+    },
+    {
+      "t": 13.943,
+      "rss": 246403072,
+      "phase": "predict"
+    },
+    {
+      "t": 14.194,
+      "rss": 246403072,
+      "phase": "predict"
+    },
+    {
+      "t": 14.446,
+      "rss": 246439936,
+      "phase": "predict"
+    },
+    {
+      "t": 14.698,
+      "rss": 246599680,
+      "phase": "predict"
+    },
+    {
+      "t": 14.95,
+      "rss": 246607872,
+      "phase": "predict"
+    },
+    {
+      "t": 15.201,
+      "rss": 246607872,
+      "phase": "predict"
+    },
+    {
+      "t": 15.452,
+      "rss": 246607872,
+      "phase": "predict"
+    },
+    {
+      "t": 15.703,
+      "rss": 246661120,
+      "phase": "predict"
+    },
+    {
+      "t": 15.954,
+      "rss": 246824960,
+      "phase": "predict"
+    },
+    {
+      "t": 16.206,
+      "rss": 246837248,
+      "phase": "predict"
+    },
+    {
+      "t": 16.457,
+      "rss": 246837248,
+      "phase": "predict"
+    },
+    {
+      "t": 16.709,
+      "rss": 246845440,
+      "phase": "predict"
+    },
+    {
+      "t": 16.959,
+      "rss": 246878208,
+      "phase": "predict"
+    },
+    {
+      "t": 17.209,
+      "rss": 247033856,
+      "phase": "predict"
+    },
+    {
+      "t": 17.46,
+      "rss": 247042048,
+      "phase": "predict"
+    },
+    {
+      "t": 17.712,
+      "rss": 247042048,
+      "phase": "predict"
+    },
+    {
+      "t": 17.962,
+      "rss": 247042048,
+      "phase": "predict"
+    },
+    {
+      "t": 18.216,
+      "rss": 247087104,
+      "phase": "predict"
+    },
+    {
+      "t": 18.468,
+      "rss": 247230464,
+      "phase": "predict"
+    },
+    {
+      "t": 18.719,
+      "rss": 247255040,
+      "phase": "predict"
+    },
+    {
+      "t": 18.971,
+      "rss": 247255040,
+      "phase": "predict"
+    },
+    {
+      "t": 19.222,
+      "rss": 247255040,
+      "phase": "predict"
+    },
+    {
+      "t": 19.472,
+      "rss": 247304192,
+      "phase": "predict"
+    },
+    {
+      "t": 19.722,
+      "rss": 247463936,
+      "phase": "predict"
+    },
+    {
+      "t": 19.973,
+      "rss": 247480320,
+      "phase": "predict"
+    },
+    {
+      "t": 20.224,
+      "rss": 247480320,
+      "phase": "predict"
+    },
+    {
+      "t": 20.475,
+      "rss": 247492608,
+      "phase": "predict"
+    },
+    {
+      "t": 20.726,
+      "rss": 247590912,
+      "phase": "predict"
+    },
+    {
+      "t": 20.978,
+      "rss": 247779328,
+      "phase": "predict"
+    },
+    {
+      "t": 21.23,
+      "rss": 247836672,
+      "phase": "predict"
+    },
+    {
+      "t": 21.511,
+      "rss": 247836672,
+      "phase": "predict"
+    },
+    {
+      "t": 21.762,
+      "rss": 247844864,
+      "phase": "predict"
+    },
+    {
+      "t": 22.014,
+      "rss": 247971840,
+      "phase": "predict"
+    },
+    {
+      "t": 22.27,
+      "rss": 248172544,
+      "phase": "predict"
+    },
+    {
+      "t": 22.521,
+      "rss": 248221696,
+      "phase": "predict"
+    },
+    {
+      "t": 22.773,
+      "rss": 248225792,
+      "phase": "predict"
+    },
+    {
+      "t": 23.024,
+      "rss": 248229888,
+      "phase": "predict"
+    },
+    {
+      "t": 23.275,
+      "rss": 248381440,
+      "phase": "predict"
+    },
+    {
+      "t": 23.526,
+      "rss": 248573952,
+      "phase": "predict"
+    },
+    {
+      "t": 23.776,
+      "rss": 248598528,
+      "phase": "predict"
+    },
+    {
+      "t": 24.028,
+      "rss": 248602624,
+      "phase": "predict"
+    },
+    {
+      "t": 24.279,
+      "rss": 248602624,
+      "phase": "predict"
+    },
+    {
+      "t": 24.53,
+      "rss": 248766464,
+      "phase": "predict"
+    },
+    {
+      "t": 24.781,
+      "rss": 248975360,
+      "phase": "predict"
+    },
+    {
+      "t": 25.031,
+      "rss": 248999936,
+      "phase": "predict"
+    },
+    {
+      "t": 25.282,
+      "rss": 249004032,
+      "phase": "predict"
+    },
+    {
+      "t": 25.533,
+      "rss": 249004032,
+      "phase": "predict"
+    },
+    {
+      "t": 25.789,
+      "rss": 250175488,
+      "phase": "predict"
+    },
+    {
+      "t": 26.044,
+      "rss": 250212352,
+      "phase": "predict"
+    },
+    {
+      "t": 26.299,
+      "rss": 250212352,
+      "phase": "predict"
+    },
+    {
+      "t": 26.555,
+      "rss": 250224640,
+      "phase": "predict"
+    },
+    {
+      "t": 26.81,
+      "rss": 250228736,
+      "phase": "predict"
+    },
+    {
+      "t": 27.073,
+      "rss": 250228736,
+      "phase": "predict"
+    },
+    {
+      "t": 27.328,
+      "rss": 250228736,
+      "phase": "predict"
+    },
+    {
+      "t": 27.584,
+      "rss": 250236928,
+      "phase": "predict"
+    },
+    {
+      "t": 27.863,
+      "rss": 250253312,
+      "phase": "predict"
+    },
+    {
+      "t": 28.118,
+      "rss": 250281984,
+      "phase": "predict"
+    },
+    {
+      "t": 28.374,
+      "rss": 250306560,
+      "phase": "predict"
+    },
+    {
+      "t": 28.629,
+      "rss": 250327040,
+      "phase": "predict"
+    },
+    {
+      "t": 28.884,
+      "rss": 250355712,
+      "phase": "predict"
+    },
+    {
+      "t": 29.176,
+      "rss": 250363904,
+      "phase": "predict"
+    },
+    {
+      "t": 29.432,
+      "rss": 250376192,
+      "phase": "predict"
+    },
+    {
+      "t": 29.687,
+      "rss": 250388480,
+      "phase": "predict"
+    },
+    {
+      "t": 29.942,
+      "rss": 250408960,
+      "phase": "predict"
+    },
+    {
+      "t": 30.201,
+      "rss": 250421248,
+      "phase": "predict"
+    },
+    {
+      "t": 30.522,
+      "rss": 250425344,
+      "phase": "predict"
+    },
+    {
+      "t": 30.779,
+      "rss": 250433536,
+      "phase": "predict"
+    },
+    {
+      "t": 31.035,
+      "rss": 250433536,
+      "phase": "predict"
+    },
+    {
+      "t": 31.29,
+      "rss": 250433536,
+      "phase": "predict"
+    },
+    {
+      "t": 31.542,
+      "rss": 250437632,
+      "phase": "predict"
+    },
+    {
+      "t": 31.797,
+      "rss": 250437632,
+      "phase": "predict"
+    },
+    {
+      "t": 32.052,
+      "rss": 250437632,
+      "phase": "predict"
+    },
+    {
+      "t": 32.302,
+      "rss": 250437632,
+      "phase": "predict"
+    },
+    {
+      "t": 32.56,
+      "rss": 250437632,
+      "phase": "predict"
+    },
+    {
+      "t": 32.815,
+      "rss": 250441728,
+      "phase": "predict"
+    },
+    {
+      "t": 33.07,
+      "rss": 250466304,
+      "phase": "predict"
+    },
+    {
+      "t": 33.329,
+      "rss": 250478592,
+      "phase": "predict"
+    },
+    {
+      "t": 33.584,
+      "rss": 250478592,
+      "phase": "predict"
+    },
+    {
+      "t": 33.84,
+      "rss": 250482688,
+      "phase": "predict"
+    },
+    {
+      "t": 34.095,
+      "rss": 250482688,
+      "phase": "predict"
+    },
+    {
+      "t": 34.357,
+      "rss": 250486784,
+      "phase": "predict"
+    },
+    {
+      "t": 34.613,
+      "rss": 250511360,
+      "phase": "predict"
+    },
+    {
+      "t": 34.868,
+      "rss": 250531840,
+      "phase": "predict"
+    },
+    {
+      "t": 35.124,
+      "rss": 250576896,
+      "phase": "predict"
+    },
+    {
+      "t": 35.38,
+      "rss": 250576896,
+      "phase": "predict"
+    },
+    {
+      "t": 35.634,
+      "rss": 250580992,
+      "phase": "predict"
+    },
+    {
+      "t": 35.889,
+      "rss": 250580992,
+      "phase": "predict"
+    },
+    {
+      "t": 36.144,
+      "rss": 250580992,
+      "phase": "predict"
+    },
+    {
+      "t": 36.4,
+      "rss": 250585088,
+      "phase": "predict"
+    },
+    {
+      "t": 36.655,
+      "rss": 250585088,
+      "phase": "predict"
+    },
+    {
+      "t": 36.911,
+      "rss": 250585088,
+      "phase": "predict"
+    },
+    {
+      "t": 37.166,
+      "rss": 250585088,
+      "phase": "predict"
+    },
+    {
+      "t": 37.488,
+      "rss": 250585088,
+      "phase": "predict"
+    },
+    {
+      "t": 37.744,
+      "rss": 250585088,
+      "phase": "predict"
+    },
+    {
+      "t": 38.004,
+      "rss": 250593280,
+      "phase": "predict"
+    },
+    {
+      "t": 38.259,
+      "rss": 250593280,
+      "phase": "predict"
+    },
+    {
+      "t": 38.515,
+      "rss": 250593280,
+      "phase": "predict"
+    },
+    {
+      "t": 38.77,
+      "rss": 250605568,
+      "phase": "predict"
+    },
+    {
+      "t": 38.831,
+      "rss": 229769216,
+      "phase": ""
+    }
+  ]
+}
