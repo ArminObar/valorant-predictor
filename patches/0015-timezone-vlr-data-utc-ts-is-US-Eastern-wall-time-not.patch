@@ -1,0 +1,610 @@
+From fe0ab2e35d0f2013286e890429e5efe82eecef77 Mon Sep 17 00:00:00 2001
+From: "Claude (session)" <claude@session>
+Date: Fri, 24 Jul 2026 07:23:20 +0000
+Subject: [PATCH 15/18] timezone: vlr data-utc-ts is US-Eastern wall time, not
+ UTC
+
+Parser now localizes the attribute to America/New_York and converts to
+true UTC (DST-aware). One-time marker-guarded migration reinterprets every
+stored start_ts (store, upcoming, ledger metadata) the same way, re-sorts
+the store across the DST seam, and auto-runs at the top of the refresh
+cycle so Render self-heals; scripts/migrate_store_tz.py for the Mac.
+Frontend time rendering extracted to time.js: viewer-local with an explicit
+zone label, naive strings treated as UTC; node --test suite added (npm
+test). LOG entry 29.
+---
+ frontend/package.json                |   3 +-
+ frontend/src/App.jsx                 |   5 +-
+ frontend/src/time.js                 |  32 +++++
+ frontend/test/time.test.mjs          |  49 +++++++
+ scripts/migrate_store_tz.py          |  57 ++++++++
+ src/vpredict/data/migrate.py         | 187 +++++++++++++++++++++++++++
+ src/vpredict/scraping/parse_match.py |  23 +++-
+ src/vpredict/serving/refresh.py      |  14 ++
+ tests/test_refresh_contract.py       |   5 +
+ tests/test_timezone.py               |  95 ++++++++++++++
+ 10 files changed, 464 insertions(+), 6 deletions(-)
+ create mode 100644 frontend/src/time.js
+ create mode 100644 frontend/test/time.test.mjs
+ create mode 100644 scripts/migrate_store_tz.py
+ create mode 100644 src/vpredict/data/migrate.py
+ create mode 100644 tests/test_timezone.py
+
+diff --git a/frontend/package.json b/frontend/package.json
+index d506b1e..a1a78ff 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -6,7 +6,8 @@
+   "scripts": {
+     "dev": "vite",
+     "build": "vite build",
+-    "preview": "vite preview"
++    "preview": "vite preview",
++    "test": "node --test"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index 373545a..32d0e49 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,11 +1,8 @@
+ import React, { useEffect, useState } from "react";
++import { fmtTime } from "./time.js";
+ 
+ const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
+ const fmt4 = (v) => (v == null ? "—" : v.toFixed(4));
+-const fmtTime = (iso) =>
+-  new Date(iso).toLocaleString(undefined, {
+-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+-  });
+ 
+ function useApi(path) {
+   const [data, setData] = useState(null);
+diff --git a/frontend/src/time.js b/frontend/src/time.js
+new file mode 100644
+index 0000000..7595af6
+--- /dev/null
++++ b/frontend/src/time.js
+@@ -0,0 +1,32 @@
++/* Time rendering — one place, one rule (LOG entry 29).
++ *
++ * The API serves UTC instants as ISO-8601 strings with explicit offsets
++ * ("...T08:00:00+00:00"). Rendering converts to the VIEWER'S local zone and
++ * labels the zone explicitly, so "when is this match for me?" is never a
++ * guess. If a string ever arrives without an offset, it is treated as UTC:
++ * JavaScript's Date would otherwise parse a naive ISO string as LOCAL wall
++ * time, silently shifting by the viewer's offset.
++ *
++ * `opts` exists for tests: pass {locale, timeZone} to get deterministic
++ * output. Production callers pass nothing, which means viewer locale and
++ * viewer zone.
++ */
++
++const HAS_OFFSET = /(Z|[+-]\d{2}:?\d{2})$/;
++
++export function parseUtc(iso) {
++  if (!iso) return null;
++  const s = HAS_OFFSET.test(iso) ? iso : `${iso}Z`;
++  const d = new Date(s);
++  return Number.isNaN(d.getTime()) ? null : d;
++}
++
++export function fmtTime(iso, opts = {}) {
++  const d = parseUtc(iso);
++  if (!d) return "—";
++  return d.toLocaleString(opts.locale, {
++    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
++    timeZoneName: "short",
++    ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
++  });
++}
+diff --git a/frontend/test/time.test.mjs b/frontend/test/time.test.mjs
+new file mode 100644
+index 0000000..34d7735
+--- /dev/null
++++ b/frontend/test/time.test.mjs
+@@ -0,0 +1,49 @@
++/* The regression test the timezone bug demanded (LOG entry 29): a known UTC
++ * instant must render correctly under a non-UTC locale, with the zone
++ * labeled. Runs with node's built-in runner (`npm test`), zero deps.
++ * Explicit locale + timeZone make the expected strings deterministic.
++ */
++import test from "node:test";
++import assert from "node:assert/strict";
++import { fmtTime, parseUtc } from "../src/time.js";
++
++// The live-site bug case: RRQ vs ZETA, true start 2026-07-24 08:00 UTC.
++const RRQ_ZETA_UTC = "2026-07-24T08:00:00+00:00";
++
++test("known UTC instant renders in a non-UTC zone with the zone labeled", () => {
++  assert.equal(
++    fmtTime(RRQ_ZETA_UTC, { locale: "en-US", timeZone: "America/New_York" }),
++    "Jul 24, 04:00 AM EDT",
++  );
++  assert.equal(
++    fmtTime(RRQ_ZETA_UTC, { locale: "en-US", timeZone: "America/Chicago" }),
++    "Jul 24, 03:00 AM CDT",
++  );
++});
++
++test("winter instants pick up the standard-time zone name", () => {
++  assert.equal(
++    fmtTime("2026-01-10T02:00:00+00:00",
++            { locale: "en-US", timeZone: "America/New_York" }),
++    "Jan 9, 09:00 PM EST",
++  );
++});
++
++test("UTC rendering is exact (no hidden extra conversion)", () => {
++  assert.equal(
++    fmtTime(RRQ_ZETA_UTC, { locale: "en-US", timeZone: "UTC" }),
++    "Jul 24, 08:00 AM UTC",
++  );
++});
++
++test("a naive ISO string is treated as UTC, never viewer-local", () => {
++  // Without the guard, Date() parses this as LOCAL wall time and the
++  // rendered instant would depend on the machine running the code.
++  assert.equal(parseUtc("2026-07-24T08:00:00").getTime(),
++               parseUtc("2026-07-24T08:00:00Z").getTime());
++});
++
++test("missing timestamps render as a dash, not 'Invalid Date'", () => {
++  assert.equal(fmtTime(null), "—");
++  assert.equal(fmtTime("not-a-date"), "—");
++});
+diff --git a/scripts/migrate_store_tz.py b/scripts/migrate_store_tz.py
+new file mode 100644
+index 0000000..7594158
+--- /dev/null
++++ b/scripts/migrate_store_tz.py
+@@ -0,0 +1,57 @@
++#!/usr/bin/env python3
++"""Apply the one-time timezone migration to this machine's store + ledger.
++
++    python scripts/migrate_store_tz.py            # apply (marker-guarded)
++    python scripts/migrate_store_tz.py --status   # just report
++
++Background (LOG entry 29): every start_ts stored before the parser fix is
++the US-Eastern wall clock mislabeled as UTC — 4 h early in summer, 5 h in
++winter. This reinterprets each stored time as America/New_York and converts
++to true UTC; a marker file makes re-runs no-ops (running the shift twice
++would corrupt the store). Re-parsing the HTML cache with the fixed parser
++produces byte-identical start times; this script exists so the correction
++doesn't require the cache.
++
++On Render the refresh cycle applies the same migration automatically on its
++next run — nothing to do there beyond deploying the code.
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++
++from vpredict.data.migrate import (marker_path, migrate_tz_if_needed,
++                                   tz_migration_applied)
++
++
++def main() -> int:
++    ap = argparse.ArgumentParser(description=__doc__)
++    ap.add_argument("--status", action="store_true",
++                    help="report whether the migration has been applied")
++    ap.add_argument("--force", action="store_true",
++                    help="re-apply even if the marker exists. ONLY for "
++                         "re-seeding old-format data onto a disk that was "
++                         "already marked; forcing on migrated data corrupts "
++                         "it by shifting a second time.")
++    args = ap.parse_args()
++
++    if args.status:
++        if tz_migration_applied():
++            print("applied:")
++            print(marker_path().read_text(encoding="utf-8"))
++        else:
++            print("NOT applied — stored start times are still 4-5 h early. "
++                  "Run without --status to fix.")
++        return 0
++
++    already = tz_migration_applied()
++    report = migrate_tz_if_needed(force=args.force)
++    if already and not args.force:
++        print("Already applied — nothing changed. Report from the original run:")
++    print(json.dumps(report, indent=1))
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/src/vpredict/data/migrate.py b/src/vpredict/data/migrate.py
+new file mode 100644
+index 0000000..a8c8ced
+--- /dev/null
++++ b/src/vpredict/data/migrate.py
+@@ -0,0 +1,187 @@
++"""One-time timezone migration of stored start times (LOG entry 29).
++
++Every `start_ts` written before the parser fix came from vlr.gg's
++`data-utc-ts` attribute stamped as UTC, but the attribute actually carries
++the wall clock in vlr's default display timezone (US Eastern) for cookieless
++clients. Every stored start is therefore 4 h (EDT) or 5 h (EST) early.
++
++This migration reinterprets each stored timestamp's naive wall time as
++America/New_York and converts it to true UTC — exactly what re-parsing the
++immutable HTML cache with the fixed parser produces, without needing the
++cache. It touches:
++
++  - data/raw/matches.jsonl   (re-sorted afterwards: the +4/+5 h shift is not
++                              uniform across DST boundaries, and the store's
++                              (start_ts, match_id) sort order is an invariant)
++  - data/raw/upcoming.jsonl  (if present)
++  - the ledger's start_ts    (metadata correction ONLY — made_at, p_model,
++                              p_elo and every other frozen field are
++                              untouched; the freeze property "made_at >= 5 min
++                              before start" becomes strictly MORE true, since
++                              true starts are 4-5 h later than recorded)
++
++A marker file makes the migration run-once: applying it twice would shift
++times a second time. The marker also stores an audit report, including a
++cross-check against book-reported start times from the odds log when one
++exists (Cloudbet serves genuine UTC, so linked captures independently
++confirm the correction).
++"""
++from __future__ import annotations
++
++import json
++import logging
++import sqlite3
++from datetime import datetime, timezone
++from pathlib import Path
++from zoneinfo import ZoneInfo
++
++from .. import config
++from .schema import Match
++
++log = logging.getLogger("vpredict.migrate")
++
++_SITE_TZ = ZoneInfo("America/New_York")
++
++
++def marker_path() -> Path:
++    """Resolved lazily so tests that re-root config paths are honored."""
++    return config.RAW_DIR / ".tz_migration_v1.json"
++
++
++def _shift(dt: datetime) -> datetime:
++    """Reinterpret a mislabeled-UTC timestamp as ET wall time -> true UTC.
++
++    fold=0 on the ambiguous fall-back hour (first occurrence, EDT); the
++    nonexistent spring-forward hour is mapped forward by zoneinfo. Both are
++    <=1 h, apply to at most one wall-clock hour per year, and match the fixed
++    parser's behaviour exactly.
++    """
++    naive = dt.replace(tzinfo=None)
++    return naive.replace(tzinfo=_SITE_TZ).astimezone(timezone.utc)
++
++
++def tz_migration_applied() -> bool:
++    return marker_path().exists()
++
++
++def _migrate_jsonl(path: Path) -> int:
++    """Shift start_ts on every record, keep the (start_ts, match_id) sort
++    invariant, atomic tmp+replace. Round-trips through the Match model so the
++    on-disk format stays exactly what upsert_matches writes.
++
++    One-shot maintenance path: holds the serialized lines (strings, not
++    models) in memory once — acceptable for a run-once migration, and far
++    lighter than the old full-store materialization the streaming refactor
++    removed.
++    """
++    if not path.exists():
++        return 0
++    out: list[tuple[datetime, str, str]] = []
++    with open(path, "r", encoding="utf-8") as f:
++        for line in f:
++            line = line.strip()
++            if not line:
++                continue
++            m = Match.model_validate_json(line)
++            m.start_ts = _shift(m.start_ts)
++            out.append((m.start_ts, m.match_id, m.model_dump_json()))
++    out.sort(key=lambda t: (t[0], t[1]))
++    tmp = path.with_suffix(path.suffix + ".tzmig.tmp")
++    with open(tmp, "w", encoding="utf-8") as f:
++        for _, _, line in out:
++            f.write(line + "\n")
++    tmp.replace(path)
++    return len(out)
++
++
++def _migrate_ledger(ledger_path: Path) -> int:
++    if not ledger_path.exists():
++        return 0
++    con = sqlite3.connect(ledger_path)
++    try:
++        rows = con.execute("SELECT match_id, start_ts FROM predictions").fetchall()
++        for match_id, ts in rows:
++            fixed = _shift(datetime.fromisoformat(ts))
++            con.execute("UPDATE predictions SET start_ts=? WHERE match_id=?",
++                        (fixed.astimezone(timezone.utc).isoformat(), match_id))
++        con.commit()
++        return len(rows)
++    finally:
++        con.close()
++
++
++def _crosscheck_odds(ledger_path: Path, odds_path: Path) -> dict | None:
++    """Compare corrected ledger starts with book-reported UTC starts for
++    linked captures. Purely informational: books list their own cutoff, which
++    can differ from vlr's listing by a few minutes."""
++    if not (odds_path.exists() and ledger_path.exists()):
++        return None
++    book_start: dict[str, datetime] = {}
++    with open(odds_path, "r", encoding="utf-8") as f:
++        for line in f:
++            line = line.strip()
++            if not line:
++                continue
++            try:
++                rec = json.loads(line)
++            except ValueError:
++                continue
++            mid, ts = rec.get("match_id"), rec.get("book_start_ts")
++            if mid and ts:
++                book_start.setdefault(
++                    mid, datetime.fromisoformat(ts.replace("Z", "+00:00")))
++    if not book_start:
++        return None
++    con = sqlite3.connect(ledger_path)
++    try:
++        deltas = []
++        for mid, bts in book_start.items():
++            row = con.execute("SELECT start_ts FROM predictions WHERE match_id=?",
++                              (mid,)).fetchone()
++            if row:
++                ours = datetime.fromisoformat(row[0])
++                deltas.append(abs((ours - bts).total_seconds()) / 60.0)
++        if not deltas:
++            return None
++        return {"n_linked_checked": len(deltas),
++                "max_abs_delta_min": round(max(deltas), 1),
++                "mean_abs_delta_min": round(sum(deltas) / len(deltas), 1)}
++    finally:
++        con.close()
++
++
++def migrate_tz_if_needed(matches_path: Path | None = None,
++                         upcoming_path: Path | None = None,
++                         ledger_path: Path | None = None,
++                         marker: Path | None = None,
++                         odds_path: Path | None = None,
++                         force: bool = False) -> dict:
++    """Idempotent entry point — safe to call at the top of every refresh
++    cycle. Returns the audit report (or the stored one if already applied).
++    Path arguments exist for tests; production callers pass nothing.
++
++    ``force=True`` skips the marker check and re-applies the shift — ONLY for
++    the documented re-seeding case (old-format data copied onto a disk whose
++    marker was written earlier). Forcing on already-migrated data corrupts it.
++    """
++    marker = marker or marker_path()
++    if marker.exists() and not force:
++        return json.loads(marker.read_text(encoding="utf-8"))
++    matches_path = matches_path or config.MATCHES_JSONL
++    upcoming_path = upcoming_path or config.UPCOMING_JSONL
++    ledger_path = ledger_path or config.LEDGER_PATH
++    log.warning("applying one-time timezone migration (LOG entry 29): "
++                "reinterpreting stored start_ts as US-Eastern wall time -> UTC")
++    report = {
++        "applied_at": datetime.now(timezone.utc).isoformat(),
++        "n_matches": _migrate_jsonl(matches_path),
++        "n_upcoming": _migrate_jsonl(upcoming_path),
++        "n_ledger_rows": _migrate_ledger(ledger_path),
++    }
++    check = _crosscheck_odds(ledger_path, odds_path or config.ODDS_JSONL)
++    if check:
++        report["odds_crosscheck"] = check
++    marker.parent.mkdir(parents=True, exist_ok=True)
++    marker.write_text(json.dumps(report, indent=1), encoding="utf-8")
++    log.warning("timezone migration done: %s", report)
++    return report
+diff --git a/src/vpredict/scraping/parse_match.py b/src/vpredict/scraping/parse_match.py
+index ff379de..0e1f418 100644
+--- a/src/vpredict/scraping/parse_match.py
++++ b/src/vpredict/scraping/parse_match.py
+@@ -14,11 +14,16 @@ from __future__ import annotations
+ 
+ import re
+ from datetime import datetime, timezone
++from zoneinfo import ZoneInfo
+ 
+ from bs4 import BeautifulSoup, Tag
+ 
+ from ..data.schema import Match, MapResult, PlayerMapStats, RoundResult
+ 
++# vlr.gg renders `data-utc-ts` in its default display timezone for clients
++# with no timezone cookie — US Eastern. See _parse_utc_ts.
++VLR_SITE_TZ = ZoneInfo("America/New_York")
++
+ _HREF_ID = re.compile(r"^/(?:team/)?(\d+)/")
+ 
+ 
+@@ -38,14 +43,30 @@ def _num(s: str, cast=float):
+ 
+ 
+ def _parse_utc_ts(soup: BeautifulSoup) -> datetime | None:
++    """Despite its name, vlr.gg's `data-utc-ts` attribute carries the match's
++    wall-clock time in the SITE'S display timezone — US Eastern for a
++    cookieless client like this scraper — and the site's own moment-tz JS
++    converts it for browsers. Treating it as UTC shifted every stored start
++    4 h (EDT) / 5 h (EST) early (LOG entry 29; confirmed live 2026-07-24 by
++    the RRQ–ZETA match: attribute 04:00, true start 08:00 UTC, and by every
++    Cloudbet `startTime` on the 16 linked fixtures). So: parse the naive wall
++    time, localize to America/New_York, convert to UTC.
++
++    DST notes, bounded and accepted: the nonexistent spring-forward hour is
++    mapped forward by zoneinfo; the ambiguous fall-back hour resolves to the
++    first occurrence (fold=0, EDT) — a ≤1 h error possible only for matches
++    scheduled inside that single hour per year.
++    """
+     el = soup.select_one(".moment-tz-convert[data-utc-ts]")
+     if el:
+         raw = el.get("data-utc-ts", "").strip()
+         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+             try:
+-                return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
++                naive = datetime.strptime(raw, fmt)
+             except ValueError:
+                 continue
++            local = naive.replace(tzinfo=VLR_SITE_TZ)
++            return local.astimezone(timezone.utc)
+     return None
+ 
+ 
+diff --git a/src/vpredict/serving/refresh.py b/src/vpredict/serving/refresh.py
+index 8bd0077..2eaa324 100644
+--- a/src/vpredict/serving/refresh.py
++++ b/src/vpredict/serving/refresh.py
+@@ -67,6 +67,20 @@ def refresh_cycle(crawl: bool = True) -> dict:
+     now = datetime.now(timezone.utc)
+     out: dict = {"ts": now.isoformat()}
+ 
++    # Run-once, marker-guarded (LOG entry 29). Must precede the crawl so a
++    # store written by the old parser is corrected before rows from the fixed
++    # parser can mix in; a marker file makes every later call a no-op.
++    with phase("tz_migration"):
++        try:
++            from ..data.migrate import migrate_tz_if_needed, tz_migration_applied
++            already = tz_migration_applied()
++            rep = migrate_tz_if_needed()
++            if not already:
++                out["tz_migration"] = rep
++        except Exception as e:
++            log.error("tz migration failed: %s", e)
++            out["tz_migration"] = {"error": str(e)}
++
+     if crawl:
+         with phase("crawl"):
+             try:
+diff --git a/tests/test_refresh_contract.py b/tests/test_refresh_contract.py
+index 51d1e89..8c27564 100644
+--- a/tests/test_refresh_contract.py
++++ b/tests/test_refresh_contract.py
+@@ -69,6 +69,11 @@ def test_refresh_cycle_calls_crawl_results_with_bindable_args(tmp_path, monkeypa
+     monkeypatch.setattr(config, "MATCHES_JSONL", matches_path)
+     monkeypatch.setattr(config, "UPCOMING_JSONL", tmp_path / "upcoming.jsonl")
+     monkeypatch.setattr(config, "MODELS_DIR", tmp_path)  # no bundle on disk
++    # This fixture store is written in true UTC (post-fix data), so declare
++    # the one-time tz migration already applied — otherwise the cycle's
++    # marker-guarded migration step would shift these timestamps (LOG 29).
++    monkeypatch.setattr(config, "RAW_DIR", tmp_path)
++    (tmp_path / ".tz_migration_v1.json").write_text("{}")
+ 
+     calls: list[tuple[tuple, dict]] = []
+ 
+diff --git a/tests/test_timezone.py b/tests/test_timezone.py
+new file mode 100644
+index 0000000..a580189
+--- /dev/null
++++ b/tests/test_timezone.py
+@@ -0,0 +1,95 @@
++"""Timezone regression tests (LOG entry 29).
++
++vlr.gg's `data-utc-ts` is the site's US-Eastern wall clock, not UTC. These
++tests pin the fix at both layers: the parser converts ET wall time to true
++UTC (DST-aware), and the one-time store/ledger migration shifts existing
++rows exactly once, keeps the store's sort invariant across the DST seam,
++and never touches a frozen prediction's probabilities or made_at.
++"""
++from __future__ import annotations
++
++import json
++from datetime import datetime, timedelta, timezone
++
++from bs4 import BeautifulSoup
++
++from vpredict.data.migrate import migrate_tz_if_needed
++from vpredict.data.schema import Match
++from vpredict.data import store
++from vpredict.scraping.parse_match import _parse_utc_ts
++from vpredict.serving.ledger import Ledger
++
++
++def _soup(attr: str) -> BeautifulSoup:
++    return BeautifulSoup(
++        f'<div class="moment-tz-convert" data-utc-ts="{attr}">x</div>', "lxml")
++
++
++def test_parser_treats_attr_as_eastern_wall_time_edt():
++    # The live-site case: attribute 04:00 on 2026-07-24 (EDT, UTC-4)
++    # is really 08:00 UTC.
++    got = _parse_utc_ts(_soup("2026-07-24 04:00:00"))
++    assert got == datetime(2026, 7, 24, 8, 0, tzinfo=timezone.utc)
++
++
++def test_parser_treats_attr_as_eastern_wall_time_est():
++    # Winter dates carry the EST offset (UTC-5), not a fixed 4 h.
++    got = _parse_utc_ts(_soup("2026-01-10 15:00:00"))
++    assert got == datetime(2026, 1, 10, 20, 0, tzinfo=timezone.utc)
++
++
++def _mk(mid: str, start: datetime, status: str = "completed") -> Match:
++    return Match(match_id=mid, start_ts=start, status=status)
++
++
++def test_migration_shifts_resorts_and_runs_once(tmp_path):
++    matches = tmp_path / "matches.jsonl"
++    marker = tmp_path / ".tz_migration_v1.json"
++    ledger_path = tmp_path / "ledger.sqlite"
++
++    # Two mislabeled rows straddling the Nov 2025 fall-back: the EDT row
++    # shifts +4 h, the EST row +5 h, so their order can only survive if the
++    # migration re-sorts (the store's (start_ts, match_id) invariant).
++    edt = datetime(2025, 10, 25, 23, 30, tzinfo=timezone.utc)   # -> +4 h
++    est = datetime(2025, 11, 2, 3, 0, tzinfo=timezone.utc)      # -> +5 h
++    store.upsert_matches([_mk("a", edt), _mk("b", est)], matches)
++
++    led = Ledger(ledger_path)
++    start = datetime(2026, 7, 24, 4, 0, tzinfo=timezone.utc)    # mislabeled
++    led.insert_prediction(
++        match_id="m1", start_ts=start, team1="1", team2="2",
++        team1_name="A", team2_name="B", event="E", best_of=3,
++        p_model=0.7692, p_elo=0.7196, model_version="v",
++        now=start - timedelta(hours=1))
++    made_at_before = led.rows()[0]["made_at"]
++    led.close()
++
++    rep = migrate_tz_if_needed(matches_path=matches,
++                               upcoming_path=tmp_path / "none.jsonl",
++                               ledger_path=ledger_path, marker=marker)
++    assert rep["n_matches"] == 2 and rep["n_ledger_rows"] == 1
++    assert marker.exists()
++
++    got = store.load_matches(matches)
++    by_id = {m.match_id: m.start_ts for m in got}
++    assert by_id["a"] == datetime(2025, 10, 26, 3, 30, tzinfo=timezone.utc)
++    assert by_id["b"] == datetime(2025, 11, 2, 8, 0, tzinfo=timezone.utc)
++    starts = [(m.start_ts, m.match_id) for m in got]
++    assert starts == sorted(starts)          # invariant held after the shift
++
++    led = Ledger(ledger_path)
++    row = led.rows()[0]
++    fixed = datetime.fromisoformat(row["start_ts"])
++    assert fixed == datetime(2026, 7, 24, 8, 0, tzinfo=timezone.utc)
++    # The frozen record is otherwise untouched — probabilities and made_at
++    # are the public commitments; only the match-metadata start moved.
++    assert row["p_model"] == 0.7692 and row["p_elo"] == 0.7196
++    assert row["made_at"] == made_at_before
++    led.close()
++
++    # Second call: marker makes it a no-op — a double shift would corrupt.
++    rep2 = migrate_tz_if_needed(matches_path=matches,
++                                upcoming_path=tmp_path / "none.jsonl",
++                                ledger_path=ledger_path, marker=marker)
++    assert rep2 == json.loads(marker.read_text())
++    assert {m.match_id: m.start_ts for m in store.load_matches(matches)} == by_id
+-- 
+2.43.0
+
