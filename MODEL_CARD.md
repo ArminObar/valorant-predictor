@@ -52,6 +52,24 @@ accuracy metrics. Market coverage is expected to be roughly tier-1 only, so
 the Elo baseline remains the universal comparison for the ~85% of matches
 without a line. None of this is betting advice.
 
+## Backtest (2026-07-24)
+
+A walk-forward backtest replays the live system over the full store, once:
+for every completed match after a 300-match warmup, the same pre-veto
+pool-mean series probability the ledger freezes, called at the last legal
+moment (start − freeze margin), under bundles retrained on the production
+cadence (7 days / 100 new matches, 6-hour ticks) with the production
+selection policy (rolling-origin + one-SE hysteresis) and per-retrain
+Elo-K tuning. Feature as-of discipline is the training pipeline's own:
+nothing a call sees had finished after the call. Results are served in a
+scoreboard section labeled **BACKTEST — simulated, not independently
+verifiable**, per event tier only, and are never merged with the LIVE
+frozen-ledger section: the backtest is the large-sample estimate, the
+ledger is the verifiable record. The run-once rule is enforced in code —
+the runner refuses to regenerate the result unless the shipped model has
+changed, and the prior result is archived, never replaced silently
+(`ASSUMPTIONS.md` §16, `scripts/backtest.py`).
+
 ## Training data
 
 Scraped politely from vlr.gg (robots.txt honored, ≥1.1 s spacing, disk

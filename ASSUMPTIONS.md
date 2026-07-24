@@ -614,3 +614,68 @@ warmup 300) and times the true retrain unit (rolling-origin scores +
 hysteresis + final fit ≈ 2.4 s on a 1-core box): production-cadence total
 ≈ minutes, retrain-before-every-match ≈ 3.4 h there. Numbers regenerate
 from the script on any machine.
+
+## 16. Walk-forward backtest protocol (2026-07-24, evening — pre-registered before the single run)
+
+Owner-approved build (production cadence, BACKTEST/LIVE separation,
+per-tier). Decisions made while building, on the record before the one
+official run:
+
+**The simulated quantity is the ledger's quantity.** Every call is the
+pre-veto, pool-mean series probability from `predict_one` — the same
+function live serving invokes — with the map pool recomputed as-of each
+call. NOT the veto-informed map-set probability the evaluation report's
+series section uses: the backtest simulates what the live system would
+have frozen, and the live system does not know the veto at freeze time.
+The two numbers are therefore comparable across the BACKTEST and LIVE
+sections and deliberately not comparable to `results.md` §2.
+
+**Call time = start − freeze margin (the latest legal call).** Live
+first-accepted calls happen whenever a refresh cycle first sees the match
+— hours to days early, at the operator's cadence, which is not a property
+of the model. The latest legal moment is the sharpest well-defined
+alternative: it uses exactly the information a legal call could have had,
+it is deterministic, and it makes every simulated call maximally
+informed rather than dependent on an arbitrary simulated crawl schedule.
+Recorded consequence: backtest calls are on average slightly
+better-informed than live first calls.
+
+**Retrains replay the production procedure on sliced rows.** Trigger:
+6-hour ticks (phase-anchored at the warmup boundary), firing on the
+production rule (bundle ≥ 7 d old OR ≥ 100 newly finished matches);
+first bundle at warmup = 300 finished matches. Each retrain runs the
+train_and_save sequence on matches finished by the tick —
+chronological_split (the newest 15 % held out untouched, exactly as
+production does), rolling-origin family scores, hysteresis against the
+walk's previous bundle, select_model, and per-retrain Elo-K tuning.
+Slicing the once-built feature matrix equals rebuilding it at the cutoff:
+every row's features depend only on matches finishing before that row's
+own start, so rows at or before any cutoff are identical either way (the
+as-of test pins this in both directions at the walk grain).
+
+**Low-history rows are made, counted, and not scored.** The live ledger
+predicts low-history matches and flags them; the backtest does the same,
+and per-tier metrics are computed over graded non-low-history rows so
+they measure the model, not the prior. Both counts are reported.
+
+**Run-once is enforced mechanically, not by promise.** The runner refuses
+to overwrite an existing result; `--replace` is honoured only when the
+SHIPPED bundle's version differs from the one recorded in the existing
+result, and the old summary is archived first. Re-running against an
+unchanged model is refused by code, because that is what tuning against
+the test would look like.
+
+**Validation run vs the official run.** The engine was validated in the
+build sandbox with a full run over the real (timezone-corrected) store;
+those numbers appear in the session report as the sandbox validation run.
+The OFFICIAL published record is the owner's Mac run (`APPLY.md` §9),
+which the run-once gate then protects. Cross-machine numeric noise can
+move third-decimal metrics and dead-heat selections (ASSUMPTIONS §14);
+the two runs are expected to agree to that tolerance, and any larger gap
+is a bug to investigate, not a result to pick from.
+
+**Markets inside BACKTEST.** The market join is structural: simulated
+probability vs genuinely captured prices, labeled BACKTEST, populated
+only where the local odds log links a capture — near-empty until odds
+accumulate, and stated as such rather than padded. Entry/close/EV/CLV
+definitions are §15's, unchanged.

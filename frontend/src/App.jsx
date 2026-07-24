@@ -169,6 +169,67 @@ function MarketPicks() {
   );
 }
 
+function Backtest() {
+  const { data, err } = useApi("/api/backtest");
+  if (err || !data || !data.window) return null;
+  const w = data.window;
+  const tiers = Object.entries(data.per_tier || {});
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        Backtest — simulated walk-forward
+        <span className="badge">simulated · not independently verifiable</span>
+      </div>
+      <p className="note">
+        The live system replayed over history, once: the same pre-veto
+        pool-mean quantity the ledger freezes, called at the last legal
+        moment, retrained on the production cadence
+        ({w.n_retrains} retrains) with the production selection policy.
+        {" "}{w.n_predictions} simulated predictions
+        ({w.n_low_history} low-history, counted but not scored) from{" "}
+        {fmtTime(w.first_prediction)} to {fmtTime(w.last_prediction)}.
+        Kept strictly separate from the LIVE frozen ledger above — the two
+        are never merged into one number.
+      </p>
+      <table className="ledger">
+        <thead>
+          <tr><th>tier</th><th>n scored</th><th>model LL</th>
+            <th>model acc</th><th>elo LL</th><th>elo acc</th></tr>
+        </thead>
+        <tbody>
+          {tiers.map(([tier, m]) => (
+            <tr key={tier}>
+              <td>{tier}</td>
+              {m.n_scored ? (
+                <>
+                  <td>{m.n_scored}</td>
+                  <td className={m.model_ll < m.elo_ll ? "ok" : ""}>
+                    {m.model_ll.toFixed(4)}</td>
+                  <td>{fmtPct(m.model_acc)}</td>
+                  <td className={m.elo_ll < m.model_ll ? "ok" : ""}>
+                    {m.elo_ll.toFixed(4)}</td>
+                  <td>{fmtPct(m.elo_acc)}</td>
+                </>
+              ) : (
+                <td colSpan={5} className="dim">no scored rows</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="note">
+        Metrics per event tier only, over graded non-low-history rows.
+        Green marks the lower (better) log loss per tier. Run-once: this
+        result is re-generated only when the model changes, and the prior
+        result stays archived.
+        {data.synthetic_data && (
+          <span className="badge">contains synthetic data</span>
+        )}
+      </p>
+    </div>
+  );
+}
+
 function Scoreboard() {
   const { data, err } = useApi("/api/scoreboard");
   if (err) return <p className="empty">API unreachable.</p>;
@@ -200,6 +261,7 @@ function Scoreboard() {
         )}
       </div>
       <MarketPicks />
+      <Backtest />
       {data.graded.length > 0 && (
         <table className="ledger">
           <thead>

@@ -1,27 +1,40 @@
-# APPLY — patch session 2026-07-24 (evening): patches 15–18
+# APPLY — patch session 2026-07-24 (evening): patches 15–19
 
 What landed, mapped to your list: **6** timezone (parser root cause +
 store/ledger migration + zone-labeled rendering + tests), **1** fuzzy
 alias suggestions, **3** capture overlap lock (cron-safe by construction),
 **5** markets & EV (totals capture, frozen maps distribution, EV/CLV
-scoreboard with guardrails, authenticated publish), **7** compute-cost
-report only (NOT built — awaiting your go), **2/4** exact commands below
-(they need your Mac / the Render dashboard). All numbers in the session
-report regenerate from repo scripts.
+scoreboard with guardrails, authenticated publish), **7** walk-forward
+backtest BUILT and sandbox-validated (patch 0019; your official run is
+§9), **2/4** exact commands below (they need your Mac / the Render
+dashboard). All numbers in the session report regenerate from repo
+scripts.
 
 Run everything from the repo root: `cd ~/Downloads/valorant-predictor`.
 
 ## 1. Apply and verify
 
-Download the four `.patch` files into `patches/`, then:
+Download the five `.patch` files into `patches/`. Fresh apply (none of
+15–18 applied yet), in this exact order:
 
-    git am patches/0015-*.patch patches/0016-*.patch patches/0017-*.patch patches/0018-*.patch
+    git am patches/0015-*.patch patches/0016-*.patch patches/0017-*.patch patches/0018-*.patch patches/0019-*.patch
+
+If you already applied 15–18 from the earlier package, apply only the new
+one on top:
+
+    git am patches/0019-*.patch
+
+Then verify:
+
     source .venv/bin/activate
-    python -m pytest                 # expect 95 passed
+    python -m pytest                 # expect 101 passed
     cd frontend && npm test && cd .. # expect 5 pass (needs Node >= 20)
 
 If `git am` complains (uncommitted local edits), `git stash` first, apply,
-`git stash pop`.
+`git stash pop`. Patch 0019 contains the backtest engine, the predict_one
+refactor, the BACKTEST panel, its tests, and a documentation alignment
+pass (README, WALKTHROUGH, this file) — so if 15–18 are applied cleanly,
+0019 applies cleanly on top; do not reorder.
 
 ## 2. Migrate YOUR store (once, before anything else touches data)
 
@@ -129,17 +142,37 @@ graded (pre-registered, ASSUMPTIONS §14). Totals picks only exist for
 predictions frozen after this deploy (`p_maps_dist` freezes with the first
 call — older rows are not re-priced, by design).
 
-## 9. Walk-forward backtest (your item 7) — NOT built, cost report ready
+## 9. Walk-forward backtest (your item 7) — BUILT. The official run is yours.
 
-Design + measured cost are in the session report. Reproduce the
-measurement on your Mac:
+The engine replays the live system over history (ASSUMPTIONS §16): the
+ledger's own pre-veto quantity via the serving code path, production
+cadence + selection per retrain, per-tier BACKTEST section never merged
+with LIVE. It was validated with a full sandbox run on the corrected
+store; the run YOU execute is the official published record, and the
+run-once gate protects it afterwards.
 
-    python scripts/evaluate.py --features-cache data/processed/features_cache.parquet   # builds the cache once
-    python scripts/backtest_cost.py --features-cache data/processed/features_cache.parquet
+Run it once (the sandbox validation run took ~12 min on 1 core; your
+M-series will be faster; needs the migrated store from §2):
 
-On a 1-core sandbox: 92 retrains (7 d / 100-match cadence over 635 days),
-2.4 s per true retrain unit, ~4 min total after a ~3 min one-time feature
-build; retrain-before-every-match ≈ 3.4 h. Your M-series will be faster.
-Say go (and which cadence) and it gets built to the §-spec: BACKTEST and
-LIVE sections never merged, per tier, run once, re-run only on model
-change with both results labeled.
+    source .venv/bin/activate
+    python scripts/evaluate.py --features-cache data/processed/features_cache.parquet   # builds the cache once (~3 min)
+    python scripts/backtest.py --features-cache data/processed/features_cache.parquet
+
+It prints per-tier numbers (a per-tier-by-half-year stationarity table
+lives in the JSON) and writes `data/processed/backtest.json`
+(served summary), a dated copy plus a full per-match rows file under
+`data/reports/` (the audit record). Then publish the existing result to
+the site — no recompute, run-once stays intact (needs the §8 token in
+your shell):
+
+    python scripts/backtest.py --push-only
+
+Hard-refresh the site: the "Backtest — simulated walk-forward" panel
+appears under Market picks, per tier, with the separation language.
+
+Re-running later: only after a model change, with
+`--replace` (the script refuses otherwise, archives the old result, and
+the old file stays in `data/reports/`). Expect small third-decimal
+differences vs the sandbox validation numbers in the session report —
+cross-machine numeric noise (ASSUMPTIONS §14/§16); anything bigger,
+send both files.

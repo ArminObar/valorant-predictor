@@ -189,7 +189,7 @@ def test_markets_endpoint_empty_then_ingest_roundtrip(tmp_path, monkeypatch):
                   ).status_code == 401
     ok = c.post("/api/ingest/markets", json=report,
                 headers={"Authorization": "Bearer s3cret"})
-    assert ok.status_code == 200 and ok.json()["picks"] == 1
+    assert ok.status_code == 200 and ok.json()["items"] == 1
     assert c.get("/api/markets").json()["picks"] == [{"x": 1}]
 
     monkeypatch.delenv("VPREDICT_INGEST_TOKEN")

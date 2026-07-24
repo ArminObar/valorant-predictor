@@ -179,7 +179,8 @@ def _agg(picks: list[dict]) -> dict:
 
 def build_markets_report(ledger_rows: list[dict],
                          captures: list[OddsCapture],
-                         now: datetime | None = None) -> dict:
+                         now: datetime | None = None,
+                         section: str = "LIVE") -> dict:
     picks = build_picks(ledger_rows, captures)
     graded_n = sum(p["graded"] for p in picks)
     by_tier = {}
@@ -190,9 +191,10 @@ def build_markets_report(ledger_rows: list[dict],
         by_market[market] = _agg([p for p in picks if p["market"] == market])
     return {
         "generated_at": (now or datetime.now(timezone.utc)).isoformat(),
-        "section": "LIVE",                # the frozen-ledger record; the
-                                          # walk-forward BACKTEST section is
-                                          # separate by design, never merged
+        "section": section,               # "LIVE" (frozen ledger) or
+                                          # "BACKTEST" (simulated) — the two
+                                          # are separate by design, never
+                                          # merged into one number
         "gate": {"n_graded": graded_n,
                  "required": config.EV_MIN_GRADED_PICKS,
                  "ev_validated": graded_n >= config.EV_MIN_GRADED_PICKS},

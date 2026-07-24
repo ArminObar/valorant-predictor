@@ -100,24 +100,12 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         finally:
             led.close()
 
-    @app.get("/api/markets")
-    def markets() -> JSONResponse:
-        path = data_dir / "processed" / "markets.json"
-        if path.exists():
-            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
-        return JSONResponse({
-            "generated_at": None, "section": "LIVE",
-            "gate": {"n_graded": 0,
-                     "required": config.EV_MIN_GRADED_PICKS,
-                     "ev_validated": False},
-            "summary": None, "by_tier": {}, "by_market": {}, "picks": []})
-
-    @app.post("/api/ingest/markets")
-    async def ingest_markets(request: Request) -> JSONResponse:
-        """Receives the derived markets report from the Mac-side publisher
-        (scripts/publish_markets.py). Derived view only — overwriting it can
-        never touch the ledger or the odds log. Guarded by a shared bearer
-        token; disabled entirely when the env var is unset."""
+    async def _ingest(request: Request, filename: str,
+                      required_key: str) -> JSONResponse:
+        """Shared guard for derived-view uploads from the Mac-side scripts.
+        Derived views only — overwriting them can never touch the ledger or
+        the odds log. Bearer token; disabled entirely when the env var is
+        unset."""
         token = os.environ.get("VPREDICT_INGEST_TOKEN")
         if not token:
             return JSONResponse({"error": "ingest disabled: "
@@ -134,16 +122,47 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
             report = json.loads(body)
         except ValueError:
             return JSONResponse({"error": "not JSON"}, status_code=400)
-        if not isinstance(report, dict) or "picks" not in report:
-            return JSONResponse({"error": "not a markets report"},
+        if not isinstance(report, dict) or required_key not in report:
+            return JSONResponse({"error": f"missing '{required_key}'"},
                                 status_code=400)
-        path = data_dir / "processed" / "markets.json"
+        path = data_dir / "processed" / filename
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
         tmp.replace(path)
+        val = report.get(required_key)
         return JSONResponse({"ok": True,
-                             "picks": len(report.get("picks", []))})
+                             "items": len(val) if isinstance(val, (list, dict))
+                             else None})
+
+    @app.get("/api/markets")
+    def markets() -> JSONResponse:
+        path = data_dir / "processed" / "markets.json"
+        if path.exists():
+            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+        return JSONResponse({
+            "generated_at": None, "section": "LIVE",
+            "gate": {"n_graded": 0,
+                     "required": config.EV_MIN_GRADED_PICKS,
+                     "ev_validated": False},
+            "summary": None, "by_tier": {}, "by_market": {}, "picks": []})
+
+    @app.post("/api/ingest/markets")
+    async def ingest_markets(request: Request) -> JSONResponse:
+        return await _ingest(request, "markets.json", "picks")
+
+    @app.get("/api/backtest")
+    def backtest() -> JSONResponse:
+        path = data_dir / "processed" / "backtest.json"
+        if path.exists():
+            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+        return JSONResponse({"section": "BACKTEST", "generated_at": None,
+                             "per_tier": {}, "window": None,
+                             "label": "not yet run"})
+
+    @app.post("/api/ingest/backtest")
+    async def ingest_backtest(request: Request) -> JSONResponse:
+        return await _ingest(request, "backtest.json", "per_tier")
 
     @app.get("/api/model")
     def model() -> dict:

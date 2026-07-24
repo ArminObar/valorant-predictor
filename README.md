@@ -8,12 +8,16 @@ every upcoming-match prediction to a frozen public ledger **before** the match
 starts — graded against a tuned Elo baseline, in public.
 
 The honest headline from two years of real data (6,796 matches,
-2024-07-24 → 2026-07-22, all vlr tiers): **the selected model beats tuned
-Elo at both grains** — map level and series level. An earlier small-data run
-recorded a series-grain loss to Elo; its mechanism (probability compression)
-and its resolution at scale are walked through in `WALKTHROUGH.md` §7, along
-with a validation/test stability finding that the live scoreboard now
-adjudicates.
+2024-07-24 → 2026-07-22, all vlr tiers): on the untouched test window **the
+model beats tuned Elo at both grains** — map level and series level — while
+a walk-forward replay of the whole deployment shows that edge is recent,
+not lifelong: over the full history, map-effective Elo leads in three of
+four tiers, with the model ahead only in the most recent period (which is
+what the test window measures). Both instruments are served, clearly
+separated, and neither was tuned against. The arc — an early series-grain
+loss to Elo, a validation/test stability finding that turned out to be a
+measured dead heat, and a calibration pathology only the replay could
+catch — is walked through in `WALKTHROUGH.md` §7 and §11.
 
 ## Results (real data)
 
@@ -25,22 +29,26 @@ python scripts/evaluate.py --data data/raw/matches.jsonl
 ```
 
 5,489 usable matches (13,337 map rows) after the ≥3-prior-maps rule;
-chronological split 3,842/823/824 matches; LightGBM (121 trees after early
-stopping) + isotonic calibration selected on validation over the LR grid.
-Elo baseline K tuned on validation over [16…128]; K=24 is an interior
-optimum (the small-data run's K=50 was cold-start pressure).
+chronological split 3,842/823/824 matches. Model selection is a measured
+dead heat: the LR-vs-LightGBM validation gap is 8e-5 log loss (both
+candidates' losses are printed in the report header), so the report shows
+the single-shot pick (LR + isotonic on this regeneration) while the
+SERVING bundle stays LightGBM under the production hysteresis policy —
+see `MODEL_CARD.md`. Elo baseline K tuned on validation over [16…128];
+K=24 is an interior optimum (the small-data run's K=50 was cold-start
+pressure).
 
 **Map level (test window):**
 
 | model | log loss | Brier | accuracy |
 |---|---|---|---|
-| LightGBM + isotonic | **0.6671** | **0.2370** | **0.5954** |
+| report model (LR + isotonic) | **0.6672** | **0.2375** | **0.5925** |
 | Elo baseline (K=24) | 0.6704 | 0.2388 | 0.5897 |
 | Elo (map-effective blend) | 0.6754 | 0.2413 | 0.5694 |
 | favourite (higher Elo) | — | — | 0.5897 |
 | constant 0.5 | 0.6931 | 0.2500 | — |
 
-Model ECE 0.0247 (10 quantile bins).
+Model ECE 0.0274 (10 quantile bins).
 
 **Match level — series probabilities (824 test series, exact best-of DP over
 the post-veto map set; 331 fully played / 291 veto-completed / 202 mean-prob
@@ -48,7 +56,7 @@ fallback):**
 
 | model | log loss | Brier | accuracy |
 |---|---|---|---|
-| model (per-map → series DP) | **0.6500** | **0.2262** | **0.6432** |
+| model (per-map → series DP) | **0.6530** | **0.2294** | **0.6250** |
 | Elo (map-effective, DP) | 0.6555 | 0.2317 | 0.6165 |
 | favourite | — | — | 0.6201 |
 | constant 0.5 | 0.6931 | 0.2500 | — |
@@ -63,21 +71,53 @@ numbers are labelled loudly and say nothing about real Valorant.
 
 ## The finding this project deliberately did not act on
 
-Plain logistic regression beat the shipped LightGBM on the untouched test
-window at **both** grains (map log loss 0.6620 vs 0.6671; series 0.6375 vs
-0.6500) — while losing the validation comparison that selects the model.
-Switching because the test window prefers LR would turn the test set into a
-second validation set and un-earn every number above, so the shipped bundle
-stays the validation choice, the disagreement is reported as a stability
-finding, and the frozen prediction ledger — data neither model has seen —
-arbitrates in public. The mechanism and the planned protocol upgrade
-(rolling-origin validation) are walked through in `WALKTHROUGH.md` §7.
+Plain logistic regression beat the then-shipped LightGBM on the untouched
+test window at **both** grains — while losing the validation comparison
+that selects the model. Switching because the test window prefers LR would
+turn the test set into a second validation set and un-earn every number
+above, so nothing was switched on test evidence. The finding then sharpened:
+after a timestamp correction, the validation comparison itself became a
+measured dead heat (gap 8e-5, printed in the report header), which is
+machine-noise territory — so the production selection policy is now
+rolling-origin scoring with one-paired-SE hysteresis, the serving bundle
+holds the incumbent, and two instruments that neither model was tuned
+against arbitrate in public: the frozen prediction ledger and the
+walk-forward backtest. The full arc is `WALKTHROUGH.md` §7.
+
+## Market comparison & walk-forward backtest (2026-07-24)
+
+Two additions close the evaluation loop:
+
+**Odds as a third baseline.** Raw prices are captured locally (Cloudbet's
+feed API, Pinnacle via response interception) at prediction freeze and
+again near start, append-only; de-vigging happens at analysis time (Shin
+primary, multiplicative beside it); the site's market panel shows the
+frozen model probability against the captured price with EV and closing
+line value. Scope is series moneyline and total maps only, and the EV
+column is labeled **unvalidated** until 100 market-covered picks have
+graded — a pre-registered gate, not a vibe. Coverage is expected to be
+mostly tier-1, which is why Elo stays as the universal baseline. None of
+this is betting advice.
+
+**The deployment, replayed.** A walk-forward backtest re-runs the live
+system over the entire store, once: for every completed match, the same
+pre-veto pool-mean probability the ledger freezes, called at the last
+legal moment, under bundles retrained on the production cadence with the
+production selection policy. It is served as a **BACKTEST — simulated,
+not independently verifiable** section, per event tier, never merged with
+the LIVE frozen ledger, and protected by a run-once rule enforced in code.
+Its first run earned its keep immediately: it caught a July-2025
+calibration pathology (isotonic saturating to 0/1 plateaus the week its
+admission threshold was first crossed) that the static protocol
+structurally cannot see, because a static split only ever meets one
+validation size. Documented as found, not silently patched —
+`LOG.md` entry 31.
 
 ## Quickstart
 
 ```bash
 pip install -e . && pip install pytest httpx   # or: make setup
-make test                                      # 76 tests
+make test                                      # 101 tests
 make backfill                                  # deep history walk (resumable)
 make evaluate                                  # writes data/reports/
 ```
@@ -109,29 +149,41 @@ Railway: same Dockerfile, a Volume at `/data`, same env vars.
 ```
 src/vpredict/
   scraping/     polite fetcher, list/match/tab parsers, resumable crawler
-  data/         pydantic schema, JSONL store, the long maps frame
+  data/         pydantic schema, JSONL store, maps frame, tz migration
   features/     as-of engine (leakage rule), feature assembly, split
-  modeling/     baselines (Elo), selection+calibration, series DP, predict
-  evaluation/   tier classifier, collinearity diagnostics
+  modeling/     baselines (Elo), selection+hysteresis, series DP, predict
+  evaluation/   tier classifier, collinearity, calibration monitor,
+                walk-forward backtest
+  odds/         capture (Cloudbet, Pinnacle), Shin de-vig, fixture linking
+                + fuzzy alias suggestions, markets/EV/CLV analysis
   serving/      SQLite ledger, refresh cycle, FastAPI app
-scripts/        evaluate | train | predict_upcoming | refresh | demo
-frontend/       Vite/React scoreboard UI
-tests/          leakage, parsers, crawl, series, ledger, API, collinearity
+scripts/        evaluate | train | predict_upcoming | refresh | demo |
+                migrate_store_tz | capture_odds | suggest_aliases |
+                publish_markets | backtest | backtest_cost
+frontend/       Vite/React scoreboard UI (LIVE ledger, market picks,
+                BACKTEST — separated panels)
+tests/          leakage, parsers, crawl, series, ledger, API, odds, fuzzy,
+                markets, backtest, timezone, selection policy (101 total)
 ```
 
-## Status & limitations (2026-07-24)
+## Status & limitations (2026-07-24, evening)
 
-Live on a Render Starter instance (512 MB). 104 predictions are frozen in
-the public ledger; the first ones grade as their matches finish.
+Live on a Render Standard instance (2 GB, persistent disk). 104+
+predictions are frozen in the public ledger and grade as matches finish;
+the count grows with each refresh cycle.
 
-- **Automated refresh is still off** (`VPREDICT_REFRESH=0`), but the memory
-  trim that unblocks it landed 2026-07-24: the cycle streams the store
-  instead of materializing it, and its measured full-store peak dropped
-  from 1,221 MB to 296 MB (sandbox measurement; growth slope 18 MB per
-  1,000 matches, ~2+ years of headroom — details in `LOG.md` entry 23).
-  Re-enabling awaits verification on the deployment; the scheduler now runs
-  each cycle as a subprocess, so a memory blow-up can no longer take the
-  API down with it.
+- **Automated refresh is ON** (`VPREDICT_REFRESH=1`), made viable by the
+  memory trim: the cycle streams the store instead of materializing it,
+  and its measured full-store peak dropped from 1,221 MB to 296 MB
+  (sandbox measurement; growth slope 18 MB per 1,000 matches — details in
+  `LOG.md` entries 22–23). Each cycle runs as a subprocess, so a memory
+  blow-up cannot take the API down; first-cycle verification on the
+  deployment is the open check.
+- **Timestamp erratum, corrected.** Every start time stored before
+  2026-07-24 was US-Eastern wall time mislabeled UTC (vlr's `data-utc-ts`
+  lies to cookieless clients). A marker-guarded one-time migration fixed
+  the store and ledger metadata; frozen probabilities were untouched, and
+  row counts/splits are identical before and after (`LOG.md` entry 29).
 - **Uniform map-pool weights.** Upcoming-series probabilities average the
   current 7-map pool uniformly; team pick/ban tendencies are not modeled.
 - **Tier B features were never enabled.** The economy/clutch columns are

@@ -59,8 +59,8 @@ probabilities: P(win the best-of) = sum over all paths to the clinch
 played are recovered from the stored veto note ("…; Split remains") when its
 prefix agrees with what was actually played; otherwise unplayed slots fall
 back to the mean of played-map probabilities. The report counts all three
-provenances (61/59/16 in the current test window) — a number you can't audit
-is a number you shouldn't trust.
+provenances (331/291/202 in the current test window) — a number you can't
+audit is a number you shouldn't trust.
 
 For *upcoming* matches the veto hasn't happened, so per-map probabilities
 are averaged over the current pool (top-7 maps by 60-day frequency) with
@@ -102,21 +102,33 @@ The authorized fix — sweep C looser, recalibrate, select by validation
 matches), and the answer is a lesson in itself: **C stopped mattering.**
 Test series log loss is 0.6375 for every C from 0.03 to 3.0; the
 compression was a small-data artifact, not a knob to turn. Meanwhile the
-gap closed on its own: at this scale, validation selection switched to
-LightGBM + isotonic, which beats Elo at both grains (series 0.6500 vs
-0.6555).
+gap closed on its own: at this scale the selected model beats Elo at both
+grains on the test window (current regeneration: series 0.6530 vs 0.6555,
+map 0.6672 vs 0.6704).
 
 The sweep surfaced a subtler finding worth more than the original question:
-plain LR beat the selected LightGBM on the untouched test window at both
-grains (map 0.6620 vs 0.6671; series 0.6375 vs 0.6500) while losing the
-validation comparison. The tempting move — ship LR because test prefers it —
-is exactly the sin this walkthrough exists to name: selecting on the test
-window makes it a second validation set and un-earns every number reported
-from it. So the shipped model stays the validation choice, the disagreement
-is reported as a stability finding, and the frozen ledger (§10) — which
-neither model has seen — becomes the arbiter. The planned protocol upgrade
-is rolling-origin validation, which would have surfaced this instability
-before selection rather than after.
+plain LR beat the then-selected LightGBM on the untouched test window at
+both grains while losing the validation comparison. The tempting move —
+ship LR because test prefers it — is exactly the sin this walkthrough
+exists to name: selecting on the test window makes it a second validation
+set and un-earns every number reported from it. So nothing was switched on
+test evidence; the disagreement was reported as a stability finding.
+
+The finding then resolved into something cleaner (2026-07-24). After a
+timestamp correction to the store, the LR-vs-LightGBM validation
+comparison was measured at a gap of 8e-5 log loss — both candidates'
+losses are now printed in the report header — which is machine-noise
+territory: a fresh single-shot selection can legitimately name either
+family on different hardware. The response was not to pick a winner but to
+change the selection *procedure*: production now scores families by
+rolling-origin (five expanding chronological folds) and keeps the
+incumbent unless a challenger wins by more than one paired standard error.
+The serving bundle therefore stays LightGBM while the report's single-shot
+protocol shows LR, a documented divergence until the next protocol-aligned
+evaluation. Two instruments neither model was tuned against arbitrate: the
+frozen ledger (§10) and the walk-forward backtest (§11) — whose full-walk
+verdict, for honesty's sake, is that the model's edge over Elo is recent,
+not lifelong.
 
 ## 8. Collinearity: why you must not read the coefficients
 
@@ -135,15 +147,16 @@ stories.
 
 The scrape spans every vlr tier. A keyword classifier (auditable mapping,
 counts printed) splits results: the model is strongest on tier-2
-Challengers, and on tier-1 VCT it produces better probabilities than Elo but
-worse picks — with only 135 tier-1 test rows, treat per-tier numbers as
-directional. The obvious hypothesis — "train only on tier-1 to predict
+Challengers and Game Changers; on tier-1 VCT it currently produces both
+better probabilities and slightly better picks than Elo (399 tier-1 test
+rows) — but per-tier orderings at a few hundred rows are soft, and one
+(Game Changers) flipped sign across a regeneration. The obvious hypothesis — "train only on tier-1 to predict
 tier-1" — was tested properly: restriction applied to *training rows only*,
 selection/calibration shared. At small scale (131 tier-1 training matches)
 it lost everywhere, including on tier-1 itself (0.6989 vs 0.6836) — sample
 size beat domain match. Re-tested at two years (752 tier-1 training
 matches), the gap collapsed to noise (tier-1 test log loss 0.6771 restricted
-vs 0.6790 all-tier, accuracy still worse). Verdict: no demonstrated benefit
+vs 0.6791 all-tier, accuracy still worse). Verdict: no demonstrated benefit
 at any scale tried; all-tier training stays.
 
 ## 10. The scoreboard: evaluation that can't be gamed
@@ -156,11 +169,48 @@ logged at the same instant. Grading fills in results and nothing else.
 Whatever the model-vs-Elo story becomes, it will be written in rows that
 existed before the matches did.
 
+## 11. The deployment, replayed: why one test window isn't enough
+
+Every static protocol above meets exactly one training size, one
+validation size, one calibrator fit. A deployed system meets *all* of
+them, in order. The walk-forward backtest replays that: from a 300-match
+warmup to the end of the store, every completed match gets the same
+pre-veto probability the live ledger freezes, called at the last legal
+moment, through the serving code path itself, under bundles retrained on
+the production cadence with the production selection policy. The as-of
+rule is enforced at the walk's grain by test: a match that had not
+finished at the call moves the prediction by exactly nothing.
+
+Its first run rewrote the headline in a useful way. Aggregated over two
+years, map-effective Elo leads the model on log loss in three of four
+tiers — while the most recent period agrees with §3's test window (model
+ahead where the test window says so). The edge is real and recent, not
+lifelong; a static split cannot tell those apart. The run also caught the
+project's sharpest bug-class finding: the week the growing validation
+slice first crossed isotonic's 800-row admission gate (July 2025), the
+freshly admitted calibrator saturated ~24% of the score range to a
+0.999999 plateau, and one month of tier-2 predictions published extreme
+probabilities that were wrong a quarter of the time. Platt, one retrain
+earlier at 783 rows, was fine. No static split exercises "the first week
+past the threshold" — only a replay does.
+
+Two disciplines keep the instrument honest. **Separation:** the backtest
+is served as its own section — simulated, large-sample, *not
+independently verifiable* — and is never merged with the frozen ledger,
+which is small and verifiable. **Run-once:** the runner refuses to
+regenerate the result unless the shipped model has changed, and then the
+old result is archived, never edited — findings get documented, not
+silently patched (the July-2025 episode stays in the record exactly as
+found). The temptation to fix the calibrator and quietly re-run is the
+same sin as §7's, one level up.
+
 ## Reproducing everything
 
 ```bash
 python scripts/evaluate.py --data data/raw/matches.jsonl
 ```
 
-One script, every number, including the figures. If a claim in this
-repository can't be traced to that command's output, the claim is wrong.
+One script, every number, including the figures — plus
+`scripts/backtest.py` for the walk-forward section, which additionally
+enforces its own run-once rule. If a claim in this repository can't be
+traced to a script's output, the claim is wrong.

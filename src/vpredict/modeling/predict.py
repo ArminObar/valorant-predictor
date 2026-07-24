@@ -45,6 +45,78 @@ def _elo_p(pair) -> float:
     return 1.0 / (1.0 + 10.0 ** ((rb - ra) / config.ELO_SCALE))
 
 
+def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
+                pool: list[str], um: Match, now_ts: pd.Timestamp) -> dict:
+    """One pre-veto prediction at cutoff `now_ts` — the shared body of live
+    serving and the walk-forward backtest. All as-of discipline lives in the
+    machinery this calls: engine snapshots and Elo replays admit only
+    matches whose ESTIMATED FINISH precedes `now_ts`, so passing full
+    history (including the target match itself and its future) is safe by
+    construction — the same property the build-time leakage spot-check
+    pins."""
+    params = bundle["params"]
+    feature_names = bundle["feature_names"]
+    dummy_cols = [c for c in feature_names
+                  if c.startswith("map_") and c != "map_elo_diff"]
+
+    a, b = um.key_team("team1"), um.key_team("team2")
+    snap_a = engine.team_snapshot(a, now_ts)
+    snap_b = engine.team_snapshot(b, now_ts)
+    low_history = min(snap_a.n_maps, snap_b.n_maps) < config.MIN_MAPS_HISTORY
+    diffs = snapshot_diffs(snap_a, snap_b)
+    probe = {"a": a, "b": b, "maps": [], "maps_extra": pool}
+    e_feat = elo_snapshot_at(lites, now_ts, probe,
+                             k=params.get("elo_k_features", config.DEFAULT_ELO_K))
+    e_base = elo_snapshot_at(lites, now_ts, probe,
+                             k=bundle.get("elo_k_baseline", config.DEFAULT_ELO_K))
+    playoff = float(store.is_playoff(um.series))
+    hist_min = math.log1p(min(snap_a.n_maps, snap_b.n_maps))
+
+    rows, kept_maps = [], []
+    for name in pool:
+        # Same assembler the training pipeline uses -> keys cannot drift.
+        row = _assemble_row(diffs, e_feat, name, um.best_of,
+                            bool(playoff), hist_min)
+        for k in list(row):
+            if row[k] is None:
+                row[k] = 0.0
+        for c in dummy_cols:
+            row[c] = 1.0 if c == f"map_{name}" else 0.0
+        rows.append(row)
+        kept_maps.append(name)
+    X = pd.DataFrame(rows)
+    missing = [c for c in feature_names
+               if c not in X and not c.startswith("map_")]
+    if missing:                       # loud, never a silent zero-fill
+        raise RuntimeError(f"predict-time features missing {missing}; "
+                           "training and serving feature schemas drifted")
+    for c in feature_names:
+        if c not in X:                # only map dummies can land here
+            X[c] = 0.0
+    X = X[feature_names]
+    p_maps = predict_calibrated(bundle, X)
+    p_map_mean = float(p_maps.mean())
+    dist = sr.series_outcome_dist([p_map_mean] * int(um.best_of))
+    p_model = dist["p_win"]
+    pe_maps = [_elo_p(e_base["maps"][m]) for m in kept_maps]
+    pe_mean = float(sum(pe_maps) / len(pe_maps))
+    p_elo = sr.series_prob([pe_mean] * int(um.best_of))
+
+    return {
+        "match_id": um.match_id,
+        "start_ts": um.start_ts.isoformat(),
+        "event": um.event, "series": um.series, "best_of": um.best_of,
+        "team1": a, "team2": b,
+        "team1_name": um.team1_name, "team2_name": um.team2_name,
+        "p_model": round(p_model, 4), "p_elo": round(p_elo, 4),
+        "maps_dist": {str(k): round(v, 4)
+                      for k, v in sorted(dist["maps_dist"].items())},
+        "per_map": {m: round(float(p), 4) for m, p in zip(kept_maps, p_maps)},
+        "pool": pool, "low_history": low_history,
+        "model_version": bundle.get("version", "unknown"),
+    }
+
+
 def predict_upcoming(bundle: dict, history, upcoming: list[Match],
                      now: datetime | None = None) -> list[dict]:
     # `history` may be any iterable of Match (the refresh cycle passes
@@ -61,69 +133,8 @@ def predict_upcoming(bundle: dict, history, upcoming: list[Match],
                         roster_factor=params["roster_factor"])
     lites = matches_lite_from_maps(maps_df)
     pool = current_pool(maps_df, now_ts)
-    feature_names = bundle["feature_names"]
-    dummy_cols = [c for c in feature_names
-                  if c.startswith("map_") and c != "map_elo_diff"]
-
-    out: list[dict] = []
-    for um in upcoming:
-        a, b = um.key_team("team1"), um.key_team("team2")
-        snap_a = engine.team_snapshot(a, now_ts)
-        snap_b = engine.team_snapshot(b, now_ts)
-        low_history = min(snap_a.n_maps, snap_b.n_maps) < config.MIN_MAPS_HISTORY
-        diffs = snapshot_diffs(snap_a, snap_b)
-        probe = {"a": a, "b": b, "maps": [], "maps_extra": pool}
-        e_feat = elo_snapshot_at(lites, now_ts, probe,
-                                 k=params.get("elo_k_features", config.DEFAULT_ELO_K))
-        e_base = elo_snapshot_at(lites, now_ts, probe,
-                                 k=bundle.get("elo_k_baseline", config.DEFAULT_ELO_K))
-        playoff = float(store.is_playoff(um.series))
-        hist_min = math.log1p(min(snap_a.n_maps, snap_b.n_maps))
-
-        rows, kept_maps = [], []
-        for name in pool:
-            # Same assembler the training pipeline uses -> keys cannot drift.
-            row = _assemble_row(diffs, e_feat, name, um.best_of,
-                                bool(playoff), hist_min)
-            for k in list(row):
-                if row[k] is None:
-                    row[k] = 0.0
-            for c in dummy_cols:
-                row[c] = 1.0 if c == f"map_{name}" else 0.0
-            rows.append(row)
-            kept_maps.append(name)
-        X = pd.DataFrame(rows)
-        missing = [c for c in feature_names
-                   if c not in X and not c.startswith("map_")]
-        if missing:                       # loud, never a silent zero-fill
-            raise RuntimeError(f"predict-time features missing {missing}; "
-                               "training and serving feature schemas drifted")
-        for c in feature_names:
-            if c not in X:                # only map dummies can land here
-                X[c] = 0.0
-        X = X[feature_names]
-        p_maps = predict_calibrated(bundle, X)
-        p_map_mean = float(p_maps.mean())
-        dist = sr.series_outcome_dist([p_map_mean] * int(um.best_of))
-        p_model = dist["p_win"]
-        pe_maps = [_elo_p(e_base["maps"][m]) for m in kept_maps]
-        pe_mean = float(sum(pe_maps) / len(pe_maps))
-        p_elo = sr.series_prob([pe_mean] * int(um.best_of))
-
-        out.append({
-            "match_id": um.match_id,
-            "start_ts": um.start_ts.isoformat(),
-            "event": um.event, "series": um.series, "best_of": um.best_of,
-            "team1": a, "team2": b,
-            "team1_name": um.team1_name, "team2_name": um.team2_name,
-            "p_model": round(p_model, 4), "p_elo": round(p_elo, 4),
-            "maps_dist": {str(k): round(v, 4)
-                          for k, v in sorted(dist["maps_dist"].items())},
-            "per_map": {m: round(float(p), 4) for m, p in zip(kept_maps, p_maps)},
-            "pool": pool, "low_history": low_history,
-            "model_version": bundle.get("version", "unknown"),
-        })
-    return out
+    return [predict_one(bundle, engine, lites, pool, um, now_ts)
+            for um in upcoming]
 
 
 def run_predictions(bundle: dict, history, upcoming: list[Match],

@@ -702,3 +702,62 @@ checked, 16 captured, 0 source errors. Findings, each now acted on:
 Surface (b) — Pinnacle's intercepted shapes — remains UNVALIDATED until
 its first Mac run; `--debug` dumps every intercepted body for a one-paste
 fix if the parse count is 0.
+
+## Entry 31 — Walk-forward backtest landed; first run surfaces an isotonic saturation episode the static protocol could never see (2026-07-24)
+
+The item-7 build (ASSUMPTIONS §16) ran end-to-end on the corrected store
+in the sandbox — the validation run; the owner's Mac run is the official
+record. 6,487 simulated predictions (5,291 scored), 97 production-cadence
+retrains, 701 s. Selection behaved exactly as designed across two years:
+two family switches total (LR → LightGBM 2025-02-17 at 1.13 paired SE,
+back at 1.51 SE ~two months later), everything else held by hysteresis.
+
+**Headline finding.** Aggregated over the full walk, map-effective Elo
+leads the model on log loss in three of four tiers — the opposite of the
+static test-window report. The per-tier-by-half-year split (now part of
+the served report) localizes it: in the most recent period the walk
+AGREES with the static evaluation (model ahead in tier-1 and tier-2,
+Elo ahead in Game Changers), so the pre-veto pool-mean quantity is not
+what erases the edge; the deficit is historical, concentrated in the
+early small-data era (tier-1 2024H2: model 0.7476 vs Elo 0.6694, n=31)
+and in one acute episode:
+
+**July 2025, tier-2: model 0.8096 vs Elo 0.6211 (n=211), with published
+probabilities spanning 0.000–1.000.** Reproduced, not guessed: retrain 41
+(2025-06-26) had 783 validation rows — under the 800-row isotonic gate —
+and fitted Platt with range [0.005, 0.995]; retrain 42 one week later had
+847 rows, isotonic was admitted for the first time, and the fitted
+calibrator mapped ~24 % of the raw-score range onto a 0.999999 plateau.
+At 4-decimal ledger rounding those publish as 1.0000; each wrong one
+costs ~13.8 nats at the metric clip, and the era's extreme calls were
+right only 74 % of the time. The episode fades as validation grows
+(retrains 46+ are back to beating Elo).
+
+**Why the existing protocol missed it.** The static evaluation fits ONE
+calibrator on the final ~2,000-row validation window — it structurally
+cannot exercise the admission boundary, because it never sees a 800-row
+validation set. Only a deployment replay meets every intermediate data
+size, which is precisely the argument for having built one. Retrain log
+entries now record `calibrator` and `n_val_rows` so a future episode is
+visible without a reproduction.
+
+**No tuning happened.** The run stands as-is under the run-once rule.
+The candidate hardenings (clip calibrated outputs away from exact 0/1
+the way Platt's tails do; or admit isotonic only when it beats Platt by
+a margin; or raise the gate) are REPORTED, not built — if one is adopted
+later, the model changes, the backtest re-runs under the new version
+label, and this result stays archived. That is the doctrine's designed
+path, not an exception to it.
+
+**Fixture lessons (test-authoring, not production bugs).** Synthetic
+walk histories must (a) use 2-1 series so every match contributes both
+label classes to any fold, and (b) contain upsets — a linearly separable
+tiny validation slice turns the Platt calibrator into a step function
+that freezes outputs and silently defeats sensitivity assertions. Both
+are now comments in the fixture.
+
+**Ops note.** The first launch died silently at ~1,250 predictions:
+background children are reaped when the invoking sandbox shell exits —
+not OOM (260 MB RSS, no kernel kill records). `setsid` detaches cleanly;
+recorded here because a half-written rows file from a reaped run looks
+exactly like a crash.
