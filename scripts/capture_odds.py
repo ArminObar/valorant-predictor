@@ -120,6 +120,25 @@ def run_once(sources: list[str], from_file: str | None,
     return {"ts": now.isoformat(), "predictions": len(by_id), **counters}
 
 
+def acquire_capture_lock():
+    """Non-blocking exclusive lock so overlapping cron fires can't race the
+    append-only log (two concurrent passes both derive 'no freeze yet' from
+    the log and would both append one). Returns the held file object, or
+    None when another capture is running. fcntl.flock is per open file
+    description and releases automatically if the process dies — no stale
+    lockfile handling needed. Works on macOS and Linux.
+    """
+    import fcntl
+    config.ODDS_DIR.mkdir(parents=True, exist_ok=True)
+    f = open(config.ODDS_DIR / "capture.lock", "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return f
+    except BlockingIOError:
+        f.close()
+        return None
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(levelname)s %(name)s %(message)s")
@@ -136,8 +155,17 @@ def main() -> int:
     if not args.once:
         print("Nothing to do: pass --once (put it on a 10-minute cron).")
         return 2
-    out = run_once([s.strip() for s in args.sources.split(",") if s.strip()],
-                   args.from_file, args.debug)
+    lock = acquire_capture_lock()
+    if lock is None:
+        print(json.dumps({"skipped": "another capture holds the lock — "
+                          "overlap is expected on slow passes; exiting"}))
+        return 0
+    try:
+        out = run_once(
+            [s.strip() for s in args.sources.split(",") if s.strip()],
+            args.from_file, args.debug)
+    finally:
+        lock.close()
     print(json.dumps(out, indent=1))
     return 0
 
