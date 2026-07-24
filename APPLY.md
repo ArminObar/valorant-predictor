@@ -271,3 +271,37 @@ Heads-up on what you'll see after deploy: the scoreboard will read
 "1 graded, low-history, nothing scored yet" until a real match grades.
 That is the honest state; the 0.5373-vs-0.6931 line was the placeholder.
 The next refresh cycle backfills the row's real team names on its own.
+
+## 14. Patches 0023 + 0024: features and ensemble evaluation, then the visual redesign
+
+    git am patches/0023-*.patch patches/0024-*.patch
+    python -m pytest                 # expect 109 passed
+    cd frontend && npm test && cd .. # expect 5 pass
+    python scripts/train.py          # features changed: new bundle version
+    git push                         # hard-refresh the site afterwards
+
+0023 ships the stand-in features (validation gate passed; full findings
+in LOG entry 34 and the new results.md §7, including the ensemble table
+and its honestly-biased selector, fixed by §19b next round). 0024 is the
+visual layer: hero landing, clickable match detail pages, repo footer
+link. No copy or logic rewrites underneath.
+
+**Consequence of 0023 you should act on: the backtest re-runs, labeled.**
+The shipped model changed (new features; the version now hashes the
+feature list), so per the run-once doctrine your published backtest is
+now the record of the PREVIOUS model. Re-run and re-publish, which the
+gate will permit precisely because the version changed, archiving the old
+result automatically:
+
+    python scripts/evaluate.py --features-cache data/processed/features_cache.parquet   # rebuilds the cache with the new features (~3 min)
+    python scripts/backtest.py --features-cache data/processed/features_cache.parquet --replace --push
+
+The old summary lands in data/reports/ untouched; the site serves the new
+one labeled with the new version. Expect the same shape of numbers with
+third-decimal movement.
+
+**Deploy check that is still open:** the live site's page title was still
+the pre-0021 text (with the em dash) when fetched from the build sandbox.
+View-source on the site and check the <title>. If it still shows the em
+dash after this push, patches 0021+ never actually deployed; check the
+Render deploy log for the commit hash it built.

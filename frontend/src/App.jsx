@@ -29,11 +29,13 @@ function TugBar({ p }) {
   );
 }
 
-function UpcomingCard({ m }) {
+function UpcomingCard({ m, onOpen }) {
   const p = m.p_model;
   const fav = p >= 0.5 ? m.team1_name : m.team2_name;
   return (
-    <div className="card">
+    <div className="card clickable" role="button" tabIndex={0}
+      onClick={() => onOpen(m.match_id)}
+      onKeyDown={(e) => e.key === "Enter" && onOpen(m.match_id)}>
       <div className="card-top">
         <span className="event">{m.event}</span>
         <span className="when">{fmtTime(m.start_ts)} · Bo{m.best_of}</span>
@@ -60,7 +62,7 @@ function UpcomingCard({ m }) {
   );
 }
 
-function Upcoming() {
+function Upcoming({ onOpen }) {
   const { data, err } = useApi("/api/upcoming");
   if (err) return <p className="empty">API unreachable.</p>;
   if (!data) return <p className="empty">Loading…</p>;
@@ -81,7 +83,7 @@ function Upcoming() {
         model {data.model_version}.
       </p>
       {data.predictions.map((m) => (
-        <UpcomingCard key={m.match_id} m={m} />
+        <UpcomingCard key={m.match_id} m={m} onOpen={onOpen} />
       ))}
     </>
   );
@@ -255,7 +257,7 @@ function Backtest() {
   );
 }
 
-function Scoreboard() {
+function Scoreboard({ onOpen }) {
   const { data, err } = useApi("/api/scoreboard");
   if (err) return <p className="empty">API unreachable.</p>;
   if (!data) return <p className="empty">Loading…</p>;
@@ -319,7 +321,8 @@ function Scoreboard() {
                 const winner = r.team1_won ? r.team1_name : r.team2_name;
                 const ok = (r.p_model >= 0.5) === Boolean(r.team1_won);
                 return (
-                  <tr key={r.match_id}>
+                  <tr key={r.match_id} className="clickable"
+                      onClick={() => onOpen(r.match_id)}>
                     <td>{r.team1_name} <span className="dim">vs</span> {r.team2_name}
                       {Boolean(r.low_history) && (
                         <span className="badge" title={"One or both teams "
@@ -343,7 +346,9 @@ function Scoreboard() {
         <div className="panel">
           <div className="panel-title">Pending ({data.pending.length})</div>
           {data.pending.map((r) => (
-            <div className="pending-row" key={r.match_id}>
+            <div className="pending-row clickable" key={r.match_id}
+                 role="button" tabIndex={0}
+                 onClick={() => onOpen(r.match_id)}>
               <span>{r.team1_name} <span className="dim">vs</span> {r.team2_name}</span>
               <span className="dim">{fmtTime(r.start_ts)} · model {fmtPct(r.p_model)}</span>
             </div>
@@ -396,35 +401,222 @@ function ModelTab() {
   );
 }
 
-function Intro({ go }) {
+function FormDots({ recent }) {
   return (
-    <div className="panel">
-      <div className="panel-title">What this is</div>
-      <p className="note">
-        This site predicts who wins pro Valorant matches, then shows its
-        work. Every prediction is locked in at least 5 minutes before the
-        match starts and graded in public once it ends, against Elo (a
-        simple rating system that is hard to beat) and against real
-        sportsbook odds.
-      </p>
-      <p className="note">
-        Where it stands: on the most recent slice of two years of data,
-        the model beats Elo at both the map level and the series level.
-        Replayed over the full two years, Elo wins more of the history.
-        Both views are on this site. The live scoreboard has only just
-        started grading, so treat it as a record being written, not a
-        verdict.
-      </p>
-      <nav className="intro-links">
-        <button onClick={() => go("upcoming")}>see upcoming predictions</button>
-        <button onClick={() => go("backtest")}>see the backtest</button>
-      </nav>
+    <span className="form">
+      {recent.map((r, i) => (
+        <span key={i} className={`dot ${r.won ? "w" : "l"}`}
+          title={`${r.won ? "won" : "lost"} ${r.score} vs ${r.opponent} (${r.event})`} />
+      ))}
+    </span>
+  );
+}
+
+function MatchDetail({ id, onBack }) {
+  const { data, err } = useApi(`/api/match/${id}`);
+  if (err) return <p className="empty">API unreachable.</p>;
+  if (!data) return <p className="empty">Loading…</p>;
+  const src = data.ledger || data.prediction;
+  if (!src)
+    return (
+      <div className="panel">
+        <button className="back" onClick={onBack}>&larr; back</button>
+        <p className="empty">No record for this match.</p>
+      </div>
+    );
+  const p = src.p_model;
+  const graded = data.ledger && data.ledger.graded;
+  const winner = graded
+    ? (data.ledger.team1_won ? src.team1_name : src.team2_name) : null;
+  const th = data.team_history || {};
+  const hA = th[src.team1], hB = th[src.team2];
+  const pred = data.prediction;
+  return (
+    <>
+      <div className="panel">
+        <button className="back" onClick={onBack}>&larr; back</button>
+        <div className="card-top">
+          <span className="event">{src.event}</span>
+          <span className="when">{fmtTime(src.start_ts)} · Bo{src.best_of}</span>
+        </div>
+        <div className="teams big">
+          <span className={`team a ${p >= 0.5 ? "fav" : ""}`}>{src.team1_name}</span>
+          <span className="vs">vs</span>
+          <span className={`team b ${p < 0.5 ? "fav" : ""}`}>{src.team2_name}</span>
+        </div>
+        <TugBar p={p} />
+        <div className="probs">
+          <span className="num a">{fmtPct(p)}</span>
+          <span className="mid">
+            locked in {data.ledger ? fmtTime(data.ledger.made_at) : "pre-match"}
+            {" "}· Elo says {fmtPct(src.p_elo)}
+            {Boolean(src.low_history) && (
+              <span className="badge" title={"One or both teams had almost "
+                + "no history when this was locked in. Kept in the record, "
+                + "not scored."}>low history</span>
+            )}
+          </span>
+          <span className="num b">{fmtPct(1 - p)}</span>
+        </div>
+        {graded && (
+          <p className="note result-line">
+            Result: <b>{winner}</b> won
+            {data.ledger.maps_played ? ` in ${data.ledger.maps_played} maps` : ""}.
+            The prediction above is exactly what was locked in beforehand.
+          </p>
+        )}
+        {!graded && data.ledger && (
+          <p className="note">
+            This prediction is frozen in the public ledger. It cannot change,
+            whatever happens between now and the match.
+          </p>
+        )}
+      </div>
+      {pred && pred.per_map && (
+        <div className="panel">
+          <div className="panel-title">Per-map probabilities</div>
+          <p className="note">
+            The model predicts one map at a time; the headline number
+            averages these over the current map pool (the veto isn't known
+            when the prediction locks).
+          </p>
+          {Object.entries(pred.per_map).map(([m, v]) => (
+            <div className="permap" key={m}>
+              <span className="permap-name">{m}</span>
+              <TugBar p={v} />
+              <span className="permap-num">{fmtPct(v)}</span>
+            </div>
+          ))}
+          {pred.maps_dist && (
+            <p className="note">
+              Expected series length: {Object.entries(pred.maps_dist)
+                .map(([k, v]) => `${k} maps ${fmtPct(v)}`).join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
+      {data.picks && data.picks.length > 0 && (
+        <div className="panel">
+          <div className="panel-title">Market comparison</div>
+          <table className="ledger">
+            <thead>
+              <tr><th>market</th><th>selection</th><th>model</th>
+                <th>implied</th><th>de-vig</th><th>EV</th></tr>
+            </thead>
+            <tbody>
+              {data.picks.map((k) => (
+                <tr key={`${k.market}-${k.line ?? ""}`}>
+                  <td>{k.market === "maps_total" ? "map total" : "moneyline"}
+                    <span className="dim"> · {k.source}</span></td>
+                  <td>{k.selection}</td>
+                  <td>{fmtPct(k.p_model)}</td>
+                  <td className="dim">{fmtPct(k.implied)}</td>
+                  <td className="dim">{fmtPct(k.shin)}</td>
+                  <td className={k.ev_pct >= 0 ? "ok" : "miss"}>
+                    {k.ev_pct > 0 ? "+" : ""}{k.ev_pct}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {(hA || hB) && (
+        <div className="panel">
+          <div className="panel-title">Recent form (last 5 series)</div>
+          <div className="detail-grid">
+            {[hA, hB].map((h, i) => h && (
+              <div key={i}>
+                <div className={`form-team ${i === 0 ? "a" : "b"}`}>
+                  {h.name} <FormDots recent={h.recent} />
+                </div>
+                {h.recent.map((r, j) => (
+                  <div className="pending-row" key={j}>
+                    <span className={r.won ? "ok" : "miss"}>
+                      {r.won ? "W" : "L"} {r.score}
+                    </span>
+                    <span className="dim"> vs {r.opponent}</span>
+                    <span className="dim">{fmtTime(r.start_ts)}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Hero({ go }) {
+  return (
+    <div className="hero">
+      <svg className="hero-bg" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="hgA" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#37b3a8" stopOpacity="0.16" />
+            <stop offset="1" stopColor="#37b3a8" stopOpacity="0.02" />
+          </linearGradient>
+          <linearGradient id="hgB" x1="1" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#e06a4e" stopOpacity="0.14" />
+            <stop offset="1" stopColor="#e06a4e" stopOpacity="0.02" />
+          </linearGradient>
+          <linearGradient id="hgBar" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#37b3a8" />
+            <stop offset="0.58" stopColor="#37b3a8" />
+            <stop offset="0.58" stopColor="#e06a4e" />
+            <stop offset="1" stopColor="#e06a4e" />
+          </linearGradient>
+        </defs>
+        <polygon points="0,0 560,0 260,420 0,420" fill="url(#hgA)" />
+        <polygon points="1200,0 700,0 980,420 1200,420" fill="url(#hgB)" />
+        <g stroke="#37b3a8" strokeOpacity="0.10" strokeWidth="1">
+          <path d="M-40,90 L1240,30" /><path d="M-40,180 L1240,120" />
+          <path d="M-40,270 L1240,210" /><path d="M-40,360 L1240,300" />
+        </g>
+        <g stroke="#e06a4e" strokeOpacity="0.08" strokeWidth="1">
+          <path d="M-40,60 L1240,150" /><path d="M-40,150 L1240,240" />
+          <path d="M-40,240 L1240,330" /><path d="M-40,330 L1240,420" />
+        </g>
+        <rect x="140" y="330" width="920" height="6" rx="3"
+          fill="url(#hgBar)" opacity="0.55" />
+        <rect x="672" y="322" width="2" height="22" fill="#e7e2d9"
+          opacity="0.6" />
+      </svg>
+      <div className="hero-inner">
+        <div className="logo hero-logo">
+          v<span className="logo-accent">predict</span>
+        </div>
+        <div className="tagline hero-tagline">
+          Valorant win probabilities, locked in before each match and graded
+          in public.
+        </div>
+        <p className="hero-copy">
+          This site predicts who wins pro Valorant matches, then shows its
+          work. Every prediction is locked in at least 5 minutes before the
+          match starts and graded in public once it ends, against Elo (a
+          simple rating system that is hard to beat) and against real
+          sportsbook odds.
+        </p>
+        <p className="hero-copy">
+          Where it stands: on the most recent slice of two years of data,
+          the model beats Elo at both the map level and the series level.
+          Replayed over the full two years, Elo wins more of the history.
+          Both views are on this site. The live scoreboard has only just
+          started grading, so treat it as a record being written, not a
+          verdict.
+        </p>
+        <nav className="intro-links">
+          <button onClick={() => go("upcoming")}>see upcoming predictions</button>
+          <button onClick={() => go("backtest")}>see the backtest</button>
+        </nav>
+      </div>
     </div>
   );
 }
 
 export default function App() {
   const [tab, setTab] = useState("upcoming");
+  const [openMatch, setOpenMatch] = useState(null);
   const { data: health } = useApi("/api/health");
   const go = (where) => {
     if (where === "backtest") {
@@ -438,22 +630,13 @@ export default function App() {
   };
   return (
     <div className="wrap">
-      <header>
-        <div className="logo">
-          v<span className="logo-accent">predict</span>
-        </div>
-        <div className="tagline">
-          Valorant win probabilities, locked in before each match and graded
-          in public.
-        </div>
-      </header>
+      <Hero go={go} />
       {health?.synthetic_model && (
         <p className="warn">
           This is a demo model trained on made-up data. Not real
           predictions.
         </p>
       )}
-      <Intro go={go} />
       <nav>
         {["upcoming", "scoreboard", "model"].map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
@@ -461,14 +644,23 @@ export default function App() {
           </button>
         ))}
       </nav>
-      {tab === "upcoming" && <Upcoming />}
-      {tab === "scoreboard" && <Scoreboard />}
-      {tab === "model" && <ModelTab />}
+      {openMatch ? (
+        <MatchDetail id={openMatch} onBack={() => setOpenMatch(null)} />
+      ) : (
+        <>
+          {tab === "upcoming" && <Upcoming onOpen={setOpenMatch} />}
+          {tab === "scoreboard" && <Scoreboard onOpen={setOpenMatch} />}
+          {tab === "model" && <ModelTab />}
+        </>
+      )}
       <footer>
         Data scraped politely from vlr.gg (robots.txt respected, at least 1s
         between requests). Predictions lock at least 5 minutes before each
         match, and the first call stands. Not affiliated with Riot Games.
-        Not betting advice.
+        Not betting advice.{" "}
+        <a className="repo-link"
+           href="https://github.com/ArminObar/valorant-predictor"
+           target="_blank" rel="noreferrer">source on GitHub</a>
       </footer>
     </div>
   );

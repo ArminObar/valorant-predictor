@@ -164,6 +164,65 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
     async def ingest_backtest(request: Request) -> JSONResponse:
         return await _ingest(request, "backtest.json", "per_tier")
 
+    @app.get("/api/match/{match_id}")
+    def match_detail(match_id: str) -> JSONResponse:
+        """Everything known about one match: the upcoming prediction or the
+        frozen ledger row (whichever exists; the ledger wins because it is
+        the record), any market picks, and both teams' recent completed
+        results for context. Reads the same artifacts the other endpoints
+        serve; the team-history part streams the store once."""
+        out: dict = {"match_id": match_id, "prediction": None,
+                     "ledger": None, "picks": [], "team_history": {}}
+        if predictions_json.exists():
+            up = json.loads(predictions_json.read_text())
+            for p in up.get("predictions", []):
+                if str(p.get("match_id")) == match_id:
+                    out["prediction"] = p
+                    break
+        led = Ledger(ledger_path)
+        try:
+            row = next((r for r in led.rows(graded=None, limit=100000)
+                        if str(r["match_id"]) == match_id), None)
+            out["ledger"] = row
+        finally:
+            led.close()
+        mk = data_dir / "processed" / "markets.json"
+        if mk.exists():
+            picks = json.loads(mk.read_text()).get("picks", [])
+            out["picks"] = [p for p in picks
+                            if str(p.get("match_id")) == match_id]
+        keys = set()
+        src = out["ledger"] or out["prediction"]
+        if src:
+            keys = {src.get("team1"), src.get("team2")} - {None, ""}
+        if keys:
+            from ..data import store as _store
+            hist: dict[str, list] = {k: [] for k in keys}
+            names: dict[str, str] = {}
+            for m in _store.iter_matches(config.MATCHES_JSONL):
+                if m.status != "completed" or not m.winner:
+                    continue
+                for side in ("team1", "team2"):
+                    k = m.key_team(side)
+                    if k in keys:
+                        won = (m.winner == side)
+                        opp = (m.team2_name if side == "team1"
+                               else m.team1_name)
+                        names[k] = (m.team1_name if side == "team1"
+                                    else m.team2_name)
+                        hist[k].append({
+                            "start_ts": m.start_ts.isoformat(),
+                            "event": m.event, "opponent": opp,
+                            "won": bool(won),
+                            "score": f"{m.team1_maps}-{m.team2_maps}"
+                                     if side == "team1" else
+                                     f"{m.team2_maps}-{m.team1_maps}"})
+            out["team_history"] = {
+                k: {"name": names.get(k, k),
+                    "recent": sorted(v, key=lambda r: r["start_ts"])[-5:][::-1]}
+                for k, v in hist.items()}
+        return JSONResponse(out)
+
     @app.get("/api/model")
     def model() -> dict:
         meta = _bundle_meta(bundle_path)
