@@ -158,14 +158,29 @@ def build_picks(ledger_rows: list[dict],
     return picks
 
 
+def _ev_excluded(p: dict) -> str | None:
+    """Why this pick's EV/CLV stay out of the aggregates, or None.
+    Extrapolation was §14's rule; totals joined it by owner direction
+    (§20): the frozen maps distribution's independence assumption is
+    measured ~7 points off on P(2-0), so its EV is a known-biased number
+    and does not ship as if it were clean. The pick itself stays visible —
+    frozen data is the record — with the reason attached."""
+    if p["extrapolated"]:
+        return "extrapolation"
+    if config.EV_EXCLUDE_TOTALS and p["market"] == "maps_total":
+        return "totals_independence_bias"
+    return None
+
+
 def _agg(picks: list[dict]) -> dict:
     graded = [p for p in picks if p["graded"]]
-    core = [p for p in graded if not p["extrapolated"]]
+    core = [p for p in graded if _ev_excluded(p) is None]
     clv = [p["clv_pct"] for p in core if p["clv_pct"] is not None]
     out = {
         "n_covered": len(picks),
         "n_graded": len(graded),
         "n_extrapolated": sum(p["extrapolated"] for p in picks),
+        "n_ev_excluded": sum(_ev_excluded(p) is not None for p in picks),
         "win_rate": (round(sum(p["won"] for p in graded) / len(graded), 4)
                      if graded else None),
         "avg_ev_pct": (round(sum(p["ev_pct"] for p in core) / len(core), 2)
@@ -182,7 +197,11 @@ def build_markets_report(ledger_rows: list[dict],
                          now: datetime | None = None,
                          section: str = "LIVE") -> dict:
     picks = build_picks(ledger_rows, captures)
-    graded_n = sum(p["graded"] for p in picks)
+    for p in picks:
+        p["ev_excluded"] = _ev_excluded(p)
+    # The validation gate counts only picks whose EV methodology is the one
+    # being validated: a known-biased totals EV cannot help validate EV.
+    graded_n = sum(p["graded"] and _ev_excluded(p) is None for p in picks)
     by_tier = {}
     for tier in sorted({p["tier"] for p in picks}):
         by_tier[tier] = _agg([p for p in picks if p["tier"] == tier])

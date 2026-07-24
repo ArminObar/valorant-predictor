@@ -305,3 +305,18 @@ the pre-0021 text (with the em dash) when fetched from the build sandbox.
 View-source on the site and check the <title>. If it still shows the em
 dash after this push, patches 0021+ never actually deployed; check the
 Render deploy log for the commit hash it built.
+
+## 15. Patch 0025: maps-total EV excluded, labeled, pending the fix
+
+Owner-directed. Totals picks stay in the table with the model/implied/
+de-vig columns intact; the EV cell reads "excluded" with a plain-language
+tooltip; aggregates, CLV, and the n>=100 validation gate count clean-EV
+picks only. `config.EV_EXCLUDE_TOTALS` flips back only with the
+correlation fix (versioned model change + labeled backtest re-run).
+
+    git am patches/0025-*.patch
+    python -m pytest                 # expect 110 passed
+    git push
+
+The site updates on the NEXT publish_markets run from your cron (the
+served markets.json is regenerated Mac-side); nothing else to do.

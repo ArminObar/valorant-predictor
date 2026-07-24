@@ -820,3 +820,20 @@ train predictions), selection by that number, calibration for DEPLOYMENT
 still fitted as production fits it. Registered now, before any such run,
 so the blends' strong test columns in this round cannot influence the
 rule. This round's selection (incumbent) stands.
+
+## 20. Maps-total EV excluded from aggregates and the gate — owner-directed (2026-07-24, night)
+
+The frozen maps distribution assumes independent maps; measured reality
+over 3,654 graded Bo3s puts P(2-0) at 60.7% against the assumption's
+53.5% (LOG 34 context). A ~7-point probability bias flows straight into
+maps-total EV — systematically flattering overs — so, by owner direction:
+totals picks stay fully visible in the record (frozen data is the
+record), each carries `ev_excluded: "totals_independence_bias"`, their EV
+cell displays "excluded" rather than a known-biased number, and they are
+left out of EV/CLV aggregates AND the EV validation gate — a biased EV
+cannot help validate EV. CLV is excluded with EV because the pick's SIDE
+was chosen by the biased max-EV rule, contaminating what CLV would
+measure. Moneyline is untouched. Reinstatement condition, fixed now: the
+one-parameter within-series correlation fix, shipped as a versioned model
+change with a labeled backtest re-run — `config.EV_EXCLUDE_TOTALS` flips
+only then.

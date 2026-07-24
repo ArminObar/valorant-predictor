@@ -164,6 +164,15 @@ ODDS_BOOK_PRIORITY = ["pinnacle", "cloudbet"]
 # 5, recorded 2026-07-24): EV aggregates stay "unvalidated" in the UI until
 # this many market-covered picks have graded. Changing it after grading
 # starts would be moving the goalposts — don't.
+# Maps-total picks are excluded from EV/CLV aggregates and from the EV
+# validation gate: the frozen maps distribution assumes independent maps,
+# and measured reality (LOG 34 context / ASSUMPTIONS §20) puts P(2-0) at
+# 60.7% vs the assumption's 53.5% — a known ~7-point bias that would ship
+# phantom value on overs. Owner-directed 2026-07-24. Flip to False only
+# with the correlation fix, which is a versioned model change with a
+# labeled backtest re-run.
+EV_EXCLUDE_TOTALS = True
+
 EV_MIN_GRADED_PICKS = 100
 # Series-grain probabilities outside the test window's supported range are
 # labeled EXTRAPOLATION, not edge, and excluded from EV aggregates. Band ≈

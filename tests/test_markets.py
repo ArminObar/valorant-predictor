@@ -196,3 +196,26 @@ def test_markets_endpoint_empty_then_ingest_roundtrip(tmp_path, monkeypatch):
     assert c.post("/api/ingest/markets", json=report,
                   headers={"Authorization": "Bearer s3cret"}
                   ).status_code == 503
+
+
+def test_totals_ev_excluded_from_aggregates_and_gate():
+    """Owner-directed (ASSUMPTIONS §20): maps-total EV carries the measured
+    ~7-point independence bias, so totals picks stay visible in the record
+    but are labeled, kept out of EV/CLV aggregates, and do not count
+    toward the EV validation gate. Moneyline is unaffected."""
+    rows = [_row(mid="m1"),
+            _row(mid="m2", dist={"2": 0.55, "3": 0.45}, maps_played=2)]
+    caps = [_cap(mid="m1", ph=1.61, pa=2.40),
+            _cap(mid="m2", market="maps_total", line=2.5, ph=2.10, pa=1.75)]
+    rep = build_markets_report(rows, caps)
+    by_id = {(p["match_id"], p["market"]): p for p in rep["picks"]}
+    ml = by_id[("m1", "series_moneyline")]
+    tot = by_id[("m2", "maps_total")]
+    assert ml["ev_excluded"] is None
+    assert tot["ev_excluded"] == "totals_independence_bias"
+    # Gate validates only clean-EV picks; the record keeps both.
+    assert rep["gate"]["n_graded"] == 1
+    assert rep["summary"]["n_graded"] == 2
+    assert rep["summary"]["n_ev_excluded"] == 1
+    # Aggregate EV equals the moneyline pick's alone.
+    assert rep["summary"]["avg_ev_pct"] == pytest.approx(ml["ev_pct"], abs=0.01)

@@ -142,8 +142,10 @@ function MarketPicks() {
               {s.avg_ev_pct != null && <> · avg EV {s.avg_ev_pct}%</>}
               {s.avg_clv_pct != null && <> · avg CLV {s.avg_clv_pct}% ·
                 beat close {fmtPct(s.beat_close_rate)}</>}
-              {" "}· picks marked "extrapolation" are excluded from these
-              averages
+              {" "}· picks marked "extrapolation" or "EV excluded" are
+              left out of these averages (map totals are excluded for now:
+              their probabilities carry a known bias we've measured and
+              not yet fixed)
             </p>
           )}
           <table className="ledger">
@@ -162,12 +164,22 @@ function MarketPicks() {
                       <span className="badge" title={"Our probability is "
                         + "outside the range where calibration was checked "
                         + "(15% to 88%), so trust it less."}>
-                        extrapolation</span>}</td>
+                        extrapolation</span>}
+                    {p.ev_excluded === "totals_independence_bias" &&
+                      <span className="badge" title={"Map-total "
+                        + "probabilities currently assume maps are "
+                        + "independent, and measured reality says they "
+                        + "aren't (2-0s happen about 7 points more often "
+                        + "than assumed). The EV here would be a known-"
+                        + "biased number, so it's excluded until that's "
+                        + "fixed."}>EV excluded</span>}</td>
                   <td>{fmtPct(p.p_model)}</td>
                   <td className="dim">{fmtPct(p.implied)}</td>
                   <td className="dim">{fmtPct(p.shin)}</td>
-                  <td className={p.ev_pct >= 0 ? "ok" : "miss"}>
-                    {p.ev_pct > 0 ? "+" : ""}{p.ev_pct}%</td>
+                  <td className={p.ev_excluded ? "dim"
+                      : p.ev_pct >= 0 ? "ok" : "miss"}>
+                    {p.ev_excluded ? "excluded"
+                      : `${p.ev_pct > 0 ? "+" : ""}${p.ev_pct}%`}</td>
                   <td className={p.graded ? (p.won ? "ok" : "miss") : "dim"}>
                     {p.graded ? (p.won ? "won ✓" : "lost ✗") : "pending"}
                     {p.graded && p.clv_pct != null &&
@@ -508,12 +520,20 @@ function MatchDetail({ id, onBack }) {
                 <tr key={`${k.market}-${k.line ?? ""}`}>
                   <td>{k.market === "maps_total" ? "map total" : "moneyline"}
                     <span className="dim"> · {k.source}</span></td>
-                  <td>{k.selection}</td>
+                  <td>{k.selection}
+                    {k.ev_excluded === "totals_independence_bias" &&
+                      <span className="badge" title={"Map-total "
+                        + "probabilities currently assume maps are "
+                        + "independent; measured reality disagrees by "
+                        + "about 7 points, so this EV is excluded until "
+                        + "that's fixed."}>EV excluded</span>}</td>
                   <td>{fmtPct(k.p_model)}</td>
                   <td className="dim">{fmtPct(k.implied)}</td>
                   <td className="dim">{fmtPct(k.shin)}</td>
-                  <td className={k.ev_pct >= 0 ? "ok" : "miss"}>
-                    {k.ev_pct > 0 ? "+" : ""}{k.ev_pct}%</td>
+                  <td className={k.ev_excluded ? "dim"
+                      : k.ev_pct >= 0 ? "ok" : "miss"}>
+                    {k.ev_excluded ? "excluded"
+                      : `${k.ev_pct > 0 ? "+" : ""}${k.ev_pct}%`}</td>
                 </tr>
               ))}
             </tbody>
