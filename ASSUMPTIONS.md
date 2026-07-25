@@ -837,3 +837,42 @@ measure. Moneyline is untouched. Reinstatement condition, fixed now: the
 one-parameter within-series correlation fix, shipped as a versioned model
 change with a labeled backtest re-run — `config.EV_EXCLUDE_TOTALS` flips
 only then.
+
+## 21. Per-map display honesty now; smooth calibration pre-registered — decided 2026-07-25
+
+Context: LOG entry 37. The shipped bundle's per-map probabilities can
+legitimately tie across the whole pool (step-function isotonic over a
+sub-point raw spread). Owner-approved disposition, in three parts:
+
+**Now (frontend + payload only, no rev bump).** The serving payload gains
+`per_map_elo` — each pool map's Elo lean from the identical feature-K
+snapshot the feature row consumes — and the per-map panel explains the
+calibration step function in plain language and shows the lean beside
+each probability. Judgment call: the lean is the FEATURE Elo (K=32
+map-effective blend), not the tuned baseline K, because the chip's claim
+is "this is the model's per-map input", and that must be literally true.
+Display-only; the ledger schema is untouched, and a frozen headline is
+labeled as such next to the live per-map view. Risk: none to the record;
+the chips could mislead if a future bundle stops consuming map Elo, so
+the contract test ties the payload to the snapshot rather than to a
+constant.
+
+**Next model round (pre-registered before any further test read, same
+discipline as §16/§19b).** A smooth monotone calibration candidate —
+isotonic with monotone (PCHIP) interpolation between plateau midpoints —
+joins Platt and step isotonic in the calibration menu, selected by the
+existing validation rule, nothing else changed. This is a model-definition
+change: BUNDLE_BEHAVIOR_REV bumps, the deploy retrains once, and the
+backtest's run-once gate sees it. If the smooth candidate loses
+validation, step isotonic stays and the display note remains the honest
+answer. Explicitly rejected: swapping the calibrator outside selection
+because the steps look bad — that is cosmetics overriding the
+pre-registered policy.
+
+**Future work, logged not scheduled.** The linear model structurally
+cannot express per-map effects beyond the single `map_elo_diff`
+coefficient: swap augmentation zeroes map identity exactly (correct
+behavior, not a bug), and L2 with elo_diff collinearity crushes what
+remains. Genuine per-map differentiation needs interaction terms or the
+tree family; both go through the standard gated selection when data
+supports them, and neither is promised.

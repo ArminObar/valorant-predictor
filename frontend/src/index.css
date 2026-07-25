@@ -142,10 +142,14 @@ tr.clickable:hover td { color: var(--text); }
 .back:hover { color: var(--text); }
 .teams.big .team { font-size: 24px; }
 .result-line b { color: var(--text); }
-.permap { display: grid; grid-template-columns: 90px 1fr 56px; gap: 10px;
+.permap { display: grid; grid-template-columns: 90px 78px 1fr 56px; gap: 10px;
   align-items: center; margin: 6px 0; }
 .permap-name { color: var(--dim); font-size: 13px; }
+.permap-elo { color: var(--dim); font-size: 12px;
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
 .permap-num { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .permap { grid-template-columns: 74px 64px 1fr 52px; gap: 6px; } }
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 @media (max-width: 640px) { .detail-grid { grid-template-columns: 1fr; } }
 .form-team { font-family: "Rajdhani", sans-serif; font-weight: 600;

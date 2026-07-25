@@ -367,3 +367,29 @@ hashed name and varies per machine; expected, LOG entry 36). If the
 "refresh cycle:" lines STILL don't appear in the tail after this, the
 thing updating predictions is not this service's scheduler — check
 whether a second Render service (a cron job) exists and read ITS logs.
+
+## 18. Patch 0028: the per-map panel tells the truth (Elo lean + calibration note)
+
+    git am patches/0028-*.patch
+    python -m pytest                 # expect 114 passed
+    cd frontend && npm test && cd .. # expect 5 pass
+    git push
+
+Why: LOG entry 37. The identical per-map percentages were correct model
+output, not a fallback bug — a step-function calibrator snapping a
+sub-point per-map spread onto one output level. This patch changes the
+DISPLAY only: the serving payload gains `per_map_elo` (each pool map's
+Elo lean, the model's own per-map input) and the panel explains the
+calibration step in plain language. No model change, no behavior-rev
+bump, nothing written to the ledger.
+
+After Render's next refresh cycle (up to 6 h post-deploy), match pages
+grow an Elo lean beside each map, e.g. `+135 Elo` on Split while every
+probability still reads the same number — that pairing IS the finding.
+The note appears immediately; the chips wait for the first re-predict
+because the seed JSON predates the field.
+
+Pre-registered, NOT in this patch (ASSUMPTIONS §21): a smooth monotone
+calibration candidate joins the menu next model round, selected by the
+standard validation rule, with a BUNDLE_BEHAVIOR_REV bump so the deploy
+retrains once. Do not hand-swap the calibrator before then.

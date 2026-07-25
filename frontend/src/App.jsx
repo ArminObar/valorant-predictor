@@ -502,15 +502,34 @@ function MatchDetail({ id, onBack }) {
           <p className="note">
             The model predicts one map at a time; the headline number
             averages these over the current map pool (the veto isn't known
-            when the prediction locks).
+            when the prediction locks). Probabilities then pass through a
+            calibration step that maps raw scores onto a small set of
+            levels learned from held-out results, so maps with close raw
+            scores often display the same number. The Elo lean is each
+            map's own strength signal going into the model; it stays
+            visible even when the calibrated numbers tie.
+            {data.ledger ? " The headline above is the frozen public"
+              + " call; the numbers below are the current model's live"
+              + " view and can differ from it." : ""}
           </p>
-          {Object.entries(pred.per_map).map(([m, v]) => (
-            <div className="permap" key={m}>
-              <span className="permap-name">{m}</span>
-              <TugBar p={v} />
-              <span className="permap-num">{fmtPct(v)}</span>
-            </div>
-          ))}
+          {Object.entries(pred.per_map).map(([m, v]) => {
+            const lean = pred.per_map_elo?.[m];
+            return (
+              <div className="permap" key={m}>
+                <span className="permap-name">{m}</span>
+                <span className="permap-elo"
+                  title={lean == null ? undefined
+                    : `Map-specific Elo edge for ${src.team1_name} on ${m} `
+                      + `(negative favours ${src.team2_name}). This is the `
+                      + `model's per-map input, before calibration.`}>
+                  {lean == null ? "" :
+                    `${lean > 0 ? "+" : ""}${Math.round(lean)} Elo`}
+                </span>
+                <TugBar p={v} />
+                <span className="permap-num">{fmtPct(v)}</span>
+              </div>
+            );
+          })}
           {pred.maps_dist && (
             <p className="note">
               Expected series length: {Object.entries(pred.maps_dist)

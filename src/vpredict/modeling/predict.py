@@ -105,6 +105,14 @@ def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
             X[c] = 0.0
     X = X[feature_names]
     p_maps = predict_calibrated(bundle, X)
+    # Per-map Elo lean (feature-K, map-effective blend): the model's own
+    # per-map input, surfaced so the UI can show map-specific signal even
+    # when the isotonic calibrator snaps nearby raw scores onto one output
+    # level and every pool map displays the same probability (LOG entry
+    # 37). Display-only; never written to the ledger.
+    per_map_elo = {m: round(float(e_feat["maps"][m][0] - e_feat["maps"][m][1]),
+                            1)
+                   for m in kept_maps}
     p_map_mean = float(p_maps.mean())
     dist = sr.series_outcome_dist([p_map_mean] * int(um.best_of))
     p_model = dist["p_win"]
@@ -122,6 +130,7 @@ def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
         "maps_dist": {str(k): round(v, 4)
                       for k, v in sorted(dist["maps_dist"].items())},
         "per_map": {m: round(float(p), 4) for m, p in zip(kept_maps, p_maps)},
+        "per_map_elo": per_map_elo,
         "pool": pool, "low_history": low_history,
         "model_version": bundle.get("version", "unknown"),
     }

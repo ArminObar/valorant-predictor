@@ -968,3 +968,61 @@ production — the test now asserts the vpredict tree emits regardless of
 the runner. The retrain gap: every trigger test fed the trigger exactly
 the conditions it checked; nobody wrote "the world changed and the bundle
 didn't" until the world did.
+
+## Entry 37 — Seven maps, one number: the per-map panel was honest, quantized, and unreadable (2026-07-25)
+
+**Symptom.** Live per-map probabilities showed one identical value across
+the entire 7-map pool (61.3% on every map of Nongshim RedForce vs Global
+Esports, match 698897) despite map-specific Elo being a real trained
+feature. Suspected: the per-map path silently falling back to the series
+number.
+
+**Cause — three compounding real properties, zero wiring bugs.** The
+per-map path is correct: one feature row per pool map, that map's one-hot
+set, `map_elo_diff` from the per-map Elo blend, payload written from the
+per-row outputs (never from `p_model` — the live series number reads
+0.6671, the exact Bo3 DP of 0.6134, which the fallback hypothesis cannot
+produce). What actually happens in the shipped LR(C=0.03)+isotonic
+bundle: (1) swap augmentation forces every symmetric-invariant feature to
+exactly zero weight in a linear model — all 11 map dummies, best_of,
+playoff, hist_min carry coefficients of 0.00000, by mathematical
+necessity; (2) the one surviving map-varying input, `map_elo_diff`, is
+crushed by C=0.03 to 0.000254 log-odds per Elo point (it is collinear
+with `elo_diff` at r≈+0.96, so L2 gives it almost nothing) — real
+per-map Elo edges of +27 to +176 move the raw probability by under one
+point; (3) the isotonic calibrator is a step function with ~18 output
+levels whose plateaus near 0.6 are 1.9–5.5 points wide, so the whole
+per-map spread lands inside one plateau and every map snaps to the same
+published value. 0.6134 is literally one of the calibrator's output
+levels. Reproduced end-to-end on the seed store (all seven maps → 0.6381,
+the adjacent plateau; Render's topped-up store sits one plateau lower).
+`maps_dist` is consistent by construction — it is the exact Bo-N
+distribution of the uniform pool MEAN of the same calibrated per-map
+probabilities, so there is no second path to corrupt; totals EV reads the
+frozen ledger and stays excluded pending the independence fix, which
+dwarfs plateau granularity anyway. No scored number is affected:
+grading uses frozen `p_model`/`p_elo`; `per_map` is display-only.
+
+**Fix (this patch) — display honesty, model untouched.** The payload now
+carries `per_map_elo`, each pool map's Elo lean from the same feature-K
+snapshot the feature row consumes, and the UI shows it beside each map
+with a plain-language note that calibrated probabilities land on a small
+set of learned levels and can tie. When the headline is a frozen ledger
+row, the panel says the per-map numbers are the current model's live
+view. No model change, no BUNDLE_BEHAVIOR_REV bump. Pre-registered
+instead of hot-fixed: a smooth monotone calibration candidate enters the
+calibration menu next model round under the standard validation
+selection (ASSUMPTIONS §21) — overriding isotonic for cosmetics would
+violate the selection policy. The LR capacity limit (no map
+interactions; per-map effects enter only through one crushed
+coefficient) is logged as future work in the same section.
+
+**Why testing missed it.** Tests assert the wiring — distinct features
+in, payload written from per-row outputs — and the wiring is correct.
+"Per-map outputs are distinct" was never asserted because it is not a
+valid invariant: a step calibrator may legitimately tie any number of
+maps. Nothing false was ever computed, so no assertion could have
+failed. The new contract test pins what IS invariant: `per_map_elo`
+matches the snapshot the features consume and varies when history is
+map-dependent, so the UI always has real per-map signal to show however
+the calibrator quantizes.
