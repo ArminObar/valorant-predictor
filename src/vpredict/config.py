@@ -74,6 +74,12 @@ BUNDLE_BEHAVIOR_REV = 4
 # rounding — a probability of exactly 0.0000 or 1.0000 is an evidentially
 # indefensible claim and breaks log-loss accounting.
 PROB_DECIMALS = 4
+# Public-API rate limit, per client IP, sliding 60 s window. 0
+# disables. Env override VPREDICT_RATE_LIMIT_PER_MIN for ops tuning
+# without a deploy. Sized for humans and honest dashboards, not
+# scrapers: the heaviest endpoint costs ~1 s warm.
+RATE_LIMIT_PER_MIN = int(os.environ.get(
+    "VPREDICT_RATE_LIMIT_PER_MIN", "120"))
 # Match-detail rating chart: points per team (last N completed
 # matches before the predicted match's start; same eligibility rule
 # as every other as-of surface). Display context only.

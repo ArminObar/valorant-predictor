@@ -583,3 +583,21 @@ the store up. Detail clicks: 16-19 s before; 3.1 s on the first click
 after a store change; 0.85 s warm. Chart numbers unchanged to the
 decimal. After deploy, click any match page twice and feel the second
 one.
+
+## 29. Patch 0039: security hardening
+
+    git am patches/0039-*.patch
+    python -m pytest                 # expect 137 passed
+    cd frontend && npm ci && npm test && cd ..   # expect 8 pass (vite bumped)
+    git push
+
+What changes: wide-open CORS removed (no cross-origin consumer exists;
+dev proxies /api), per-IP rate limiting on /api (120/min default,
+VPREDICT_RATE_LIMIT_PER_MIN to tune, 0 disables), security headers
+with a CSP on every response, a bytes-wise timing-safe ingest compare,
+a match-id input guard, a generic 500 handler that logs tracebacks
+server-side only, and vite bumped 5 -> 8 to clear the dev-chain
+esbuild advisories (npm audit now reports zero). Run `npm ci` once
+after applying so your lockfile-installed vite matches. If you ever
+need to loosen the limiter during a traffic spike of your own making,
+set VPREDICT_RATE_LIMIT_PER_MIN on Render rather than editing code.

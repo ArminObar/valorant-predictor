@@ -1151,3 +1151,49 @@ headroom; the refresh cycle's own streaming paths are unchanged.
 **Scope stops at the approved brief.** The warm click's remaining
 0.85 s is the team-history streaming pass; caching it too was not
 approved and is left as recorded future work rather than smuggled in.
+
+## 31. Security hardening — audit decisions (2026-07-26 session)
+
+Findings and the calls made, per the owner's audit list:
+
+**CORS: removed, not scoped.** The middleware allowed every origin,
+method, and header. But no legitimate cross-origin consumer exists: the
+frontend is served same-origin by this app and the dev server proxies
+/api (vite.config.js). Removing the middleware entirely is stricter
+than any allowlist and costs nothing; a future consumer gets an
+explicit origin list, never "*".
+
+**Rate limiting: in-memory sliding window, per client IP, /api only.**
+120/min default (config RATE_LIMIT_PER_MIN, env-overridable, 0
+disables), 429 + Retry-After. In-memory on purpose: single-process
+service, limiter state is worthless across deploys, and a distinct-IP
+cap bounds the table under address-spoofing floods. Client IP from the
+first X-Forwarded-For hop, which Render sets at its TLS edge.
+
+**Headers.** nosniff, DENY framing, strict referrer, minimal
+Permissions-Policy, and a CSP with scripts locked to 'self'.
+'unsafe-inline' is granted to STYLES only, because React style
+attributes drive the tug and lean bars; the trade is recorded rather
+than silently taken (inline scripts remain blocked, which is the part
+that matters for XSS).
+
+**Ingest guard.** Already timing-safe (hmac.compare_digest) and already
+opaque on failure; hardened to byte-wise comparison so no header value
+the transport can deliver raises, and covered by tests including
+oversized tokens.
+
+**Input surface.** match_id is the only free-form parameter; it never
+reaches SQL (parameterized reads, python-side compares) or the
+filesystem; it now gets a length/printability guard returning a clean
+400. Unhandled exceptions anywhere return a generic 500 with the
+traceback logged server-side only.
+
+**Dependencies.** pip-audit: zero known vulnerabilities across project
+dependencies (the only hit was the sandbox's own pip). npm audit: two
+advisories, both confined to the dev-server chain via old esbuild;
+fixed by bumping vite 5 -> 8, after which audit is clean, tests pass,
+and the production build succeeds.
+
+**Static exposure.** The only mount serves the built frontend
+directory; the data disk is never mounted; traversal and direct-path
+probes are pinned by test to 404 without leaking bytes.

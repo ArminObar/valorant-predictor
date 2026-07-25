@@ -30,7 +30,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from vpredict.frontend_locate import locate_frontend_dist
@@ -76,8 +75,66 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
     dist = locate_frontend_dist()
 
     app = FastAPI(title="vpredict", version="0.1.0")
-    app.add_middleware(CORSMiddleware, allow_origins=["*"],
-                       allow_methods=["*"], allow_headers=["*"])
+    # No CORS middleware on purpose: the frontend is served same-origin by
+    # this app, and the dev server proxies /api (vite.config.js), so no
+    # cross-origin consumer exists. Browsers therefore refuse cross-site
+    # reads by default, which is the scoped policy. If one is ever needed,
+    # add an explicit allow_origins list, never "*".
+
+    limit_per_min = config.RATE_LIMIT_PER_MIN
+    _hits: dict[str, list[float]] = {}
+
+    @app.middleware("http")
+    async def _rate_limit(request: Request, call_next):
+        """Sliding 60 s window per client IP, /api only. In-memory on
+        purpose: single-process service, resets on deploy, no state worth
+        persisting. Render terminates TLS and sets X-Forwarded-For; the
+        first hop is the client."""
+        if limit_per_min and request.url.path.startswith("/api"):
+            ip = (request.headers.get("x-forwarded-for", "").split(",")[0]
+                  .strip() or (request.client.host if request.client
+                               else "?"))
+            now = time.monotonic()
+            q = _hits.setdefault(ip, [])
+            cutoff = now - 60.0
+            while q and q[0] < cutoff:
+                q.pop(0)
+            if len(q) >= limit_per_min:
+                return JSONResponse({"error": "rate limited"},
+                                    status_code=429,
+                                    headers={"Retry-After": "60"})
+            q.append(now)
+            if len(_hits) > 10_000:      # abuse guard: bound the table
+                _hits.clear()
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        resp = await call_next(request)
+        h = resp.headers
+        h.setdefault("X-Content-Type-Options", "nosniff")
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        h.setdefault("Permissions-Policy",
+                     "camera=(), microphone=(), geolocation=()")
+        # 'unsafe-inline' for styles only: React style attributes (the tug
+        # bar and lean bars are width-styled inline). Scripts stay 'self'.
+        h.setdefault("Content-Security-Policy",
+                     "default-src 'self'; script-src 'self'; "
+                     "style-src 'self' 'unsafe-inline' "
+                     "https://fonts.googleapis.com; "
+                     "font-src https://fonts.gstatic.com; "
+                     "img-src 'self' data:; connect-src 'self'; "
+                     "object-src 'none'; frame-ancestors 'none'; "
+                     "base-uri 'self'; form-action 'self'")
+        return resp
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        """Generic 500: full traceback server-side, nothing to the client."""
+        log.exception("unhandled error on %s %s", request.method,
+                      request.url.path)
+        return JSONResponse({"error": "internal error"}, status_code=500)
 
     @app.get("/api/health")
     def health() -> dict:
@@ -127,7 +184,10 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                                  "VPREDICT_INGEST_TOKEN not set"},
                                 status_code=503)
         got = request.headers.get("authorization", "")
-        if not hmac.compare_digest(got, f"Bearer {token}"):
+        # Bytes on both sides: timing-safe AND total — compare_digest on
+        # str raises for non-ASCII, and the header is attacker-controlled.
+        if not hmac.compare_digest(got.encode("utf-8"),
+                                   f"Bearer {token}".encode("utf-8")):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         body = await request.body()
         if len(body) > 5_000_000:
@@ -201,6 +261,10 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         the record), any market picks, and both teams' recent completed
         results for context. Reads the same artifacts the other endpoints
         serve; the team-history part streams the store once."""
+        if (not match_id.strip() or len(match_id) > 64
+                or not match_id.isprintable()):
+            return JSONResponse({"error": "invalid match id"},
+                                status_code=400)
         out: dict = {"match_id": match_id, "prediction": None,
                      "ledger": None, "picks": [], "team_history": {}}
         if predictions_json.exists():
