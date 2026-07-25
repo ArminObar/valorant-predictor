@@ -393,3 +393,29 @@ Pre-registered, NOT in this patch (ASSUMPTIONS §21): a smooth monotone
 calibration candidate joins the menu next model round, selected by the
 standard validation rule, with a BUNDLE_BEHAVIOR_REV bump so the deploy
 retrains once. Do not hand-swap the calibrator before then.
+
+## 19. Patch 0029: the recent-window numbers become a served, sourced artifact
+
+    git am patches/0029-*.patch
+    python -m pytest                 # expect 118 passed
+    python scripts/evaluate.py       # regenerates results.md + results_summary.json
+
+evaluate.py now writes `data/reports/results_summary.json` from the SAME
+in-scope variables that fill the markdown tables — the JSON cannot say
+anything results.md does not. New endpoints mirror the markets/backtest
+pattern exactly: `GET /api/results` serves
+`data/processed/results_summary.json` (empty shape until first publish),
+`POST /api/ingest/results` is Bearer-token gated with the token you
+already use for publish_markets.py.
+
+Publish order matters — the ingest endpoint must be deployed first:
+
+    git push                         # deploy (with 0030 applied too)
+    # wait for Render deploy to finish, then:
+    python scripts/publish_results.py   # needs VPREDICT_INGEST_TOKEN exported
+
+`publish_results.py` never computes a number: it validates (refusing
+anything synthetic-watermarked or structurally incomplete), copies to
+data/processed/, and POSTs. Re-running evaluate.py before publishing
+reproduces tonight's fresh numbers as long as the local store hasn't
+topped up since; whatever it prints is what the site will show.

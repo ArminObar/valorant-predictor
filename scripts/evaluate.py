@@ -18,6 +18,7 @@ No data -> the script says so and exits; it never invents numbers.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -577,8 +578,65 @@ def main() -> int:
         L += ["**Every number above comes from a seeded simulator. It proves the",
               "pipeline runs end to end; it says nothing about real Valorant.**", ""]
     (reports / "results.md").write_text("\n".join(L), encoding="utf-8")
+
+    # Machine-readable summary for the site's recent-window panel — built
+    # from the SAME in-scope arrays the tables above formatted, so the
+    # JSON cannot say anything the markdown does not. Consumed by
+    # scripts/publish_results.py -> /api/ingest/results -> /api/results;
+    # validate_summary (vpredict.evaluation.results_summary) refuses
+    # synthetic or structurally incomplete artifacts at publish time.
+    def _mblock(y_true, p) -> dict:
+        return {"log_loss": float(ll(y_true, p)),
+                "brier": _brier(y_true, p),
+                "accuracy": float(accuracy_score(y_true, p >= 0.5))}
+
+    summary = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source": "scripts/evaluate.py",
+        "synthetic": synthetic,
+        "banner": banner or None,
+        "store": {"n_matches_usable": n_matches,
+                  "n_map_rows": int(len(fs.X)),
+                  "window": [f"{meta['start_ts'].min():%Y-%m-%d}",
+                             f"{meta['start_ts'].max():%Y-%m-%d}"]},
+        "split": {"n_matches": {k: int(v)
+                                for k, v in b["n_matches"].items()},
+                  "train_end": f"{b['train_end']:%Y-%m-%d}",
+                  "val_end": f"{b['val_end']:%Y-%m-%d}"},
+        "selected": {"name": sel["name"], "calibration": sel["cal_name"],
+                     # dead-heat visibility: the single-shot candidate
+                     # gap travels with the artifact (MODEL_CARD,
+                     # Selection stability), so a machine-noise family
+                     # flip can never hide behind a headline.
+                     "candidate_val_ll": {
+                         k: float(v) for k, v in sorted(
+                             sel.get("candidate_val_ll", {}).items())}},
+        "params": {"half_life_days": float(args.half_life),
+                   "roster_factor": float(args.roster_factor),
+                   "feature_elo_k": float(config.DEFAULT_ELO_K),
+                   "baseline_elo_k": float(best_k)},
+        "map": {"n_rows": int(te.sum()),
+                "model": _mblock(y[te], p_model[te]),
+                "elo": _mblock(y[te], p_elo[te]),
+                "ece": _ece(y[te], p_model[te])},
+        "series": {"n": int(len(m_y)),
+                   "model": _mblock(m_y, m_pm),
+                   "elo": _mblock(m_y, m_pe),
+                   "ece": _ece(m_y, m_pm, 6)},
+        "per_tier": [
+            {"tier": t, "n_map_rows": int(n),
+             "model_ll": None if mll is None else float(mll),
+             "model_acc": None if macc is None else float(macc),
+             "elo_ll": None if ell_ is None else float(ell_),
+             "elo_acc": None if eacc is None else float(eacc)}
+            for t, n, mll, macc, ell_, eacc in tier_rows],
+    }
+    summary_path = reports / "results_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=1), encoding="utf-8")
+
     print("\n".join(L))
-    print(f"\nwrote {reports/'results.md'} and {cal_png}")
+    print(f"\nwrote {reports/'results.md'}, {summary_path.name} and "
+          f"{cal_png}")
     return 0
 
 

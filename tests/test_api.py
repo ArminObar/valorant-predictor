@@ -113,3 +113,35 @@ def test_match_detail_placeholder_never_renders_as_result(tmp_path, monkeypatch)
     r = c.get("/api/match/ph1").json()
     assert r["placeholder"] is True
     assert r["team_history"] == {}
+
+
+def test_results_endpoint_empty_then_ingest_roundtrip(tmp_path, monkeypatch):
+    """Mirror of the markets/backtest ingest contract for /api/results:
+    empty-but-shaped before first publish, Bearer-token gated, served
+    verbatim after."""
+    monkeypatch.setenv("VPREDICT_INGEST_TOKEN", "s3cret")
+    c = _client(tmp_path)
+    empty = c.get("/api/results").json()
+    assert empty["generated_at"] is None and empty["per_tier"] == []
+
+    report = {"generated_at": "2026-07-25T00:00:00+00:00",
+              "source": "scripts/evaluate.py", "synthetic": False,
+              "store": {"n_matches_usable": 10}, "split": {},
+              "selected": {"name": "lr", "calibration": "platt"},
+              "map": {"n_rows": 40,
+                      "model": {"log_loss": 0.66, "accuracy": 0.60},
+                      "elo": {"log_loss": 0.67, "accuracy": 0.59}},
+              "series": {"n": 10,
+                         "model": {"log_loss": 0.65, "accuracy": 0.62},
+                         "elo": {"log_loss": 0.66, "accuracy": 0.61}},
+              "per_tier": [{"tier": "tier1", "n_map_rows": 40}]}
+    assert c.post("/api/ingest/results", json=report).status_code == 401
+    assert c.post("/api/ingest/results", json=report,
+                  headers={"Authorization": "Bearer wrong"}
+                  ).status_code == 401
+    ok = c.post("/api/ingest/results", json=report,
+                headers={"Authorization": "Bearer s3cret"})
+    assert ok.status_code == 200
+    got = c.get("/api/results").json()
+    assert got["series"]["model"]["log_loss"] == 0.65
+    assert got["per_tier"][0]["tier"] == "tier1"

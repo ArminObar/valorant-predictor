@@ -4,6 +4,7 @@ Endpoints:
   GET /api/health      liveness + model version if a bundle exists
   GET /api/upcoming    latest pre-match predictions (as published to the ledger)
   GET /api/scoreboard  graded ledger rows + rolling model-vs-Elo metrics
+  GET /api/results     recent-window evaluation summary (publish_results.py)
   GET /api/model       bundle metadata (never the fitted objects)
   /                    the built frontend (frontend/dist), if present
 
@@ -177,6 +178,21 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
     @app.post("/api/ingest/backtest")
     async def ingest_backtest(request: Request) -> JSONResponse:
         return await _ingest(request, "backtest.json", "per_tier")
+
+    @app.get("/api/results")
+    def results() -> JSONResponse:
+        """Recent-window evaluation summary (both grains + per tier),
+        produced only by scripts/evaluate.py and moved here by
+        scripts/publish_results.py. Empty shape until first publish."""
+        path = data_dir / "processed" / "results_summary.json"
+        if path.exists():
+            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+        return JSONResponse({"generated_at": None, "source": None,
+                             "map": None, "series": None, "per_tier": []})
+
+    @app.post("/api/ingest/results")
+    async def ingest_results(request: Request) -> JSONResponse:
+        return await _ingest(request, "results_summary.json", "series")
 
     @app.get("/api/match/{match_id}")
     def match_detail(match_id: str) -> JSONResponse:
