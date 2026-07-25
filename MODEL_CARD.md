@@ -8,7 +8,12 @@
   calibration, retained by the production selection policy: rolling-origin
   family scores with one-paired-SE champion/challenger hysteresis over a
   gated menu (LR always; regularized LightGBM admitted at ≥500 usable
-  matches; no neural networks by project scope; `LOG.md` entry 28). On the
+  matches; no neural networks by project scope; `LOG.md` entry 28), then
+  calibrated on validation by the best of three candidates — Platt, step
+  isotonic, and smooth (PCHIP-interpolated) isotonic, the latter two
+  admitted at ≥800 validation rows — by validation log loss, with every
+  candidate's score stamped into the bundle (`calibration_val_ll`,
+  behavior rev 4; `ASSUMPTIONS.md` §21). On the
   current (timezone-corrected) data the single-shot LR-vs-LightGBM
   comparison is a numerical dead heat — candidate validation log losses
   differ by 8e-5 (printed in the results header) — so which family a
@@ -132,8 +137,11 @@ third-decimal. Every figure regenerates from `scripts/evaluate.py`.
   alone is light). See the deploy notes.
 - **Uniform pool weights.** Upcoming-match series probabilities average the
   current 7-map pool uniformly; team pick/ban tendencies are not modeled.
-- **Calibrated outputs are piecewise constant.** Isotonic calibration is
-  a step function (a few dozen output levels on current data). The
+- **Calibrated outputs are piecewise constant whenever step isotonic
+  wins selection.** Step isotonic is a step function (a few dozen output
+  levels on current data); a smooth monotone candidate now competes in
+  the calibration menu under the standard validation rule (rev 4), and
+  whichever wins, the decision and margins are in the bundle meta. The
   per-map spread under the shipped linear model is often narrower than
   one step — swap augmentation zeroes map-identity coefficients exactly,
   and heavy L2 with `elo_diff` collinearity crushes `map_elo_diff` — so

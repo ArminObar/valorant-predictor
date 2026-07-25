@@ -47,7 +47,7 @@ def test_isotonic_plateaus_are_bounded():
 def test_fit_calibrator_selection_respects_bounds():
     p_val = np.array([0.2, 0.3, 0.7, 0.8] * 3)
     y_val = np.array([0, 0, 1, 1] * 3)
-    _, cal = fit_calibrator(p_val, y_val)
+    _, cal, _ = fit_calibrator(p_val, y_val)
     out = cal.transform(np.array([1e-9, 0.5, 1 - 1e-9]))
     assert out.min() >= LO and out.max() <= HI
 

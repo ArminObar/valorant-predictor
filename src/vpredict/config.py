@@ -65,8 +65,10 @@ CAL_OUTPUT_CLIP = 0.005
 # this number, retraining exactly once when a deploy carries a rev the
 # serving bundle predates (same converge-once pattern as LOG entry 26).
 # rev 2 = calibrated-output clip + publish clamp (LOG entry 32);
-# rev 3 = stand-in features (§19) + deploy-retrain trigger (LOG entry 36).
-BUNDLE_BEHAVIOR_REV = 3
+# rev 3 = stand-in features (§19) + deploy-retrain trigger (LOG entry 36);
+# rev 4 = smooth-isotonic calibration candidate in the menu (§21 option B,
+#         LOG entry 37) — output shape can change if it wins selection.
+BUNDLE_BEHAVIOR_REV = 4
 # Published probabilities (ledger, upcoming JSON, backtest rows) are rounded
 # to this many decimals and then clamped inside (0, 1) by one ulp of that
 # rounding — a probability of exactly 0.0000 or 1.0000 is an evidentially

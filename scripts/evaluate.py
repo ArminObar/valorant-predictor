@@ -401,6 +401,10 @@ def main() -> int:
           f"- Candidate val map LL: " + ", ".join(
               f"{k}: {v:.5f}" for k, v in
               sorted(sel.get("candidate_val_ll", {}).items())),
+          f"- Calibration val LL: " + ", ".join(
+              f"{k}: {v:.5f}" for k, v in
+              sorted(sel.get("calibration_val_ll", {}).items())) +
+          f" (selected: {sel['cal_name']})",
           f"- Feature params: half_life={args.half_life}d, roster_factor={args.roster_factor}, "
           f"feature Elo K={config.DEFAULT_ELO_K}",
           f"- Tier B columns dropped: {fs.dropped_tier_b or 'none'}",
@@ -610,7 +614,10 @@ def main() -> int:
                      # flip can never hide behind a headline.
                      "candidate_val_ll": {
                          k: float(v) for k, v in sorted(
-                             sel.get("candidate_val_ll", {}).items())}},
+                             sel.get("candidate_val_ll", {}).items())},
+                     "calibration_val_ll": {
+                         k: float(v) for k, v in sorted(
+                             sel.get("calibration_val_ll", {}).items())}},
         "params": {"half_life_days": float(args.half_life),
                    "roster_factor": float(args.roster_factor),
                    "feature_elo_k": float(config.DEFAULT_ELO_K),

@@ -953,3 +953,57 @@ the accent color. `prefers-reduced-motion` disables the animation and
 the lifts wholesale. Explicitly out of scope and untouched: every word
 of copy, every number, every honest-disclosure sentence, all layout
 structure.
+
+## 25. Smooth calibrator lands in the menu — §21 option B executed (2026-07-25, late)
+
+Implementation decisions, all inside the pre-registered frame:
+
+**The candidate.** `SmoothIsotonicCalibrator`: fit the identical sklearn
+isotonic, collapse it to one knot per plateau (mean input, level output),
+join the knots with scipy's PCHIP — monotone by construction through
+monotone knots — hold the end levels outside the knot span exactly as
+`out_of_bounds="clip"` does, and bound the output with the same
+`CAL_OUTPUT_CLIP` as every other calibrator. Fewer than two plateaus
+means nothing to interpolate, so it degrades to the step. The scipy
+interpolant is rebuilt per call so no scipy object is ever pickled into
+a bundle.
+
+**Same admission gate as step isotonic (≥800 validation rows)**, because
+it is derived from the identical isotonic fit; giving it a different
+gate would make the comparison unfair in either direction.
+
+**Selection stays the standard rule, and the decision now travels.**
+`fit_calibrator` returns every candidate's validation log loss; the
+scores land in the bundle meta (`calibration_val_ll`, visible at
+`/api/model`), the results header, and `results_summary.json`. Whether
+smooth wins or loses must be readable, never asserted — the tests pin
+the candidate's properties (monotone, midpoint-exact, smoother than the
+step, bounded, degenerate-safe) and deliberately do not pin a winner.
+
+**Behavior rev 3 → 4**, because the menu change can change output shape
+if the new candidate wins: the deploy retrains once via the existing
+trigger, and the version hash moves.
+
+**Backtest re-run policy under run-once.** The rev-4 retrain changes the
+bundle version, which makes `scripts/backtest.py --replace` legal. The
+discipline is about the definition AS EXECUTED: if the retrain selects
+`smooth_isotonic`, serving output changed and a labeled `--replace
+--push` re-run is warranted (prior result archives automatically); if
+step isotonic is retained, the executed definition is unchanged, the
+re-run would be a plain-retrain replay, and it should be skipped — with
+this section as the recorded reason either way.
+
+**First measurement (sandbox, seed store, recorded before the owner's
+binding retrain).** Calibration validation log losses under the
+production selector (LR incumbent retained): platt 0.65924, isotonic
+0.65073, smooth_isotonic 0.65996 — the step wins by a real margin and
+the smooth candidate ships nowhere. One structural caveat rides with
+that number: every calibrator is FITTED and SCORED on the same
+validation window (the documented triple-duty compromise, §5), and
+smoothing removes exactly the flexibility that lets the step mold
+itself to that window, so this protocol is expected to favor the step
+even when the smooth variant would generalize as well or better. The
+right test of that hypothesis is the already-noted protocol refinement
+(a separate calibration slice, or out-of-fold scoring inside
+validation); until that lands, the validation rule stands and so does
+its verdict.

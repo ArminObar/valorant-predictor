@@ -73,12 +73,69 @@ class IsotonicCalibrator:
                        config.CAL_OUTPUT_CLIP, 1 - config.CAL_OUTPUT_CLIP)
 
 
+class SmoothIsotonicCalibrator:
+    """Isotonic's plateau midpoints joined by a monotone PCHIP curve
+    (ASSUMPTIONS §21, option B). Keeps the step function's shape while
+    removing the output quantization that ties nearby inputs to one
+    published level (LOG entry 37). Derived from the identical isotonic
+    fit, so it shares isotonic's admission gate; with fewer than two
+    plateaus there is nothing to interpolate and it behaves as the step.
+    Picklable: stores knot arrays plus the fitted sklearn isotonic; the
+    scipy interpolant is rebuilt per call (microseconds) so no scipy
+    object ever enters the bundle."""
+
+    name = "smooth_isotonic"
+
+    def fit(self, p_val: np.ndarray,
+            y_val: np.ndarray) -> "SmoothIsotonicCalibrator":
+        self._iso = IsotonicRegression(out_of_bounds="clip").fit(p_val, y_val)
+        x = np.asarray(p_val, dtype=float)
+        yhat = self._iso.predict(x)
+        order = np.argsort(x, kind="stable")
+        xs, ys = x[order], yhat[order]
+        mx, my = [], []
+        i = 0
+        while i < len(ys):                    # one knot per plateau:
+            j = i                             # (mean input, level output)
+            while j < len(ys) and ys[j] == ys[i]:
+                j += 1
+            mx.append(float(xs[i:j].mean()))
+            my.append(float(ys[i]))
+            i = j
+        self._mx, self._my = np.asarray(mx), np.asarray(my)
+        return self
+
+    def transform(self, p: np.ndarray) -> np.ndarray:
+        p = np.asarray(p, dtype=float)
+        if len(self._mx) < 2:                 # degenerate fit: be the step
+            out = self._iso.predict(p)
+        else:
+            from scipy.interpolate import PchipInterpolator
+            f = PchipInterpolator(self._mx, self._my, extrapolate=False)
+            out = np.asarray(f(p), dtype=float)
+            # Outside the knot span, hold the end plateau values — the
+            # same behavior as isotonic's out_of_bounds="clip".
+            out = np.where(p <= self._mx[0], self._my[0], out)
+            out = np.where(p >= self._mx[-1], self._my[-1], out)
+        # Same bound, same reason as the other two calibrators (LOG 31/32).
+        return np.clip(out, config.CAL_OUTPUT_CLIP,
+                       1 - config.CAL_OUTPUT_CLIP)
+
+
 def fit_calibrator(p_val: np.ndarray, y_val: np.ndarray):
+    """Platt always; both isotonic variants once validation is large
+    enough (the smooth one derives from the identical isotonic fit, so it
+    shares the gate). Best by validation log loss — the standard rule,
+    ASSUMPTIONS §21: the winner ships, cosmetics never override. Returns
+    (name, calibrator, {candidate: val_ll}) so the decision travels with
+    the bundle and the report."""
     cands = [PlattCalibrator().fit(p_val, y_val)]
     if len(y_val) >= ISOTONIC_MIN_VAL:
         cands.append(IsotonicCalibrator().fit(p_val, y_val))
-    best = min(cands, key=lambda c: ll(y_val, c.transform(p_val)))
-    return best.name, best
+        cands.append(SmoothIsotonicCalibrator().fit(p_val, y_val))
+    scores = {c.name: round(ll(y_val, c.transform(p_val)), 5) for c in cands}
+    best = min(cands, key=lambda c: scores[c.name])
+    return best.name, best, scores
 
 
 # --------------------------------------------------------------------------- candidates
@@ -224,10 +281,14 @@ def select_model(X_tr, y_tr, X_val, y_val, n_train_matches: int,
         cands.append(fit_lr(X_tr, y_tr, X_val, y_val))
     chosen = min(cands, key=lambda c: c["val_ll"])
     p_val = chosen["model"].predict_proba(X_val)[:, 1]
-    cal_name, cal = fit_calibrator(p_val, np.asarray(y_val))
+    cal_name, cal, cal_scores = fit_calibrator(p_val, np.asarray(y_val))
     return {"model": chosen["model"], "calibrator": cal, "cal_name": cal_name,
             "name": chosen["name"], "gate_note": gate_note,
             "val_ll": chosen["val_ll"],
+            # The calibration decision and its margins ride along too —
+            # §21 pre-registered the smooth candidate, and whether it wins
+            # or loses must be readable, not asserted (LOG entry 37).
+            "calibration_val_ll": cal_scores,
             # Every candidate's validation loss, so reports can show how
             # close the selection was (the LR/LightGBM gap is measured in
             # 1e-5s on current data — a dead heat the reader should see).
@@ -253,6 +314,7 @@ def save_bundle(sel: dict, feature_names: list[str], params: dict,
     bundle = {
         "model": sel["model"], "calibrator": sel["calibrator"],
         "model_name": sel["name"], "cal_name": sel["cal_name"],
+        "calibration_val_ll": sel.get("calibration_val_ll"),
         "feature_names": feature_names, "params": params,
         "version": make_version({**params, "model": sel["name"],
                                  "behavior_rev": config.BUNDLE_BEHAVIOR_REV,

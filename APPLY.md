@@ -476,3 +476,28 @@ tug bar's two-tone split, tables get row hover, badges become pills, and
 keyboard focus is visible everywhere in the accent color. Reduced-motion
 users get none of the movement. No copy, numbers, or disclosure language
 changed — diff the patch to confirm it touches index.css alone.
+
+## 23. Patch 0033: the smooth calibrator competes (§21 option B, rev 4)
+
+    git am patches/0033-*.patch
+    python -m pytest                 # expect 123 passed
+    git push
+
+The deploy carries BUNDLE_BEHAVIOR_REV 4, so the boot cycle retrains
+once ("model definition changed (behavior rev 3 -> 4): retrain once")
+and the new bundle records the whole calibration decision. Read it from
+your Mac after the boot cycle:
+
+    curl -s https://vpredict.onrender.com/api/model | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['version'], d['cal_name'], d['calibration_val_ll'])"
+
+Honesty rules, restated from ASSUMPTIONS §25: whichever calibrator that
+line names is the winner under the standard validation rule on YOUR
+store — do not override it in either direction. If it names
+smooth_isotonic, serving output changed: run the labeled backtest re-run
+(`python scripts/backtest.py --replace --push`; the old result archives
+itself) and re-publish results after your next evaluate. If it names
+isotonic, the executed definition is unchanged: skip the backtest re-run
+(a plain-retrain replay proves nothing) and the per-map ties remain the
+correct, explained behavior. Local sanity first if you like:
+`python scripts/evaluate.py` now prints a "Calibration val LL" line with
+all three candidates.
