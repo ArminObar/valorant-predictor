@@ -1,269 +1,280 @@
+/* ============================================================ vpredict
+   Ground-up stylesheet (patch 0037): the tactical board.
+
+   Direction: the page is a designed surface, not a dark void with
+   floating cards. The backdrop is a tactical map — faint contour
+   rings sweeping from two poles (teal high, ember low) over graph
+   dots; the hero and footer run full-bleed like broadcast bands; a
+   thin two-tone spine anchors the left edge on wide screens; and
+   every panel is an angular clipped-corner plate (the HUD language of
+   the subject) instead of a rounded web card. One motif everywhere:
+   the teal/ember split of a win probability.
+
+   Rewrite, not a fourth append layer: three earlier polish passes had
+   begun overriding each other, and a redesign that must not touch
+   markup, copy, or numbers needs one authoritative sheet. Every class
+   in App.jsx is covered; reduced motion disables all movement.
+   ==================================================================== */
+
 :root {
-  --bg: #0e141b;
-  --panel: #151d26;
-  --line: #223041;
-  --text: #e8edf2;
-  --dim: #7c8b9d;
+  --bg0: #090e15;
+  --panel: #131b26;
+  --panel-hi: #182233;
+  --line: #24354a;
+  --line-soft: #1c2a3b;
+  --text: #e9eef4;
+  --dim: #8da0b5;
   --a: #37b3a8;      /* team A / model accent (teal) */
   --b: #e06a4e;      /* team B accent (ember) */
   --warn: #e0b14e;
+  --cut: 14px;       /* clipped-corner depth of every plate */
 }
 
 * { box-sizing: border-box; }
+
+/* ---- the board itself: contours over graph dots over a cold wash ---- */
 body {
   margin: 0;
-  background:
-    radial-gradient(1200px 500px at 70% -10%, #16222e 0%, transparent 60%),
-    var(--bg);
   color: var(--text);
   font-family: "Inter", system-ui, sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 15.5px;
+  line-height: 1.55;
+  background:
+    radial-gradient(rgba(233, 238, 244, .020) 1px, transparent 1.4px),
+    repeating-radial-gradient(circle at 82% -12%,
+      transparent 0 92px, rgba(55, 179, 168, .030) 92px 93px),
+    repeating-radial-gradient(circle at -6% 108%,
+      transparent 0 124px, rgba(224, 106, 78, .026) 124px 125px),
+    linear-gradient(158deg, #0d1522 0%, #090e15 52%, #0b1119 100%);
+  background-size: 26px 26px, auto, auto, auto;
 }
-.wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+::selection { background: rgba(55, 179, 168, .35); }
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 28px 88px;
+  position: relative; }
+/* the spine: a quiet two-tone rule holding the left margin on wide
+   screens — page architecture, no words */
+@media (min-width: 1160px) {
+  .wrap::before { content: ""; position: fixed; top: 108px; bottom: 96px;
+    left: calc(50vw - 596px); width: 2px; border-radius: 1px; opacity: .5;
+    background: linear-gradient(180deg, var(--a) 0%, transparent 26%,
+      transparent 74%, var(--b) 100%); }
+}
 
 header { margin-bottom: 8px; }
-.logo {
-  font-family: "Rajdhani", sans-serif;
-  font-weight: 700;
-  font-size: 42px;
-  letter-spacing: 0.04em;
-  line-height: 1;
-}
+.logo { font-family: "Rajdhani", sans-serif; font-weight: 700;
+  font-size: 44px; letter-spacing: .03em; line-height: 1; }
 .logo-accent { color: var(--a); }
 .tagline { color: var(--dim); margin-top: 4px; }
 
-nav { display: flex; gap: 8px; margin: 20px 0 24px; border-bottom: 1px solid var(--line); }
-nav button {
-  background: none; border: none; color: var(--dim);
-  font-family: "Rajdhani", sans-serif; font-weight: 600; font-size: 17px;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  padding: 8px 14px; cursor: pointer;
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
-}
-nav button.on { color: var(--text); border-bottom-color: var(--a); }
-nav.intro-links { border-bottom: none; margin: 4px 0 0; }
-nav button:hover { color: var(--text); }
+/* ---------------------------------------------------- full-bleed hero */
+.hero { position: relative; overflow: hidden;
+  width: 100vw; margin: 0 0 34px calc(50% - 50vw);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #0e1724 0%, #0a1119 100%); }
+.hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hero-inner { position: relative; max-width: 1040px; margin: 0 auto;
+  padding: 58px 28px 66px; }
+.hero-logo { font-size: 58px; letter-spacing: .02em; }
+.hero-logo.clickable { cursor: pointer; }
+.hero-logo.clickable:hover { outline: none;
+  text-shadow: 0 0 26px rgba(55, 179, 168, .4); }
+.hero-logo.clickable:focus-visible { outline: 2px solid var(--a);
+  outline-offset: 5px; border-radius: 4px; }
+.hero-tagline { font-size: 17.5px; color: #b9c6d6; margin: 8px 0 20px; }
+.hero-copy { color: var(--dim); font-size: 14.5px; max-width: 660px;
+  margin: 0 0 12px; line-height: 1.6; }
+.hero .intro-links { border-bottom: none; margin: 12px 0 0; }
+.hero-bar { position: absolute; bottom: 26px; left: 50%;
+  transform: translateX(-50%); width: min(984px, calc(100% - 56px));
+  height: 6px; border-radius: 3px; opacity: .55; pointer-events: none;
+  background: linear-gradient(90deg, var(--a) 0%, var(--a) 58%,
+    var(--b) 58%, var(--b) 100%); }
+.hero-bar-notch { position: absolute; left: 58%; top: -8px; width: 2px;
+  height: 22px; background: #e7e2d9; opacity: .6; }
 
-.card {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 10px; padding: 16px 18px; margin-bottom: 14px;
+/* the recent-window stat card + next-up strip live ON the hero band */
+.hero-stats { position: relative; border: 1px solid var(--line);
+  border-radius: 4px; padding: 14px 18px 12px; margin: 6px 0 16px;
+  max-width: 500px; background: rgba(9, 14, 21, .55);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut),
+    100% 100%, 0 100%); }
+.hero-stats-title { font-family: "Rajdhani", sans-serif; font-weight: 600;
+  letter-spacing: .04em; font-size: 14.5px; margin-bottom: 9px; }
+.hero-stats-note { color: var(--dim); font-size: 12.5px; margin: 10px 0 0; }
+.hero-next { position: relative; display: flex; flex-wrap: wrap; gap: 10px;
+  align-items: baseline; border: 1px solid var(--line); border-radius: 4px;
+  padding: 11px 16px; margin: 16px 0 0; font-size: 13.5px;
+  background: rgba(9, 14, 21, .55);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut),
+    100% 100%, 0 100%); }
+@supports (backdrop-filter: blur(2px)) {
+  .hero-stats, .hero-next { background: rgba(9, 14, 21, .42);
+    backdrop-filter: blur(8px) saturate(1.15); }
 }
+.hero-next-label { font-family: "Rajdhani", sans-serif; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .1em; font-size: 12px;
+  color: var(--a); }
+.hero-next-teams { font-weight: 600; }
+.hero-next-prob { color: var(--a); font-variant-numeric: tabular-nums; }
+
+/* -------------------------------------------------------- navigation */
+nav { display: flex; gap: 8px; margin: 20px 0 24px; }
+nav button { background: none; border: none; color: var(--dim);
+  font-family: "Rajdhani", sans-serif; font-weight: 600; font-size: 16px;
+  letter-spacing: .08em; text-transform: uppercase;
+  padding: 8px 14px; cursor: pointer; transition: color .15s ease; }
+nav button:hover { color: var(--text); }
+nav.tabs { display: inline-flex; gap: 4px; padding: 4px;
+  background: rgba(19, 27, 38, .78); border: 1px solid var(--line);
+  border-radius: 4px; margin: 26px 0 30px; }
+nav.tabs button { position: relative; border-radius: 3px;
+  padding: 7px 16px; font-size: 15.5px; letter-spacing: .07em; }
+nav.tabs button.on { background: var(--panel-hi); color: var(--text); }
+nav.tabs button.on::after { content: ""; position: absolute; left: 12px;
+  right: 12px; bottom: 4px; height: 2px; border-radius: 1px;
+  background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
+nav.intro-links { margin: 4px 0 0; }
+nav.intro-links button { border: 1px solid var(--line); border-radius: 3px;
+  padding: 7px 14px; font-size: 14.5px; }
+nav.intro-links button:hover { border-color: #35506e; }
+
+/* --------------------------- the plate system: every panel and card */
+.panel, .card { position: relative; border: 1px solid var(--line);
+  border-radius: 2px; padding: 20px 22px; margin-bottom: 18px;
+  background: linear-gradient(180deg, rgba(233, 238, 244, .035),
+    rgba(233, 238, 244, 0) 46%), var(--panel);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut),
+    100% 100%, 0 100%); }
+/* the notch's diagonal hairline (borders get clipped at the cut) */
+.panel::after, .card::after { content: ""; position: absolute; top: -1px;
+  right: -1px; width: calc(var(--cut) * 1.5); height: 1px;
+  background: var(--line); transform-origin: top right;
+  transform: rotate(-45deg); }
+.card.clickable, .pending-row.clickable, .hero-next.clickable {
+  transition: transform .18s ease, border-color .18s ease,
+    background .18s ease; }
+.card.clickable:hover, .hero-next.clickable:hover { outline: none;
+  transform: translateY(-2px); border-color: #35506e; }
+.card.clickable::before { content: ""; position: absolute; left: 0;
+  top: 12px; bottom: 12px; width: 3px; border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, var(--a), var(--b)); opacity: 0;
+  transform: scaleY(.4); transition: opacity .2s ease, transform .2s ease; }
+.card.clickable:hover::before { opacity: 1; transform: none; }
+.pending-row.clickable:hover { outline: none;
+  background: rgba(233, 238, 244, .03); }
+.clickable { cursor: pointer; }
+
+.panel-title { font-family: "Rajdhani", sans-serif; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; font-size: 13.5px;
+  color: rgba(233, 238, 244, .85); margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px; }
+.panel-title::before { content: ""; flex: 0 0 14px; height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
+.panel-title::after { content: ""; flex: 1; height: 1px;
+  background: var(--line-soft); }
+
+/* ------------------------------------------------------- match cards */
 .card-top { display: flex; justify-content: space-between; gap: 12px;
-  color: var(--dim); font-size: 12.5px; margin-bottom: 10px; }
+  color: var(--dim); font-size: 12.5px; margin-bottom: 10px;
+  letter-spacing: .02em; }
 .event { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .when { flex-shrink: 0; }
-
 .teams { display: flex; align-items: baseline; gap: 12px;
-  font-family: "Rajdhani", sans-serif; font-weight: 600; font-size: 22px; }
+  font-family: "Rajdhani", sans-serif; font-weight: 600; font-size: 24px; }
 .teams .vs { color: var(--dim); font-size: 14px; font-family: "Inter"; }
 .teams .b { margin-left: auto; }
-.team.fav { text-shadow: 0 0 18px rgba(55, 179, 168, 0.35); }
-.team.b.fav { text-shadow: 0 0 18px rgba(224, 106, 78, 0.35); }
+.teams.big .team { font-size: 26px; }
+.team.fav { text-shadow: 0 0 20px rgba(55, 179, 168, .38); }
+.team.b.fav { text-shadow: 0 0 20px rgba(224, 106, 78, .38); }
+.team .dot { display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; vertical-align: 3px; }
+.team.a .dot { margin-right: 9px; background: var(--a);
+  box-shadow: 0 0 10px rgba(55, 179, 168, .55); }
+.team.b .dot { margin-left: 9px; background: var(--b);
+  box-shadow: 0 0 10px rgba(224, 106, 78, .55); }
 
-.tug { position: relative; height: 10px; border-radius: 5px;
+.tug { position: relative; height: 12px; border-radius: 2px;
   background: linear-gradient(90deg, rgba(224,106,78,.25), rgba(224,106,78,.55));
-  margin: 12px 0 8px; overflow: hidden; }
+  margin: 12px 0 8px; overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .4); }
 .tug-fill { position: absolute; inset: 0 auto 0 0;
   background: linear-gradient(90deg, rgba(55,179,168,.9), rgba(55,179,168,.55));
-  border-right: 2px solid var(--text); }
+  border-right: 2px solid rgba(233, 238, 244, .9); }
 .tug-notch { position: absolute; left: 50%; top: -2px; bottom: -2px;
-  width: 1px; background: rgba(232,237,242,.5); }
+  width: 1px; background: rgba(233, 238, 244, .5); }
 
 .probs { display: flex; align-items: center; gap: 10px; }
-.probs .num { font-family: "Rajdhani", sans-serif; font-weight: 700; font-size: 20px; }
+.probs .num { font-family: "Rajdhani", sans-serif; font-weight: 700;
+  font-size: 22px; }
 .probs .num.a { color: var(--a); }
 .probs .num.b { color: var(--b); margin-left: auto; }
 .probs .mid { color: var(--dim); font-size: 13px; }
-.badge { background: rgba(224,177,78,.15); color: var(--warn);
-  border: 1px solid rgba(224,177,78,.4); border-radius: 4px;
-  font-size: 11px; padding: 1px 6px; margin-left: 8px; }
 
-.panel { background: var(--panel); border: 1px solid var(--line);
-  border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
-.panel-title { font-family: "Rajdhani", sans-serif; font-weight: 600;
-  letter-spacing: 0.06em; text-transform: uppercase; font-size: 14px;
-  color: var(--dim); margin-bottom: 12px; }
+.badge { background: rgba(224, 177, 78, .13); color: var(--warn);
+  border: 1px solid rgba(224, 177, 78, .4); border-radius: 3px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em;
+  padding: 1px 7px; margin-left: 8px; }
 
+/* --------------------------------------------------- metrics + tables */
 .metrics { display: flex; flex-direction: column; gap: 6px; }
 .metric { display: grid; grid-template-columns: 1fr 110px 110px; gap: 8px; }
 .metric.head { color: var(--dim); font-size: 12px; text-transform: uppercase;
-  letter-spacing: 0.06em; }
+  letter-spacing: .07em; }
 .metric-label { color: var(--dim); }
 .metric-val { font-family: "Rajdhani", sans-serif; font-weight: 700;
-  font-size: 18px; text-align: right; }
+  font-size: 19px; text-align: right; font-variant-numeric: tabular-nums; }
 .metric-val.elo { color: var(--dim); }
 .metric-val.win { color: var(--a); }
 .metric-val.elo.win { color: var(--b); }
 
 table.ledger { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
 table.ledger th { text-align: left; color: var(--dim); font-weight: 500;
-  font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+  font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
   padding: 6px 8px; border-bottom: 1px solid var(--line); }
-table.ledger td { padding: 8px; border-bottom: 1px solid var(--line); font-size: 14px; }
+table.ledger td { padding: 10px 8px; font-size: 14px;
+  border-bottom: 1px solid var(--line-soft); }
+table.ledger tbody tr { transition: background .15s ease; }
+table.ledger tbody tr:hover { background: rgba(233, 238, 244, .025); }
 td.ok { color: var(--a); } td.miss { color: var(--b); }
-
 table.kv td { padding: 4px 12px 4px 0; }
+
 .pending-row { display: flex; justify-content: space-between; gap: 12px;
-  padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; }
 .pending-row:last-child { border-bottom: none; }
 
-.dim { color: var(--dim); }
-.note { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
-.empty { color: var(--dim); padding: 24px 0; }
-.warn { color: var(--warn); border: 1px solid rgba(224,177,78,.4);
-  background: rgba(224,177,78,.08); border-radius: 8px; padding: 10px 14px; }
-code { background: #0a0f14; border: 1px solid var(--line);
-  border-radius: 4px; padding: 1px 6px; font-size: 13px; }
-footer { color: var(--dim); font-size: 12.5px; margin-top: 40px;
-  border-top: 1px solid var(--line); padding-top: 16px; }
-
-/* ---- hero (visual redesign, same palette) ---- */
-.hero { position: relative; overflow: hidden; margin: 8px 0 4px;
-  border: 1px solid var(--line); border-radius: 10px;
-  background: linear-gradient(180deg, rgba(20,24,28,.6), rgba(14,17,20,.9)); }
-.hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.hero-inner { position: relative; padding: 44px 36px 30px; }
-.hero-logo { font-size: 44px; }
-.hero-tagline { font-size: 16px; margin: 6px 0 18px; }
-.hero-copy { color: var(--dim); font-size: 14px; max-width: 640px;
-  margin: 0 0 12px; line-height: 1.55; }
-.hero .intro-links { border-bottom: none; margin: 10px 0 0; }
-@media (max-width: 640px) { .hero-inner { padding: 28px 18px 22px; }
-  .hero-logo { font-size: 34px; } }
-
-/* ---- match detail ---- */
-.clickable { cursor: pointer; }
-.clickable:hover { outline: 1px solid var(--line); }
-tr.clickable:hover td { color: var(--text); }
+/* ------------------------------------------------------- match detail */
 .back { background: none; border: 1px solid var(--line); color: var(--dim);
-  border-radius: 6px; padding: 4px 12px; cursor: pointer; margin-bottom: 14px;
-  font-family: "Rajdhani", sans-serif; letter-spacing: .06em; }
-.back:hover { color: var(--text); }
-.teams.big .team { font-size: 24px; }
+  border-radius: 3px; padding: 4px 12px; cursor: pointer;
+  margin-bottom: 14px; font-family: "Rajdhani", sans-serif;
+  letter-spacing: .06em; transition: color .15s ease,
+    border-color .15s ease; }
+.back:hover { color: var(--text); border-color: #35506e; }
 .result-line b { color: var(--text); }
-.permap { display: grid; grid-template-columns: 90px 1fr 56px; gap: 10px;
-  align-items: center; margin: 6px 0; }
-.permap-name { color: var(--dim); font-size: 13px; }
-.permap-num { text-align: right; font-variant-numeric: tabular-nums; }
-@media (max-width: 640px) {
-  .permap { grid-template-columns: 74px 1fr 52px; gap: 6px; }
-  .permap-row { grid-template-columns: 68px 1fr 62px 74px; gap: 6px; } }
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-@media (max-width: 640px) { .detail-grid { grid-template-columns: 1fr; } }
 .form-team { font-family: "Rajdhani", sans-serif; font-weight: 600;
   margin-bottom: 8px; }
 .form-team.a { color: var(--a); } .form-team.b { color: var(--b); }
-.form .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
-  margin-left: 4px; vertical-align: middle; }
+.form .dot { display: inline-block; width: 9px; height: 9px;
+  border-radius: 2px; margin-left: 4px; vertical-align: middle; }
 .form .dot.w { background: var(--a); } .form .dot.l { background: var(--b); }
 .repo-link { color: var(--dim); text-decoration: underline; }
 .repo-link:hover { color: var(--text); }
 
-/* ---- recent-window stat card + featured next match (hero) ---- */
-.hero-stats { position: relative; border: 1px solid var(--line);
-  border-radius: 8px; padding: 12px 16px 10px; margin: 4px 0 14px;
-  max-width: 480px; background: rgba(14,17,20,.55); }
-.hero-stats-title { font-family: "Rajdhani", sans-serif; font-weight: 600;
-  letter-spacing: .04em; font-size: 14px; margin-bottom: 8px; }
-.hero-stats-note { color: var(--dim); font-size: 12.5px; margin: 10px 0 0; }
-.hero-next { position: relative; display: flex; flex-wrap: wrap; gap: 10px;
-  align-items: baseline; border: 1px solid var(--line); border-radius: 8px;
-  padding: 10px 14px; margin: 14px 0 0; font-size: 13.5px;
-  background: rgba(14,17,20,.55); }
-.hero-next-label { font-family: "Rajdhani", sans-serif; font-weight: 600;
-  text-transform: uppercase; letter-spacing: .1em; font-size: 12px;
-  color: var(--a); }
-.hero-next-teams { font-weight: 600; }
-.hero-next-prob { color: var(--a); font-variant-numeric: tabular-nums; }
-.linklike { background: none; border: none; padding: 0; cursor: pointer;
-  color: var(--a); text-decoration: underline; font: inherit; }
-.linklike:hover { color: var(--text); }
-
-/* ---- hero divider bar as pinned element (LOG entry 38) ---- */
-.hero-bar { position: absolute; left: 11%; right: 11%; bottom: 24px;
-  height: 6px; border-radius: 3px; opacity: .55; pointer-events: none;
-  background: linear-gradient(90deg, var(--a) 0%, var(--a) 58%,
-    var(--b) 58%, var(--b) 100%); }
-.hero-bar-notch { position: absolute; left: 58%; top: -8px; width: 2px;
-  height: 22px; background: #e7e2d9; opacity: .6; }
-.hero-inner { padding-bottom: 52px; }
-@media (max-width: 640px) { .hero-inner { padding-bottom: 46px; } }
-.hero-logo.clickable:hover { outline: none;
-  text-shadow: 0 0 22px rgba(55,179,168,.35); }
-.hero-logo.clickable:focus-visible { outline: 2px solid var(--a);
-  outline-offset: 4px; border-radius: 4px; }
-
-/* ---- polish pass (patch 0032): aesthetic only, no copy, no numbers ----
-   One motion moment (the tug fill sweeping in) plus quiet consistency:
-   card depth, hover lift on clickables, the two-tone tab underline
-   echoing the tug bar, table row hover, focus-visible everywhere.
-   Reduced motion is respected wholesale. */
-.panel, .card {
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(232,237,242,.03), rgba(232,237,242,0) 46%),
-    var(--panel);
-  box-shadow: inset 0 1px 0 rgba(232,237,242,.045),
-    0 12px 26px -20px rgba(0,0,0,.75);
-}
-.card.clickable, .pending-row.clickable, .hero-next.clickable {
-  transition: transform .18s ease, border-color .18s ease,
-    box-shadow .18s ease, background .18s ease;
-}
-.card.clickable:hover, .hero-next.clickable:hover {
-  outline: none; transform: translateY(-2px); border-color: #2e4257;
-  box-shadow: inset 0 1px 0 rgba(232,237,242,.05),
-    0 16px 30px -18px rgba(0,0,0,.8);
-}
-.pending-row.clickable:hover { outline: none;
-  background: rgba(232,237,242,.03); }
-.tug { height: 12px; border-radius: 6px;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.4); }
-.tug-fill { border-right: 2px solid rgba(232,237,242,.9); }
-nav button { transition: color .15s ease; position: relative; }
-nav button.on { border-bottom-color: transparent; }
-nav button.on::after { content: ""; position: absolute; left: 10px;
-  right: 10px; bottom: -2px; height: 2px; border-radius: 1px;
-  background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
-table.ledger tbody tr { transition: background .15s ease; }
-table.ledger tbody tr:hover { background: rgba(232,237,242,.025); }
-.badge { border-radius: 999px; padding: 1px 8px; letter-spacing: .02em; }
-.panel-title { letter-spacing: .09em; }
-.linklike { transition: color .15s ease; }
-button:focus-visible, [role="button"]:focus-visible,
-a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
-  border-radius: 4px; }
-@media (prefers-reduced-motion: no-preference) {
-  .tug-fill { animation: tug-in .7s cubic-bezier(.22, .9, .3, 1) both;
-    transform-origin: left center; }
-  @keyframes tug-in { from { transform: scaleX(0); } }
-}
-@media (prefers-reduced-motion: reduce) {
-  .card.clickable, .pending-row.clickable, .hero-next.clickable,
-  nav button, table.ledger tbody tr, .linklike { transition: none; }
-  .card.clickable:hover, .hero-next.clickable:hover {
-    transform: none; }
-}
-
-/* ---- rating history chart ---- */
-.rating-chart { width: 100%; height: auto; display: block;
-  margin: 2px 0 10px; }
-.rc-grid { stroke: var(--line); stroke-dasharray: 3 4; }
-.rc-axis { fill: var(--dim); font-size: 11px; text-anchor: end;
-  font-family: "Inter", system-ui, sans-serif; }
-.rc-end { font-size: 12px; font-weight: 600;
-  font-family: "Rajdhani", sans-serif; }
-
-/* ---- per-map rework (patch 0035): the lean is the number that varies ---- */
+/* per-map: the lean leads (patch 0035) */
+.permap { display: grid; grid-template-columns: 90px 1fr 56px; gap: 10px;
+  align-items: center; margin: 6px 0; }
+.permap-name { color: var(--dim); font-size: 13px; }
+.permap-num { text-align: right; font-variant-numeric: tabular-nums; }
 .permap-row { display: grid; grid-template-columns: 84px 1fr 74px 92px;
   gap: 10px; align-items: center; padding: 5px 0; }
-.lean-bar { position: relative; height: 8px; border-radius: 4px;
-  background: rgba(232, 237, 242, .06);
+.lean-bar { position: relative; height: 9px; border-radius: 2px;
+  background: rgba(233, 238, 244, .06);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35); }
 .lean-bar::before { content: ""; position: absolute; left: 50%; top: -3px;
-  bottom: -3px; width: 1px; background: rgba(232, 237, 242, .35); }
-.lean-fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  bottom: -3px; width: 1px; background: rgba(233, 238, 244, .38); }
+.lean-fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
 .lean-fill.a { background: linear-gradient(90deg,
   rgba(55, 179, 168, .45), rgba(55, 179, 168, .95)); }
 .lean-fill.b { background: linear-gradient(270deg,
@@ -275,79 +286,76 @@ a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
 .permap-prob { color: var(--dim); font-size: 12px; text-align: right;
   font-variant-numeric: tabular-nums; }
 
-/* ==== polish round two (patch 0036): aggressive, same identity ====
-   Bolder hierarchy and depth, one coherent motif everywhere: the
-   two-tone teal/ember split appears in the tab pill's underline, panel
-   title ticks, footer rule, and the team dots that tie the palette to
-   its meaning. Copy and numbers untouched; reduced motion disables all
-   movement. */
-:root { --dim: #8b9cb0; }
-body {
-  background:
-    radial-gradient(rgba(232, 237, 242, .022) 1px, transparent 1.4px),
-    radial-gradient(1200px 520px at 72% -12%, #16222e 0%, transparent 60%),
-    radial-gradient(900px 420px at 6% 112%, rgba(224, 106, 78, .05) 0%,
-      transparent 60%),
-    var(--bg);
-  background-size: 26px 26px, auto, auto, auto;
-}
-.wrap { max-width: 880px; padding: 40px 22px 72px; }
-.logo { font-size: 44px; letter-spacing: .03em; }
-.hero-logo { font-size: 50px; }
+/* rating history chart (patch 0034) */
+.rating-chart { width: 100%; height: auto; display: block;
+  margin: 2px 0 10px; }
+.rc-grid { stroke: var(--line); stroke-dasharray: 3 4; }
+.rc-axis { fill: var(--dim); font-size: 11px; text-anchor: end;
+  font-family: "Inter", system-ui, sans-serif; }
+.rc-end { font-size: 12px; font-weight: 600;
+  font-family: "Rajdhani", sans-serif; }
 
-/* segmented tabs; intro-links keep their plain look */
-nav.tabs { display: inline-flex; gap: 4px; padding: 4px;
-  background: rgba(21, 29, 38, .72); border: 1px solid var(--line);
-  border-radius: 12px; margin: 22px 0 26px; }
-nav.tabs button { border-radius: 9px; padding: 7px 15px; margin-bottom: 0;
-  border-bottom: none; font-size: 15.5px; letter-spacing: .07em; }
-nav.tabs button.on { background: #1d2a38; color: var(--text); }
-nav.tabs button.on::after { left: 12px; right: 12px; bottom: 5px; }
-@media (max-width: 640px) {
-  nav.tabs { display: flex; flex-wrap: wrap; }
-  nav.tabs button { flex: 1 1 auto; } }
+/* ------------------------------------------------------------- prose */
+.dim { color: var(--dim); }
+.note { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
+.empty { color: var(--dim); padding: 24px 0; }
+.warn { color: var(--warn); border: 1px solid rgba(224, 177, 78, .4);
+  background: rgba(224, 177, 78, .08); border-radius: 3px;
+  padding: 10px 14px; }
+code { background: #0a0f14; border: 1px solid var(--line);
+  border-radius: 3px; padding: 1px 6px; font-size: 13px; }
+.linklike { background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--a); text-decoration: underline; font: inherit;
+  transition: color .15s ease; }
+.linklike:hover { color: var(--text); }
 
-.panel, .card { border-radius: 14px; padding: 18px 20px; }
-.card { position: relative; margin-bottom: 16px; }
-.card.clickable::before { content: ""; position: absolute; left: 0;
-  top: 12px; bottom: 12px; width: 3px; border-radius: 0 2px 2px 0;
-  background: linear-gradient(180deg, var(--a), var(--b)); opacity: 0;
-  transform: scaleY(.4); transition: opacity .2s ease, transform .2s ease; }
-.card.clickable:hover::before { opacity: 1; transform: none; }
-.panel-title { color: rgba(232, 237, 242, .85); font-size: 13.5px;
-  letter-spacing: .12em; display: flex; align-items: center; gap: 9px; }
-.panel-title::before { content: ""; flex: 0 0 14px; height: 2px;
+/* -------------------------------------------------- full-bleed footer */
+footer { position: relative; width: 100vw;
+  margin: 56px 0 0 calc(50% - 50vw);
+  border-top: 1px solid var(--line); background: #0a1119;
+  color: var(--dim); font-size: 12.5px;
+  padding: 22px max(28px, calc(50vw - 492px)) 34px; }
+footer::before { content: ""; position: absolute; top: -1px;
+  left: max(28px, calc(50vw - 492px)); width: 64px; height: 2px;
   border-radius: 1px;
   background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
 
-.teams { font-size: 23px; }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  margin: 0 9px 0 0; vertical-align: 3px; }
-.team.b .dot { margin: 0 0 0 9px; }
-.dot.a { background: var(--a); box-shadow: 0 0 10px rgba(55, 179, 168, .55); }
-.dot.b { background: var(--b); box-shadow: 0 0 10px rgba(224, 106, 78, .55); }
-.probs .num { font-size: 22px; }
-.metric-val { font-size: 19px; }
-
-table.ledger th { letter-spacing: .08em; }
-table.ledger td { padding: 9px 8px; }
-
-@supports (backdrop-filter: blur(2px)) {
-  .hero-stats, .hero-next { background: rgba(14, 17, 20, .42);
-    backdrop-filter: blur(8px) saturate(1.15); }
-}
-
-footer { position: relative; margin-top: 48px; padding-top: 18px;
-  border-top: 1px solid var(--line); }
-footer::before { content: ""; position: absolute; top: -1px; left: 0;
-  width: 64px; height: 2px; border-radius: 1px;
-  background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
+/* ------------------------------------------------- focus, motion, small */
+button:focus-visible, [role="button"]:focus-visible,
+a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
+  border-radius: 3px; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .panel, .card { animation: rise .4s cubic-bezier(.22, .9, .3, 1) both; }
+  .tug-fill { animation: tug-in .7s cubic-bezier(.22, .9, .3, 1) both;
+    transform-origin: left center; }
+  @keyframes tug-in { from { transform: scaleX(0); } }
+  .panel, .card { animation: rise .38s cubic-bezier(.22, .9, .3, 1) both; }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 }
 @media (prefers-reduced-motion: reduce) {
   .panel, .card { animation: none; }
+  .tug-fill { animation: none; }
+  .card.clickable, .pending-row.clickable, .hero-next.clickable,
+  nav button, table.ledger tbody tr, .linklike, .back { transition: none; }
+  .card.clickable:hover, .hero-next.clickable:hover { transform: none; }
   .card.clickable::before { transition: none; }
+}
+
+@media (max-width: 720px) {
+  body { font-size: 15px; }
+  .wrap { padding: 0 16px 64px; }
+  .hero-inner { padding: 36px 16px 54px; }
+  .hero-logo { font-size: 44px; }
+  .hero-tagline { font-size: 15.5px; }
+  .hero-bar { bottom: 22px; width: calc(100% - 32px); }
+  nav.tabs { display: flex; flex-wrap: wrap; }
+  nav.tabs button { flex: 1 1 auto; }
+  .panel, .card { padding: 16px 16px; }
+  .teams { font-size: 20px; }
+  .teams.big .team { font-size: 22px; }
+  .detail-grid { grid-template-columns: 1fr; }
+  .permap { grid-template-columns: 74px 1fr 52px; gap: 6px; }
+  .permap-row { grid-template-columns: 68px 1fr 62px 74px; gap: 6px; }
+  footer { padding-left: 16px; padding-right: 16px; }
+  footer::before { left: 16px; }
 }

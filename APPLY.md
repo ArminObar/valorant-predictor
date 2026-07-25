@@ -550,3 +550,20 @@ touches (a class on the tab nav, dots beside team names); everything
 else is index.css. No copy, numbers, or disclosure language changed.
 If any of it reads worse in your browser than in description, say so
 and it comes back off — it is deliberately isolated in one patch.
+
+## 27. Patch 0037: full redesign — the tactical board
+
+    git am patches/0037-*.patch
+    python -m pytest                 # expect 127 passed (unchanged)
+    cd frontend && npm test && cd .. # expect 8 pass
+    git push
+
+One file changes: frontend/src/index.css, rewritten ground-up
+(ASSUMPTIONS §29). The backdrop becomes a designed surface (contour
+rings from a teal and an ember pole over graph dots), the hero and
+footer run full-bleed, a two-tone spine holds the left margin on wide
+screens, the shell widens to 1040px, and every panel becomes an
+angular clipped-corner plate. All copy, numbers, markup, and
+information order are untouched — verify with `git show --stat`, the
+diff is index.css alone. If the direction is wrong in the browser,
+`git revert` this one commit restores the previous look exactly.

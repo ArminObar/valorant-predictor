@@ -1081,3 +1081,38 @@ scattered novel decoration. Reduced motion disables the rise, the
 sweep, and the lifts. Explicitly untouched: all copy, all numbers, all
 honest-disclosure language, all layout structure and information
 order.
+
+## 29. Full redesign: the tactical board — scope and decisions (2026-07-26 session)
+
+**Scope read as unambiguous and interpreted strictly.** "Visual only,
+everything else exactly as-is" means: zero markup changes, zero copy
+changes, zero number changes, zero information-order changes. The
+redesign is therefore a single-file stylesheet rewrite; App.jsx is
+untouched, which makes the owner's carry-over guarantees (per-map lean
+rows, calibrator verdict, rev-4 trigger) hold by construction rather
+than by care.
+
+**Rewrite over a fourth append layer.** Three polish passes had begun
+overriding one another; a redesign that cannot touch markup needs one
+authoritative sheet. Every class rendered by App.jsx was inventoried by
+grep and verified covered; the production vite build compiles clean.
+
+**The direction.** The page becomes a designed surface grounded in the
+subject: a tactical-board backdrop (faint contour rings sweeping from a
+teal pole and an ember pole over graph dots, pure CSS, no assets), a
+full-bleed hero and footer like broadcast bands, a thin two-tone spine
+holding the left margin on wide screens, and an angular clipped-corner
+plate system replacing rounded web cards — the HUD language of the
+game, executed with the site's own teal/ember split as the single
+recurring motif (tab pill underline, panel-title ticks, hover edge
+bars, footer rule, hero bar, team dots). Shell widens to 1040px with
+the reading measure preserved inside panels.
+
+**Costs accepted, stated.** clip-path clips outer shadows, so plates
+use borders plus an inner top light instead of drop shadows (flat
+angular depth, intentional); the clipped notch loses its border line,
+so a rotated hairline redraws the diagonal. Fonts stay Rajdhani+Inter:
+the pairing is subject-appropriate and already loaded; a third face
+would add weight without adding identity. Sandbox has no pixel
+rendering, so the aesthetic verdict is the owner's; the sheet is
+deliberately one revertable commit.
