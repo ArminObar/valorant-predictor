@@ -438,6 +438,7 @@ function MatchDetail({ id, onBack }) {
     );
   const p = src.p_model;
   const graded = data.ledger && data.ledger.graded;
+  const placeholder = Boolean(data.placeholder);
   const winner = graded
     ? (data.ledger.team1_won ? src.team1_name : src.team2_name) : null;
   const th = data.team_history || {};
@@ -470,7 +471,18 @@ function MatchDetail({ id, onBack }) {
           </span>
           <span className="num b">{fmtPct(1 - p)}</span>
         </div>
-        {graded && (
+        {placeholder && (
+          <p className="warn">
+            This was an unresolved bracket slot ("TBD") when the prediction
+            locked, so the model was effectively comparing a team to
+            itself. The frozen call stands because the first call per match
+            can never be changed, but it is flagged low-history and not
+            scored anywhere. The teams that eventually played this slot
+            never got a fresh prediction here; that is the cost of the
+            freeze rule, kept on the record rather than papered over.
+          </p>
+        )}
+        {graded && !placeholder && (
           <p className="note result-line">
             Result: <b>{winner}</b> won
             {data.ledger.maps_played ? ` in ${data.ledger.maps_played} maps` : ""}.

@@ -86,3 +86,30 @@ def test_match_detail_merges_ledger_and_history(tmp_path, monkeypatch):
     assert th["a"]["name"] == "Alpha" and th["a"]["recent"][0]["won"] is True
     assert th["b"]["recent"][0]["score"] == "1-2"
     assert c.get("/api/match/nope").json()["ledger"] is None
+
+
+def test_match_detail_placeholder_never_renders_as_result(tmp_path, monkeypatch):
+    """A pre-0022 collided TBD row: the endpoint flags it, and no empty
+    'tbd' history blocks are emitted."""
+    from datetime import datetime, timedelta, timezone
+    from fastapi.testclient import TestClient
+    from vpredict import config
+    from vpredict.serving.api import create_app
+    from vpredict.serving.ledger import Ledger
+
+    data = tmp_path / "data"
+    (data / "serving").mkdir(parents=True)
+    (data / "raw").mkdir(parents=True)
+    monkeypatch.setattr(config, "MATCHES_JSONL", data / "raw" / "matches.jsonl")
+    led = Ledger(data / "serving" / "ledger.sqlite")
+    start = datetime.now(timezone.utc) - timedelta(hours=5)
+    led.insert_prediction(match_id="ph1", start_ts=start, team1="tbd",
+                          team2="tbd", team1_name="TBD", team2_name="TBD",
+                          event="Cup", best_of=3, p_model=0.5843, p_elo=0.5,
+                          model_version="t", low_history=True,
+                          now=start - timedelta(hours=1))
+    led.close()
+    c = TestClient(create_app(data_dir=data))
+    r = c.get("/api/match/ph1").json()
+    assert r["placeholder"] is True
+    assert r["team_history"] == {}

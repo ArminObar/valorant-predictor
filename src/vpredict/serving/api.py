@@ -191,9 +191,19 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
             picks = json.loads(mk.read_text()).get("picks", [])
             out["picks"] = [p for p in picks
                             if str(p.get("match_id")) == match_id]
-        keys = set()
         src = out["ledger"] or out["prediction"]
-        if src:
+        # A pre-0022 unresolved bracket slot: both sides collapsed to one
+        # placeholder key. Its frozen call stands (first call per match is
+        # immutable, so the resolved fixture could never re-predict this
+        # id); it is flagged, excluded from scoring, and must render as a
+        # placeholder, never as a normal result.
+        _ph = {"", "tbd", "tba"}
+        out["placeholder"] = bool(src) and (
+            src.get("team1") == src.get("team2")
+            or (src.get("team1_name") or "").strip().lower() in _ph
+            or (src.get("team2_name") or "").strip().lower() in _ph)
+        keys = set()
+        if src and not out["placeholder"]:
             keys = {src.get("team1"), src.get("team2")} - {None, ""}
         if keys:
             from ..data import store as _store
@@ -220,7 +230,7 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
             out["team_history"] = {
                 k: {"name": names.get(k, k),
                     "recent": sorted(v, key=lambda r: r["start_ts"])[-5:][::-1]}
-                for k, v in hist.items()}
+                for k, v in hist.items() if v}   # no empty tbd blocks
         return JSONResponse(out)
 
     @app.get("/api/model")

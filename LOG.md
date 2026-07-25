@@ -889,3 +889,33 @@ which is why this lead is worth a fair rematch rather than a shrug.
 **3. Selection flipped to LightGBM again (gap 5e-5)** — the fourth lead
 change of a dead heat the hysteresis policy exists to absorb. Production
 keeps its incumbent; the report shows the single-shot pick, as always.
+
+## Entry 35 — The TBD row's second layer: the freeze rule itself keeps the slot, plus a self-inflicted file overwrite (2026-07-24, night)
+
+**Symptom.** After 0022, a graded "TBD vs TBD" still renders as a normal
+result ("TBD won in 2 maps") with empty "tbd" recent-form blocks.
+
+**Cause, two layers.** (1) Structural, and permanent by design: the
+placeholder call froze FIRST for that match id, and the first call per
+match is immutable — so when the bracket resolved, the real fixture's
+prediction was refused by the freeze rule. The slot is occupied forever;
+0022's skip prevents NEW occupations, it cannot evict old ones. The
+names-backfill can only fire if the server store holds the resolved
+completed match — the seed store has ZERO completed matches with
+placeholder identity, so if names persist across two refresh cycles, the
+server store lacks that record, which is the same suspected crawl gap as
+"only 1 of last night graded." (2) Display: the detail view rendered any
+graded row as a result, and the history endpoint emitted an empty block
+per key with the key as the fallback name — a collided "tbd" key renders
+twice with no rows. Fixed: the endpoint flags `placeholder` (collided
+keys or placeholder names), skips their history, drops empty blocks; the
+page renders the honest explanation, including the freeze-rule cost,
+instead of a result line. Pinned by test.
+
+**Session blunder, on the record.** While applying the fix, the edit
+script's last line wrote the App.jsx buffer to the api.py path — api.py
+became 145 lines of JSX. pytest's collection error caught it within one
+command; `git checkout` restored it; the edits were reapplied with
+per-file writes and content assertions. Why testing caught it instead of
+missing it: the suite imports the module, and a Python file full of JSX
+cannot be imported. Frequent commits made the recovery a one-liner.

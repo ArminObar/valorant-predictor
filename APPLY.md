@@ -320,3 +320,29 @@ correlation fix (versioned model change + labeled backtest re-run).
 
 The site updates on the NEXT publish_markets run from your cron (the
 served markets.json is regenerated Mac-side); nothing else to do.
+
+## 16. Patch 0026: placeholder rows render truthfully; bug-2 determination
+
+    git am patches/0026-*.patch
+    python -m pytest                 # expect 111 passed
+    git push
+
+**Bug 1 after this deploy:** the TBD detail page states what it is (a
+frozen placeholder slot the freeze rule keeps occupied) instead of "TBD
+won in 2 maps". Separately, watch whether its NAMES backfill within two
+refresh cycles: if they do, the server store has the resolved match and
+all is well; if they persist, the server store never received it — which
+is bug 2's suspected cause, not a backfill failure.
+
+**Bug 2 determination (two minutes):** in Render logs, grep the latest
+`refresh cycle:` line. Read the dict: `'crawl': {'stored': N}` and
+`'graded': M`. If crawl shows `{'error': ...}` — paste that exact line;
+Render cannot reach vlr.gg and BOTH bugs share that root. If stored > 0
+and graded catches up next cycle, it was pacing. Cross-check without the
+dashboard: `curl -s https://vpredict.onrender.com/api/scoreboard | python3 -c
+"import json,sys; s=json.load(sys.stdin)['summary']; print(s['n_graded'],
+s['n_pending'])"` now and again in ~7 hours.
+
+**Investigation script:** `python scripts/investigate_tier_gap.py`
+reproduces every number in the session report (train + validation only;
+the test window is untouched by structural assertion).
