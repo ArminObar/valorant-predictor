@@ -181,3 +181,40 @@ def tune_elo_k(
         if ll < best_ll:
             best_k, best_ll, best_probs = k, ll, probs
     return float(best_k), best_probs, results
+
+
+def elo_trajectory(lites: list[dict], cutoff: pd.Timestamp,
+                   team_keys, n: int,
+                   k: float = config.DEFAULT_ELO_K) -> dict[str, list[dict]]:
+    """Overall-rating path for the requested teams: one point per completed
+    match (the team's rating just AFTER that match's updates), admitting
+    and applying matches under the identical rule and order as
+    `elo_snapshot_at` — estimated finish <= cutoff, ordered by (est end,
+    start, id). A trajectory's final value therefore equals the overall
+    rating the snapshot at the same cutoff reports, which the consistency
+    test pins. Returns the last `n` points per team; teams with no
+    eligible history are omitted."""
+    keys = set(team_keys)
+    book = EloBook(k=k)
+    eligible = [l for l in lites if l["est_end_ts"] <= cutoff]
+    eligible.sort(key=lambda d: (d["est_end_ts"], d["start_ts"],
+                                 d["match_id"]))
+    out: dict[str, list[dict]] = {t: [] for t in keys}
+    for lite in eligible:
+        for m, aw, _ in lite["maps"]:
+            book.update_map_game(lite["a"], lite["b"], m, aw)
+        a_maps = sum(aw for _, aw, _ in lite["maps"])
+        b_maps = len(lite["maps"]) - a_maps
+        if lite["a"] in keys:
+            out[lite["a"]].append({
+                "ts": lite["est_end_ts"].isoformat(),
+                "rating": round(book.rating(lite["a"]), 1),
+                "opponent": lite.get("b_name") or lite["b"],
+                "won": bool(a_maps > b_maps)})
+        if lite["b"] in keys:
+            out[lite["b"]].append({
+                "ts": lite["est_end_ts"].isoformat(),
+                "rating": round(book.rating(lite["b"]), 1),
+                "opponent": lite.get("a_name") or lite["a"],
+                "won": bool(b_maps > a_maps)})
+    return {t: pts[-n:] for t, pts in out.items() if pts}

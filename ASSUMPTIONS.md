@@ -1007,3 +1007,37 @@ right test of that hypothesis is the already-noted protocol refinement
 (a separate calibration slice, or out-of-fold scoring inside
 validation); until that lands, the validation rule stands and so does
 its verdict.
+
+## 26. Match-page rating history chart — decisions (2026-07-25, late)
+
+A trust-building visual, built so it cannot drift from the record:
+
+**Same rating, not a lookalike.** The lines are the overall Elo of the
+site's own comparison family — tuned baseline K read from the live
+bundle, `DEFAULT_ELO_K` fallback when no bundle is readable — replayed
+under the identical eligibility rule and order as every other as-of
+surface (estimated finish before the cutoff, event-queue order). The
+cutoff is the predicted match's start, so each line ends at the overall
+rating the as-of snapshot reports for that cutoff (the consistency test
+pins trajectory-end == snapshot to one decimal). The ledger's frozen
+p_elo was computed from the store as it existed at freeze time, so
+history scraped later can shift the replayed line slightly without ever
+touching the frozen number; the chart claims context, not the freeze.
+
+**Post-match points, right-aligned, evenly spaced by match.** One point
+per completed match (the team's rating just after it), last
+`RATING_TRAJECTORY_N = 10`, both teams sharing the right edge as "now".
+Even spacing by match rather than by date reads cleaner for streaky
+schedules, and the caption states the choice so nobody mistakes it for
+a time axis.
+
+**Display context only, degrade to nothing.** The block is additive
+JSON on the existing match endpoint; any failure logs a warning and
+omits the chart rather than breaking the page, placeholders never get
+one, and nothing here reads or writes the frozen ledger. Cost accepted:
+one more streaming pass over the store per detail-page request, in line
+with the endpoint's existing team-history pass.
+
+**Geometry is a pure module.** `frontend/src/chart.js` computes every
+coordinate outside React so `node --test` pins right-alignment, y
+inversion, and domain padding the same way `time.js` is pinned.

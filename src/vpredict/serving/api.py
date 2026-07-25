@@ -261,6 +261,42 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                 k: {"name": names.get(k, k),
                     "recent": sorted(v, key=lambda r: r["start_ts"])[-5:][::-1]}
                 for k, v in hist.items() if v}   # no empty tbd blocks
+            # Rating trajectories for the chart: same store, the same Elo
+            # family the site's comparison column uses (tuned baseline K
+            # from the live bundle when readable), same leakage rule —
+            # only matches whose estimated finish precedes this match's
+            # start count, so each line ends at the rating the as-of
+            # snapshot reports for that cutoff (the frozen p_elo came
+            # from the freeze-time store, so late-scraped history can
+            # differ slightly). Display context only; the chart
+            # never touches the frozen record, and any failure here
+            # degrades to "no chart", never to a broken page.
+            try:
+                import pandas as pd
+                from ..modeling.baselines import (elo_trajectory,
+                                                  matches_lite_from_maps)
+                meta_b = _bundle_meta(bundle_path) or {}
+                k_elo = float(meta_b.get("elo_k_baseline")
+                              or config.DEFAULT_ELO_K)
+                cutoff = pd.Timestamp(src["start_ts"])
+                if cutoff.tzinfo is None:
+                    cutoff = cutoff.tz_localize("UTC")
+                maps_df = _store.maps_frame(
+                    _store.iter_matches(config.MATCHES_JSONL))
+                traj = {}
+                if not maps_df.empty:
+                    traj = elo_trajectory(
+                        matches_lite_from_maps(maps_df), cutoff, keys,
+                        n=config.RATING_TRAJECTORY_N, k=k_elo)
+                if traj:
+                    out["rating_history"] = {
+                        "k": k_elo, "n": config.RATING_TRAJECTORY_N,
+                        "cutoff": cutoff.isoformat(),
+                        "teams": {t: {"name": names.get(t, t),
+                                      "points": pts}
+                                  for t, pts in traj.items()}}
+            except Exception as e:               # pragma: no cover
+                log.warning("rating history unavailable: %s", e)
         return JSONResponse(out)
 
     @app.get("/api/model")

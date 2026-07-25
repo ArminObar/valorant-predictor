@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fmtTime } from "./time.js";
+import { buildRatingChart } from "./chart.js";
 
 const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
 const fmt4 = (v) => (v == null ? "n/a" : v.toFixed(4));
@@ -518,6 +519,44 @@ function FormDots({ recent }) {
   );
 }
 
+function RatingChart({ rh, team1 }) {
+  const g = buildRatingChart(rh.teams);
+  if (!g) return null;
+  const color = (key) => (key === team1 ? "var(--a)" : "var(--b)");
+  return (
+    <div className="panel">
+      <div className="panel-title">Rating history (last {rh.n} matches)</div>
+      <svg className="rating-chart" viewBox={`0 0 ${g.w} ${g.h}`} role="img"
+        aria-label="Elo rating history for both teams leading up to this match">
+        <line x1={g.padL} x2={g.w - g.padR} y1={g.midY} y2={g.midY}
+          className="rc-grid" />
+        <text x={g.padL - 8} y={g.midY + 4} className="rc-axis">{g.mid}</text>
+        {g.lines.map((ln) => (
+          <g key={ln.key}>
+            <polyline points={ln.points} fill="none" stroke={color(ln.key)}
+              strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+            {ln.dots.map((d, i) => (
+              <circle key={i} cx={d.x} cy={d.y} r="3" fill={color(ln.key)}>
+                <title>{`${ln.name}: ${d.rating} after ${d.won ? "a win"
+                  : "a loss"} vs ${d.opponent}`}</title>
+              </circle>
+            ))}
+            <text x={ln.end.x + 7} y={ln.end.y + 4} className="rc-end"
+              fill={color(ln.key)}>{Math.round(ln.end.rating)}</text>
+          </g>
+        ))}
+      </svg>
+      <p className="note">
+        Overall Elo (K={rh.k}) after each of each team's last {rh.n}
+        completed matches, up to this match's start. Points are evenly
+        spaced by match, not by date. This is the same rating family the
+        Elo comparison uses; it is history for context, and the locked
+        prediction above never moves.
+      </p>
+    </div>
+  );
+}
+
 function MatchDetail({ id, onBack }) {
   const { data, err } = useApi(`/api/match/${id}`);
   if (err) return <p className="empty">API unreachable.</p>;
@@ -590,6 +629,9 @@ function MatchDetail({ id, onBack }) {
           </p>
         )}
       </div>
+      {data.rating_history && !placeholder && (
+        <RatingChart rh={data.rating_history} team1={src.team1} />
+      )}
       {pred && pred.per_map && (
         <div className="panel">
           <div className="panel-title">Per-map probabilities</div>

@@ -74,6 +74,10 @@ BUNDLE_BEHAVIOR_REV = 4
 # rounding — a probability of exactly 0.0000 or 1.0000 is an evidentially
 # indefensible claim and breaks log-loss accounting.
 PROB_DECIMALS = 4
+# Match-detail rating chart: points per team (last N completed
+# matches before the predicted match's start; same eligibility rule
+# as every other as-of surface). Display context only.
+RATING_TRAJECTORY_N = 10
 
 SHRINK_M_ROUNDS = 60        # pseudo-rounds pulled toward league mean for round-rate stats
 SHRINK_M_PISTOLS = 16       # pseudo-pistol-rounds (~8 maps) for pistol win rate

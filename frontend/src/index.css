@@ -248,3 +248,12 @@ a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
   .card.clickable:hover, .hero-next.clickable:hover {
     transform: none; }
 }
+
+/* ---- rating history chart ---- */
+.rating-chart { width: 100%; height: auto; display: block;
+  margin: 2px 0 10px; }
+.rc-grid { stroke: var(--line); stroke-dasharray: 3 4; }
+.rc-axis { fill: var(--dim); font-size: 11px; text-anchor: end;
+  font-family: "Inter", system-ui, sans-serif; }
+.rc-end { font-size: 12px; font-weight: 600;
+  font-family: "Rajdhani", sans-serif; }

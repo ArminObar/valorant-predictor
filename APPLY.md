@@ -501,3 +501,18 @@ isotonic, the executed definition is unchanged: skip the backtest re-run
 correct, explained behavior. Local sanity first if you like:
 `python scripts/evaluate.py` now prints a "Calibration val LL" line with
 all three candidates.
+
+## 24. Patch 0034: rating history on the match page
+
+    git am patches/0034-*.patch
+    python -m pytest                 # expect 127 passed
+    cd frontend && npm test && cd .. # expect 8 pass
+    git push
+
+Every match page now opens with a two-line chart: each team's overall
+Elo after their last 10 completed matches, ending at exactly the rating
+the pre-match comparison used (same tuned-K family, same leakage rule;
+a test pins trajectory-end == snapshot). Dots carry win/loss tooltips,
+the caption says points are spaced by match rather than by date, and
+the frozen prediction is untouched — the chart is context, and if its
+data is ever unavailable the page simply renders without it.
