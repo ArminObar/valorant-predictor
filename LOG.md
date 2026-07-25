@@ -1026,3 +1026,28 @@ failed. The new contract test pins what IS invariant: `per_map_elo`
 matches the snapshot the features consume and varies when history is
 map-dependent, so the UI always has real per-map signal to show however
 the calibrator quantizes.
+
+## Entry 38 — The hero paragraph sat on the divider bar: fixed-viewBox decoration vs growing content (2026-07-25)
+
+**Symptom.** The homepage intro paragraph ending "a verdict" overlapped
+the teal/coral divider bar and read as broken.
+
+**Cause.** The bar was drawn INSIDE the hero's background SVG at fixed
+viewBox coordinates (y=330 of 420) under `preserveAspectRatio: slice`.
+That was fine when the hero's content was short; patch 0030 added the
+stat card and the next-up strip, the hero grew taller, the sliced SVG
+scaled up with it, and the bar landed mid-content. Decoration positioned
+in scaled artwork coordinates cannot promise clearance from content
+positioned in layout coordinates.
+
+**Fix.** The bar (and its notch) left the SVG and became a pinned HTML
+element at the hero's bottom edge, with the hero's bottom padding
+enlarged so content always clears it by construction — the two now live
+in the same coordinate system, so no future content growth can recreate
+the overlap. Same gradient, same notch, same look.
+
+**Why testing missed it.** Nothing renders layout: esbuild parses, node
+--test exercises pure modules, pytest never sees a pixel. A geometry
+regression between two coordinate systems is exactly the class of bug
+the current suite is blind to; catching it earlier would need visual
+regression snapshots, which are noted as future tooling, not promised.

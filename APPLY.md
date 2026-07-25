@@ -446,3 +446,19 @@ printed. If the fresh run's numbers ever stop supporting the framing,
 the card will say so on its own (green flips sides); the prose fallback
 is the only place a claim lives without numbers behind it, so re-check
 it whenever the story changes.
+
+## 21. Patch 0031: logo goes home, the hero clears its bar, ties say so inline
+
+    git am patches/0031-*.patch
+    python -m pytest                 # expect 118 passed (unchanged)
+    cd frontend && npm test && cd .. # expect 5 pass
+    git push
+
+Three small confirmed items. Clicking the vpredict wordmark now returns
+to the homepage (detail closed, upcoming tab, scrolled up) from
+anywhere. The intro paragraph no longer collides with the teal/coral
+bar: the bar left the scaling SVG and is pinned in layout coordinates
+with guaranteed clearance (LOG entry 38 has the geometry story). And the
+per-map panel now says, inline among the rows and only when ties are
+actually on screen, that ties are expected and the Elo lean carries the
+real per-map difference.

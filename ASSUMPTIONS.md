@@ -915,3 +915,26 @@ same low-history badge as everywhere else.
 its higher-is-better direction on the exact label "accuracy"; it now
 keys on the substring so "series accuracy" colors correctly. Display
 logic only.
+
+## 23. Logo-home, divider clearance, inline tie note — session decisions (2026-07-25, late)
+
+Three owner-directed small items, with the judgment calls recorded:
+
+**Logo navigates home.** "Home" is defined as the default landing state:
+match detail closed, upcoming tab, scrolled to top. The logo gets
+button semantics (role, tabIndex, Enter) and a glow hover instead of the
+generic clickable outline, which would box the wordmark.
+
+**Divider bar moved out of the artwork.** Root-cause fix, not a nudge:
+the overlap existed because decoration lived in scaled SVG coordinates
+while content lives in layout coordinates (LOG entry 38). The bar is now
+a pinned element under enlarged bottom padding, so clearance holds for
+ANY future hero height. Rejected alternative: lowering the rect's y in
+the viewBox, which merely re-tunes the same fragile coupling.
+
+**Tie note renders conditionally.** The one-line "ties are expected"
+note appears among the per-map rows only when at least two displayed
+probabilities actually tie at ledger precision; on the rare untied
+payload the note would itself be the confusing element. Wording states
+the mechanism (shared calibration levels) and points at the Elo lean,
+per LOG entry 37's finding that the ties are correct output.

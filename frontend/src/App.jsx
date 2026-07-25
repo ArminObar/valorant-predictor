@@ -624,6 +624,14 @@ function MatchDetail({ id, onBack }) {
               </div>
             );
           })}
+          {new Set(Object.values(pred.per_map).map((v) => v.toFixed(4)))
+            .size < Object.keys(pred.per_map).length && (
+            <p className="permap-tienote">
+              Ties above are expected, not a glitch: probabilities round
+              onto shared calibration levels, and the Elo lean shows the
+              real per-map difference.
+            </p>
+          )}
           {pred.maps_dist && (
             <p className="note">
               Expected series length: {Object.entries(pred.maps_dist)
@@ -764,7 +772,7 @@ function HeroNext({ onOpen }) {
   );
 }
 
-function Hero({ go, onOpen }) {
+function Hero({ go, onOpen, onHome }) {
   return (
     <div className="hero">
       <svg className="hero-bg" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -794,13 +802,15 @@ function Hero({ go, onOpen }) {
           <path d="M-40,60 L1240,150" /><path d="M-40,150 L1240,240" />
           <path d="M-40,240 L1240,330" /><path d="M-40,330 L1240,420" />
         </g>
-        <rect x="140" y="330" width="920" height="6" rx="3"
-          fill="url(#hgBar)" opacity="0.55" />
-        <rect x="672" y="322" width="2" height="22" fill="#e7e2d9"
-          opacity="0.6" />
       </svg>
+      <div className="hero-bar" aria-hidden="true">
+        <span className="hero-bar-notch" />
+      </div>
       <div className="hero-inner">
-        <div className="logo hero-logo">
+        <div className="logo hero-logo clickable" role="button" tabIndex={0}
+          title="back to the homepage"
+          onClick={onHome}
+          onKeyDown={(e) => e.key === "Enter" && onHome()}>
           v<span className="logo-accent">predict</span>
         </div>
         <div className="tagline hero-tagline">
@@ -836,6 +846,11 @@ export default function App() {
   const [tab, setTab] = useState("upcoming");
   const [openMatch, setOpenMatch] = useState(null);
   const { data: health } = useApi("/api/health");
+  const goHome = () => {
+    setOpenMatch(null);
+    setTab("upcoming");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const go = (where) => {
     if (where === "backtest") {
       setTab("scoreboard");
@@ -848,7 +863,7 @@ export default function App() {
   };
   return (
     <div className="wrap">
-      <Hero go={go} onOpen={setOpenMatch} />
+      <Hero go={go} onOpen={setOpenMatch} onHome={goHome} />
       {health?.synthetic_model && (
         <p className="warn">
           This is a demo model trained on made-up data. Not real
