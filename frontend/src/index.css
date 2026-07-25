@@ -196,3 +196,55 @@ tr.clickable:hover td { color: var(--text); }
   text-shadow: 0 0 22px rgba(55,179,168,.35); }
 .hero-logo.clickable:focus-visible { outline: 2px solid var(--a);
   outline-offset: 4px; border-radius: 4px; }
+
+/* ---- polish pass (patch 0032): aesthetic only, no copy, no numbers ----
+   One motion moment (the tug fill sweeping in) plus quiet consistency:
+   card depth, hover lift on clickables, the two-tone tab underline
+   echoing the tug bar, table row hover, focus-visible everywhere.
+   Reduced motion is respected wholesale. */
+.panel, .card {
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(232,237,242,.03), rgba(232,237,242,0) 46%),
+    var(--panel);
+  box-shadow: inset 0 1px 0 rgba(232,237,242,.045),
+    0 12px 26px -20px rgba(0,0,0,.75);
+}
+.card.clickable, .pending-row.clickable, .hero-next.clickable {
+  transition: transform .18s ease, border-color .18s ease,
+    box-shadow .18s ease, background .18s ease;
+}
+.card.clickable:hover, .hero-next.clickable:hover {
+  outline: none; transform: translateY(-2px); border-color: #2e4257;
+  box-shadow: inset 0 1px 0 rgba(232,237,242,.05),
+    0 16px 30px -18px rgba(0,0,0,.8);
+}
+.pending-row.clickable:hover { outline: none;
+  background: rgba(232,237,242,.03); }
+.tug { height: 12px; border-radius: 6px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.4); }
+.tug-fill { border-right: 2px solid rgba(232,237,242,.9); }
+nav button { transition: color .15s ease; position: relative; }
+nav button.on { border-bottom-color: transparent; }
+nav button.on::after { content: ""; position: absolute; left: 10px;
+  right: 10px; bottom: -2px; height: 2px; border-radius: 1px;
+  background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
+table.ledger tbody tr { transition: background .15s ease; }
+table.ledger tbody tr:hover { background: rgba(232,237,242,.025); }
+.badge { border-radius: 999px; padding: 1px 8px; letter-spacing: .02em; }
+.panel-title { letter-spacing: .09em; }
+.linklike { transition: color .15s ease; }
+button:focus-visible, [role="button"]:focus-visible,
+a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
+  border-radius: 4px; }
+@media (prefers-reduced-motion: no-preference) {
+  .tug-fill { animation: tug-in .7s cubic-bezier(.22, .9, .3, 1) both;
+    transform-origin: left center; }
+  @keyframes tug-in { from { transform: scaleX(0); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.clickable, .pending-row.clickable, .hero-next.clickable,
+  nav button, table.ledger tbody tr, .linklike { transition: none; }
+  .card.clickable:hover, .hero-next.clickable:hover {
+    transform: none; }
+}

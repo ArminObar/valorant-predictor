@@ -938,3 +938,18 @@ probabilities actually tie at ledger precision; on the rare untied
 payload the note would itself be the confusing element. Wording states
 the mechanism (shared calibration levels) and points at the Elo lean,
 per LOG entry 37's finding that the ties are correct output.
+
+## 24. Polish pass scope — aesthetic only, one motion moment (2026-07-25, late)
+
+The site's identity already exists (the win-probability tug of war, teal
+vs ember, Rajdhani display over a dark arena); the polish sharpens it
+rather than importing a new look. The single deliberate motion is the
+tug fill sweeping in on mount — the signature element earning the
+boldness budget — and the active tab's underline becomes the same
+two-tone gradient as the tug bar, tying navigation to the motif.
+Everything else is quiet consistency: card depth and hover lift on
+clickables only, table row hover, pill badges, visible keyboard focus in
+the accent color. `prefers-reduced-motion` disables the animation and
+the lifts wholesale. Explicitly out of scope and untouched: every word
+of copy, every number, every honest-disclosure sentence, all layout
+structure.

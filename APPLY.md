@@ -462,3 +462,17 @@ with guaranteed clearance (LOG entry 38 has the geometry story). And the
 per-map panel now says, inline among the rows and only when ties are
 actually on screen, that ties are expected and the Elo lean carries the
 real per-map difference.
+
+## 22. Patch 0032: polish pass (aesthetic only)
+
+    git am patches/0032-*.patch
+    python -m pytest                 # expect 118 passed (unchanged)
+    cd frontend && npm test && cd .. # expect 5 pass
+    git push
+
+CSS only. Cards gain depth and a hover lift, the tug bar sweeps in once
+on load (and is the only animation), the active tab underline echoes the
+tug bar's two-tone split, tables get row hover, badges become pills, and
+keyboard focus is visible everywhere in the accent color. Reduced-motion
+users get none of the movement. No copy, numbers, or disclosure language
+changed — diff the patch to confirm it touches index.css alone.
