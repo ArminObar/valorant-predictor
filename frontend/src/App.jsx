@@ -634,46 +634,58 @@ function MatchDetail({ id, onBack }) {
       )}
       {pred && pred.per_map && (
         <div className="panel">
-          <div className="panel-title">Per-map probabilities</div>
+          <div className="panel-title">Per-map view</div>
           <p className="note">
-            The model predicts one map at a time; the headline number
-            averages these over the current map pool (the veto isn't known
-            when the prediction locks). Probabilities then pass through a
-            calibration step that maps raw scores onto a small set of
-            levels learned from held-out results, so maps with close raw
-            scores often display the same number. The Elo lean is each
-            map's own strength signal going into the model; it stays
-            visible even when the calibrated numbers tie.
-            {data.ledger ? " The headline above is the frozen public"
-              + " call; the numbers below are the current model's live"
-              + " view and can differ from it." : ""}
+            Each bar is the Elo lean: {src.team1_name}'s map-specific
+            strength edge going into the model, the one signal that
+            actually varies map to map (right of center favours{" "}
+            {src.team1_name}, left favours {src.team2_name}). The model's
+            calibrated percentage sits at the end of each row; calibration
+            maps raw scores onto a small set of levels learned from
+            held-out results, so those percentages often tie across maps.
+            The headline above remains the number that counts.
+            {data.ledger ? " It is the frozen public call; the rows below"
+              + " are the current model's live view and can differ from"
+              + " it." : ""}
           </p>
-          {Object.entries(pred.per_map).map(([m, v]) => {
-            const lean = pred.per_map_elo?.[m];
-            return (
-              <div className="permap" key={m}>
-                <span className="permap-name">{m}</span>
-                <span className="permap-elo"
-                  title={lean == null ? undefined
-                    : `Map-specific Elo edge for ${src.team1_name} on ${m} `
-                      + `(negative favours ${src.team2_name}). This is the `
-                      + `model's per-map input, before calibration.`}>
-                  {lean == null ? "" :
-                    `${lean > 0 ? "+" : ""}${Math.round(lean)} Elo`}
-                </span>
-                <TugBar p={v} />
-                <span className="permap-num">{fmtPct(v)}</span>
-              </div>
-            );
-          })}
-          {new Set(Object.values(pred.per_map).map((v) => v.toFixed(4)))
-            .size < Object.keys(pred.per_map).length && (
-            <p className="permap-tienote">
-              Ties above are expected, not a glitch: probabilities round
-              onto shared calibration levels, and the Elo lean shows the
-              real per-map difference.
-            </p>
-          )}
+          {(() => {
+            const leans = pred.per_map_elo || null;
+            const maxLean = leans ? Math.max(
+              1, ...Object.values(leans).map((x) => Math.abs(x))) : 1;
+            return Object.entries(pred.per_map).map(([m, v]) => {
+              const lean = leans?.[m];
+              if (lean == null) {
+                // Older payload without per-map Elo: plain fallback row.
+                return (
+                  <div className="permap" key={m}>
+                    <span className="permap-name">{m}</span>
+                    <TugBar p={v} />
+                    <span className="permap-num">{fmtPct(v)}</span>
+                  </div>
+                );
+              }
+              const side = lean >= 0 ? "a" : "b";
+              const w = Math.min(50, (Math.abs(lean) / maxLean) * 50);
+              return (
+                <div className="permap-row" key={m}
+                  title={`Map-specific Elo edge for ${src.team1_name} on `
+                    + `${m} (negative favours ${src.team2_name}). This is `
+                    + `the model's per-map input, before calibration.`}>
+                  <span className="permap-name">{m}</span>
+                  <div className="lean-bar" aria-hidden="true">
+                    <span className={`lean-fill ${side}`}
+                      style={side === "a"
+                        ? { left: "50%", width: `${w}%` }
+                        : { right: "50%", width: `${w}%` }} />
+                  </div>
+                  <span className={`lean-num ${side}`}>
+                    {`${lean >= 0 ? "+" : ""}${Math.round(lean)} Elo`}
+                  </span>
+                  <span className="permap-prob">model {fmtPct(v)}</span>
+                </div>
+              );
+            });
+          })()}
           {pred.maps_dist && (
             <p className="note">
               Expected series length: {Object.entries(pred.maps_dist)

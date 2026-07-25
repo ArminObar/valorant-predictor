@@ -1041,3 +1041,23 @@ with the endpoint's existing team-history pass.
 **Geometry is a pure module.** `frontend/src/chart.js` computes every
 coordinate outside React so `node --test` pins right-alignment, y
 inversion, and domain padding the same way `time.js` is pinned.
+
+## 27. Per-map display: the lean leads, the percentage never hides — decided 2026-07-25 (late)
+
+The owner offered two designs; option (a) — Elo lean primary, model
+percentage secondary — was chosen over removing the percentage, for two
+reasons. First, disclosure: the calibrated per-map probability is the
+model's actual output, and a site whose whole premise is showing its
+work should not delete a model output because it looks repetitive;
+demoting it to small text keeps the record complete. Second, the ties
+are not universal: the calibrator has a few dozen levels, some matches
+DO straddle a boundary, and option (b) would discard real variation on
+exactly those rows. The lean is rendered as a centered diverging bar
+(right of center favours team1, echoing the tug motif) scaled to the
+pool's largest lean, with the signed number beside it; the model
+percentage sits at the row's end in small dim text labeled "model". The
+0031 conditional tie line is superseded by this hierarchy plus the
+rewritten standing note, and is removed rather than left as clutter.
+Payloads predating `per_map_elo` fall back to the plain
+name/bar/percentage row. Presentation only: no number, threshold, or
+model behavior changed.

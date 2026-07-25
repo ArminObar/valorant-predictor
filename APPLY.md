@@ -516,3 +516,21 @@ a test pins trajectory-end == snapshot). Dots carry win/loss tooltips,
 the caption says points are spaced by match rather than by date, and
 the frozen prediction is untouched — the chart is context, and if its
 data is ever unavailable the page simply renders without it.
+
+## 25. Patch 0035: per-map rows lead with the Elo lean
+
+    git am patches/0035-*.patch
+    python -m pytest                 # expect 127 passed (unchanged)
+    cd frontend && npm test && cd .. # expect 8 pass
+    git push
+
+Option (a) from your note, reasoned in ASSUMPTIONS §27: each per-map row
+is now a centered diverging bar of the Elo lean (the signal that
+actually varies), the signed lean in team colors, and the model's
+calibrated percentage demoted to small text at the row's end — visible
+for disclosure and for the matches where the levels genuinely differ,
+but no longer the thing your eye lands on. The inline tie line from
+0031 is superseded and removed; the panel note explains the hierarchy
+in two sentences. Headline series number untouched. Rows on stale
+payloads (before per_map_elo existed) fall back to the old plain
+layout, so nothing breaks before the next re-predict.
