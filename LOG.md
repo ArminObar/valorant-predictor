@@ -919,3 +919,52 @@ command; `git checkout` restored it; the edits were reapplied with
 per-file writes and content assertions. Why testing caught it instead of
 missing it: the suite imports the module, and a Python file full of JSX
 cannot be imported. Frequent commits made the recovery a one-liner.
+
+## Entry 36 — The site was running blind and standing still: INFO logs never emitted, deploys never retrained (2026-07-25)
+
+**Symptom.** Render logs contain no "refresh scheduler enabled" and no
+"refresh cycle:" lines despite curl showing generated_at current — the
+cycle demonstrably runs and the breadcrumbs demonstrably don't print.
+Separately, the served model_version is the pre-feature bundle days...
+hours after the feature deploy: the site predicts autonomously on the OLD
+model.
+
+**Cause 1 — the API process never configured logging.** The refresh
+SUBPROCESS calls basicConfig in its own main and prints the cycle JSON,
+but the API process (which logs "refresh scheduler enabled" and "refresh
+subprocess ok") configures nothing: its INFO records fall to Python's
+last-resort handler, which emits WARNING and above only. Every scheduler
+breadcrumb was dropped at the source; searching for them could never
+succeed. Fix: the vpredict logger tree gets its own handler and INFO
+level with propagation off — one line, every environment, regardless of
+what uvicorn or any runner did to the root logger. Note for the owner's
+remaining puzzle: the subprocess's own "refresh cycle:" line and JSON
+SHOULD appear in the service stream; if they still don't after this
+deploy, watch the live tail during the boot cycle rather than trusting
+dashboard search, and check whether a separate Render service is the
+thing actually cycling.
+
+**Cause 2 — deploys never retrained, by omission.** _needs_retrain
+compares bundle age and store counts; nothing compared the bundle to the
+CODE. So a deploy that redefines the model (patch 0023's features) serves
+the old bundle until the 7-day cadence — answered plainly: yes, the cycle
+only retrains on its own trigger, and no, a deploy did not force one.
+That was a gap, not a decision. Fix, same converge-once pattern as entry
+26: bundles record BUNDLE_BEHAVIOR_REV (now bumped on ANY model-
+definition change, features included — rev 3); a bundle carrying an older
+or missing rev triggers exactly one "model definition changed ... retrain
+once". The live pre-rev bundle fires this on the first cycle after
+deploy, and serving converges to the deployed definition in minutes
+instead of days.
+
+**Version-hash footnote.** The owner's local retrain (…-fdda66b1) and the
+sandbox's (…-a5ac1940) differ because LightGBM's best_iter lands in the
+model NAME and varies across machines (entry 28's known numerics) — the
+hash is doing its job, not drifting.
+
+**Why testing missed both.** The logging gap: tests run under pytest,
+which configures logging, so INFO always flowed in CI and never in
+production — the test now asserts the vpredict tree emits regardless of
+the runner. The retrain gap: every trigger test fed the trigger exactly
+the conditions it checked; nobody wrote "the world changed and the bundle
+didn't" until the world did.

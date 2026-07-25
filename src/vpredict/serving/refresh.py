@@ -28,6 +28,17 @@ def _needs_retrain(now: datetime) -> tuple[bool, str]:
     try:
         from ..modeling.train import load_bundle
         b = load_bundle(bundle_path)
+        # A deploy that changes the model definition (features, calibration,
+        # prediction behavior) bumps BUNDLE_BEHAVIOR_REV; a bundle trained
+        # under an older rev retrains exactly once so serving converges to
+        # the deployed definition without waiting out the age cadence
+        # (LOG entry 36; pre-rev bundles carry no key and fire the same
+        # way, like LOG entry 26's n_store_records convergence).
+        rev = b.get("behavior_rev")
+        if rev != config.BUNDLE_BEHAVIOR_REV:
+            return True, (f"model definition changed (behavior rev "
+                          f"{rev} -> {config.BUNDLE_BEHAVIOR_REV}): "
+                          "retrain once")
         trained_at = datetime.fromisoformat(b["trained_at"])
         if now - trained_at >= timedelta(days=config.RETRAIN_MAX_AGE_DAYS):
             return True, f"bundle older than {config.RETRAIN_MAX_AGE_DAYS}d"

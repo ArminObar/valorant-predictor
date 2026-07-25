@@ -346,3 +346,24 @@ s['n_pending'])"` now and again in ~7 hours.
 **Investigation script:** `python scripts/investigate_tier_gap.py`
 reproduces every number in the session report (train + validation only;
 the test window is untouched by structural assertion).
+
+## 17. Patch 0027: deploys retrain once, and the API finally says so out loud
+
+    git am patches/0027-*.patch
+    python -m pytest                 # expect 113 passed
+    git push
+
+What you will see after this deploy, in order, in the LIVE log tail
+(watch the tail during boot; don't rely on dashboard search): the
+scheduler line — now actually emitted — then the boot cycle, whose
+retrain reason reads "model definition changed (behavior rev None -> 3):
+retrain once", then a fresh bundle. Confirm from your Mac:
+
+    curl -s https://vpredict.onrender.com/api/model | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['version'], d['trained_at'])"
+
+The version will be a NEW hash minted on Render (it will match neither
+your …-fdda66b1 nor the sandbox's — LightGBM's best_iter sits in the
+hashed name and varies per machine; expected, LOG entry 36). If the
+"refresh cycle:" lines STILL don't appear in the tail after this, the
+thing updating predictions is not this service's scheduler — check
+whether a second Render service (a cron job) exists and read ITS logs.

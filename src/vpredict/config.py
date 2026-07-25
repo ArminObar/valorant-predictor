@@ -59,12 +59,14 @@ DEFAULT_ROSTER_FACTOR = 0.8
 # what a healthy fit could evidence. Chosen by judgment from the r41
 # measurement, not tuned.
 CAL_OUTPUT_CLIP = 0.005
-# Bumped whenever prediction-affecting BEHAVIOR changes without the data or
-# feature params changing (the version hash otherwise cannot see code):
-# rev 2 = calibrated-output clip + publish clamp (LOG entry 32). The
-# backtest's run-once gate keys on the bundle version, so this is what
-# makes "the model changed" detectable for pure code changes.
-BUNDLE_BEHAVIOR_REV = 2
+# Bumped on ANY model-definition change (prediction behavior, feature set,
+# calibration) — the convention broadened after LOG entry 36: the version
+# hash makes such changes VISIBLE, and the refresh cycle now also ACTS on
+# this number, retraining exactly once when a deploy carries a rev the
+# serving bundle predates (same converge-once pattern as LOG entry 26).
+# rev 2 = calibrated-output clip + publish clamp (LOG entry 32);
+# rev 3 = stand-in features (§19) + deploy-retrain trigger (LOG entry 36).
+BUNDLE_BEHAVIOR_REV = 3
 # Published probabilities (ledger, upcoming JSON, backtest rows) are rounded
 # to this many decimals and then clamped inside (0, 1) by one ulp of that
 # rounding — a probability of exactly 0.0000 or 1.0000 is an evidentially

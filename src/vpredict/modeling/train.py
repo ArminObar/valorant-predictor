@@ -324,6 +324,7 @@ def train_and_save(data_path=None, half_life_days: float | None = None,
         sel, fs.feature_names, fs.params,
         extra={"n_store_records": _store.count_matches(
                    data_path or config.MATCHES_JSONL),
+               "behavior_rev": config.BUNDLE_BEHAVIOR_REV,
                "selection": {**decision, "incumbent": incumbent,
                              "protocol": "rolling5-expanding + 1SE-hysteresis"},
                "elo_k_baseline": float(best_k),

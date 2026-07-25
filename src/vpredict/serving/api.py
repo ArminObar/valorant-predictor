@@ -54,6 +54,20 @@ def _bundle_meta(bundle_path: Path) -> dict | None:
 
 
 def create_app(data_dir: Path | str | None = None) -> FastAPI:
+    # Without an explicit handler, the API process's INFO lines (scheduler
+    # enabled, subprocess ok/failed) fall to Python's last-resort handler,
+    # which emits WARNING and above only — they were silently dropped in
+    # production (LOG entry 36). Configure the vpredict tree directly and
+    # stop propagation, so exactly one line emits regardless of what the
+    # runner (uvicorn, pytest, anything) did to the root logger.
+    vlog = logging.getLogger("vpredict")
+    if not vlog.handlers:
+        h = logging.StreamHandler()
+        h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s %(message)s"))
+        vlog.addHandler(h)
+    vlog.setLevel(logging.INFO)
+    vlog.propagate = False
     data_dir = Path(data_dir) if data_dir else config.DATA_DIR
     ledger_path = data_dir / "serving" / "ledger.sqlite"
     predictions_json = data_dir / "processed" / "upcoming_predictions.json"

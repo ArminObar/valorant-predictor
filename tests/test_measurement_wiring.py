@@ -81,3 +81,46 @@ def test_workspace_env_reroots_all_data_paths(tmp_path):
     lines = out.strip().splitlines()
     assert all(line.startswith(str(tmp_path)) for line in lines), lines
     assert "/definitely/not/used" not in out
+
+
+# --------------------------------- LOG 36: deploy-retrain on behavior rev
+
+def test_behavior_rev_mismatch_retrains_once(monkeypatch, tmp_path):
+    """A bundle trained under an older model definition retrains exactly
+    once after deploy; a current-rev bundle proceeds to the age cadence."""
+    import joblib
+    from vpredict import config
+    monkeypatch.delenv("VPREDICT_FORCE_RETRAIN", raising=False)
+    monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
+
+    def _write(rev):
+        b = {"trained_at": NOW.isoformat(), "n_store_records": 10,
+             "version": "t"}
+        if rev is not None:
+            b["behavior_rev"] = rev
+        joblib.dump(b, tmp_path / "model.joblib")
+
+    _write(rev=None)                       # pre-rev bundle (like the live one)
+    retrain, why = refresh_mod._needs_retrain(NOW)
+    assert retrain is True and "retrain once" in why and "None ->" in why
+
+    _write(rev=config.BUNDLE_BEHAVIOR_REV - 1)
+    retrain, why = refresh_mod._needs_retrain(NOW)
+    assert retrain is True and "model definition changed" in why
+
+    _write(rev=config.BUNDLE_BEHAVIOR_REV)  # converged: falls through
+    monkeypatch.setattr(refresh_mod.store, "count_matches", lambda _: 10)
+    retrain, why = refresh_mod._needs_retrain(NOW)
+    assert retrain is False and why == "bundle fresh"
+
+
+def test_api_process_emits_info(monkeypatch, tmp_path):
+    """The API process configures logging so the scheduler breadcrumbs
+    actually print (LOG entry 36: they were falling to the WARNING-only
+    last-resort handler in production)."""
+    import logging
+    from vpredict.serving.api import create_app
+    monkeypatch.delenv("VPREDICT_REFRESH", raising=False)
+    (tmp_path / "processed").mkdir(parents=True)
+    create_app(data_dir=tmp_path)
+    assert logging.getLogger("vpredict.api").isEnabledFor(logging.INFO)
