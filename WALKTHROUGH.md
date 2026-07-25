@@ -71,7 +71,9 @@ uniform weights — a stated simplification, on the model card.
 Raw classifier scores aren't probabilities. Platt scaling (a one-variable
 logistic regression on the validation outputs) is fitted after model
 selection; isotonic regression is only allowed when validation is large
-enough to support it, because isotonic overfits small samples. The
+enough to support it, because isotonic overfits small samples. A third
+candidate, a smoothed strictly monotone isotonic variant, competes under
+the same gate; the step version currently wins validation and serves. The
 calibration curve plots predicted probability against observed frequency —
 points on the diagonal mean the numbers can be taken literally. Expected
 Calibration Error (ECE) summarizes the gap: 0.067 at map grain here, with
@@ -103,8 +105,8 @@ matches), and the answer is a lesson in itself: **C stopped mattering.**
 Test series log loss is 0.6375 for every C from 0.03 to 3.0; the
 compression was a small-data artifact, not a knob to turn. Meanwhile the
 gap closed on its own: at this scale the selected model beats Elo at both
-grains on the test window (current regeneration: series 0.6530 vs 0.6555,
-map 0.6672 vs 0.6704).
+grains on the test window (current regeneration: series 0.6570 vs 0.6580,
+map 0.6693 vs 0.6719).
 
 The sweep surfaced a subtler finding worth more than the original question:
 plain LR beat the then-selected LightGBM on the untouched test window at
@@ -123,9 +125,10 @@ family on different hardware. The response was not to pick a winner but to
 change the selection *procedure*: production now scores families by
 rolling-origin (five expanding chronological folds) and keeps the
 incumbent unless a challenger wins by more than one paired standard error.
-The serving bundle therefore stays LightGBM while the report's single-shot
-protocol shows LR, a documented divergence until the next protocol-aligned
-evaluation. Two instruments neither model was tuned against arbitrate: the
+The serving bundle therefore holds the incumbent — after the
+timezone-corrected retrains that is plain LR — while the report's
+single-shot protocol names its own pick each regeneration; when the two
+diverge, the divergence is documented, never reconciled by hand. Two instruments neither model was tuned against arbitrate: the
 frozen ledger (§10) and the walk-forward backtest (§11) — whose full-walk
 verdict, for honesty's sake, is that the model's edge over Elo is recent,
 not lifelong.

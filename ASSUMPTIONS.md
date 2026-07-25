@@ -1197,3 +1197,31 @@ and the production build succeeds.
 **Static exposure.** The only mount serves the built frontend
 directory; the data disk is never mounted; traversal and direct-path
 probes are pinned by test to 404 without leaking bytes.
+
+## 32. Repo hygiene for the portfolio cut (2026-07-26 session)
+
+**README rewritten in full.** The old file was accurate but read like
+documentation; the new one reads like the person who built it, keeps
+every load-bearing claim (frozen ledger, honest backtest verdict,
+selection discipline, bug stories), and carries the current
+regeneration's numbers (series 0.6570 vs 0.6580, map 0.6693 vs 0.6719,
+62.1% vs 61.3%) plus the live test count (137). Rule inherited from the
+frontend copy: no em dashes anywhere in the README.
+
+**STATE.md and patches/ untracked.** STATE.md is a personal working
+scratchpad (deadlines, half-drafted notes) and patches/ holds applied
+patch artifacts; neither is part of the published project, so both move
+to .gitignore and out of tracking. History still contains them until
+the owner runs the history rewrite in the session notes.
+
+**Doc staleness corrected, minimally.** MODEL_CARD's architecture lead
+and two serving-family clauses said the serving bundle was LightGBM;
+after the timezone-corrected retrains the incumbent the hysteresis
+policy holds is plain LR, and the card now says so without touching its
+dated metrics block. WALKTHROUGH §7's "current regeneration" figures
+updated to the current regeneration; its serving-bundle sentence now
+describes the mechanism (hold the incumbent, document divergence)
+instead of naming a family that can flip; §6 mentions the third
+calibration candidate. The card's dated metrics block (2026-07-24
+regeneration) is left as a dated snapshot on purpose — refresh it from
+the next `scripts/evaluate.py` run rather than by hand.

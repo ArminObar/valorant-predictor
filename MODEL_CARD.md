@@ -4,8 +4,9 @@
 
 - **Task.** Pre-match win probability for professional Valorant, trained at
   map grain, aggregated to series probabilities by exact best-of DP.
-- **Architecture.** Heavily regularized LightGBM with isotonic
-  calibration, retained by the production selection policy: rolling-origin
+- **Architecture.** Plain logistic regression (C=0.03) with
+  step-isotonic calibration is the current serving bundle, held by the
+  production selection policy: rolling-origin
   family scores with one-paired-SE champion/challenger hysteresis over a
   gated menu (LR always; regularized LightGBM admitted at ≥500 usable
   matches; no neural networks by project scope; `LOG.md` entry 28), then
@@ -97,7 +98,8 @@ Figures below are the evaluation report's (single-shot protocol; on the
 corrected data its LR-vs-LightGBM choice is a dead heat decided by 8e-5 —
 this session's regeneration selected plain LR, a re-run on other hardware
 may legitimately select LightGBM with third-decimal differences; the
-SERVING bundle remains LightGBM under hysteresis — see Architecture). Map grain (2026-07-24 late regeneration, stand-in features in): log loss 0.6676,
+SERVING bundle is currently plain LR under hysteresis — see
+Architecture). Map grain (2026-07-24 late regeneration, stand-in features in): log loss 0.6676,
 Brier 0.2375, accuracy 59.6%, ECE 0.0345 — versus tuned Elo (K=24) 0.6704
 / 0.2388 / 59.0%. Series grain (824 series, veto-completed map sets): log
 loss **0.6501**, Brier **0.2275**, accuracy **63.5%** — ahead of the
@@ -121,7 +123,8 @@ third-decimal. Every figure regenerates from `scripts/evaluate.py`.
   measured dead heat (candidate val map LL gap 8e-5, printed in the
   results header; C sweep val-series flat at 0.6309–0.6310 across three
   decades of C) while production's rolling-origin + hysteresis policy
-  keeps the LightGBM incumbent (margin inside one paired SE). No switch is made on test
+  keeps the incumbent — currently plain LR after the
+  timezone-corrected retrains (margin inside one paired SE). No switch is made on test
   evidence; the frozen ledger arbitrates, and the hysteresis policy is
   the pre-registered mechanism for absorbing exactly this instability.
 - **Timestamp erratum (2026-07-24, `LOG.md` entry 29).** Every start time

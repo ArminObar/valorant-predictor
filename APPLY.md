@@ -601,3 +601,17 @@ esbuild advisories (npm audit now reports zero). Run `npm ci` once
 after applying so your lockfile-installed vite matches. If you ever
 need to loosen the limiter during a traffic spike of your own making,
 set VPREDICT_RATE_LIMIT_PER_MIN on Render rather than editing code.
+
+## 30. Patch 0040: repo hygiene (README, untracking, doc staleness)
+
+    git am patches/0040-*.patch
+    python -m pytest                 # expect 137 passed (no test changes)
+    git push
+
+What changes: README.md rewritten in full (current numbers, 137 tests,
+no em dashes), STATE.md and patches/ untracked and gitignored, and the
+serving-family staleness in MODEL_CARD.md / WALKTHROUGH.md corrected
+(the incumbent after the timezone-corrected retrains is plain LR; the
+dated 2026-07-24 metrics block in the card is intentionally left as a
+dated snapshot). After pushing, the working-tree patches/ directory and
+STATE.md stay on disk untracked, which is the point.
