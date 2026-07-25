@@ -42,9 +42,11 @@ function UpcomingCard({ m, onOpen }) {
         <span className="when">{fmtTime(m.start_ts)} · Bo{m.best_of}</span>
       </div>
       <div className="teams">
-        <span className={`team a ${p >= 0.5 ? "fav" : ""}`}>{m.team1_name}</span>
+        <span className={`team a ${p >= 0.5 ? "fav" : ""}`}>
+          <i className="dot a" />{m.team1_name}</span>
         <span className="vs">vs</span>
-        <span className={`team b ${p < 0.5 ? "fav" : ""}`}>{m.team2_name}</span>
+        <span className={`team b ${p < 0.5 ? "fav" : ""}`}>
+          {m.team2_name}<i className="dot b" /></span>
       </div>
       <TugBar p={p} />
       <div className="probs">
@@ -586,9 +588,11 @@ function MatchDetail({ id, onBack }) {
           <span className="when">{fmtTime(src.start_ts)} · Bo{src.best_of}</span>
         </div>
         <div className="teams big">
-          <span className={`team a ${p >= 0.5 ? "fav" : ""}`}>{src.team1_name}</span>
+          <span className={`team a ${p >= 0.5 ? "fav" : ""}`}>
+            <i className="dot a" />{src.team1_name}</span>
           <span className="vs">vs</span>
-          <span className={`team b ${p < 0.5 ? "fav" : ""}`}>{src.team2_name}</span>
+          <span className={`team b ${p < 0.5 ? "fav" : ""}`}>
+            {src.team2_name}<i className="dot b" /></span>
         </div>
         <TugBar p={p} />
         <div className="probs">
@@ -924,7 +928,7 @@ export default function App() {
           predictions.
         </p>
       )}
-      <nav>
+      <nav className="tabs">
         {["upcoming", "scoreboard", "model"].map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
             {t}

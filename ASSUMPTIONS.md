@@ -1061,3 +1061,23 @@ rewritten standing note, and is removed rather than left as clutter.
 Payloads predating `per_map_elo` fall back to the plain
 name/bar/percentage row. Presentation only: no number, threshold, or
 model behavior changed.
+
+## 28. Polish round two — aggressive, inside the same identity (2026-07-25, late)
+
+Round one (§24) was judged too timid; this pass raises the hierarchy
+and depth while keeping every word and number in place. The moves: a
+brighter dim tone and a faint dot grid over the arena backdrop (pure
+CSS, no assets); the wordmark and key numerals enlarged; the tab row
+becomes a segmented control whose active pill carries the two-tone
+underline; panels and cards gain radius, padding, and an entry rise;
+clickable cards grow a teal-to-ember edge bar on hover instead of a
+chevron (the right edge of cards is already busy with times and
+percentages); panel titles brighten and carry a small two-tone tick;
+team names get color dots that bind the palette to its meaning; the
+hero's stat and next-up cards go glass (backdrop blur, feature-gated
+behind @supports); the footer gets the same two-tone rule. The
+teal/ember split is now ONE motif used in five small places rather than
+scattered novel decoration. Reduced motion disables the rise, the
+sweep, and the lifts. Explicitly untouched: all copy, all numbers, all
+honest-disclosure language, all layout structure and information
+order.

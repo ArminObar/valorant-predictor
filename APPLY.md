@@ -534,3 +534,19 @@ but no longer the thing your eye lands on. The inline tie line from
 in two sentences. Headline series number untouched. Rows on stale
 payloads (before per_map_elo existed) fall back to the old plain
 layout, so nothing breaks before the next re-predict.
+
+## 26. Patch 0036: polish, round two
+
+    git am patches/0036-*.patch
+    python -m pytest                 # expect 127 passed (unchanged)
+    cd frontend && npm test && cd .. # expect 8 pass
+    git push
+
+Aggressive pass, same identity (ASSUMPTIONS §28): segmented tabs with
+the two-tone active pill, brighter type hierarchy with title ticks,
+team color dots, hover edge bars on clickable cards, glass hero cards,
+dot-grid backdrop, entry rise on panels, footer rule. Three tiny JSX
+touches (a class on the tab nav, dots beside team names); everything
+else is index.css. No copy, numbers, or disclosure language changed.
+If any of it reads worse in your browser than in description, say so
+and it comes back off — it is deliberately isolated in one patch.
