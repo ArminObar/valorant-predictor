@@ -876,3 +876,42 @@ behavior, not a bug), and L2 with elo_diff collinearity crushes what
 remains. Genuine per-map differentiation needs interaction terms or the
 tree family; both go through the standard gated selection when data
 supports them, and neither is promised.
+
+## 22. Homepage leads with the recent window; every displayed number is a served artifact — decided 2026-07-25
+
+Owner-directed emphasis flip, executed with these judgment calls:
+
+**What leads and why.** The hero and the model tab now open with the
+recent-test-window comparison (series grain first — it is the deliverable
+the ledger publishes — then map grain, then per tier), because it is the
+honest strongest current result: the untouched newest 15 percent of a
+chronological split, confirmed by a fresh `scripts/evaluate.py` run on
+2026-07-25 after the timezone migration and the stand-in retrain. The
+two-year backtest loses no visibility: it keeps its own panel, the hero
+links to it, the model tab links to it, and its framing states plainly
+that Elo wins most of the full history, including the early data-starved
+era. Emphasis changed; no number changed; nothing moved more than one
+click away.
+
+**No hardcoded metrics, enforced by construction.** The frontend contains
+zero typed-in numbers for either window. The recent-window figures render
+only from `GET /api/results`, whose sole producer is
+`scripts/evaluate.py` (the JSON is written from the same in-scope arrays
+that format `results.md`, so it cannot diverge from the report) moved by
+`scripts/publish_results.py`, which refuses synthetic-watermarked or
+structurally incomplete artifacts with named reasons. Until a publish
+happens, the hero falls back to the pre-existing prose (a claim the
+owner's fresh run verified) and the model tab simply omits the panel —
+rendering nothing rather than inventing something.
+
+**Featured live prediction stays series-level.** The hero's "next up"
+strip shows the series probability only, not per-map chips, until §21's
+calibration round lands — featuring the quantized per-map display on the
+homepage would amplify exactly the artifact §21 exists to fix. It reuses
+the served upcoming JSON, filters placeholder fixtures, and carries the
+same low-history badge as everywhere else.
+
+**Cosmetic widening, recorded.** The scoreboard's metric component keyed
+its higher-is-better direction on the exact label "accuracy"; it now
+keys on the substring so "series accuracy" colors correctly. Display
+logic only.

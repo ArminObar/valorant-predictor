@@ -419,3 +419,30 @@ anything synthetic-watermarked or structurally incomplete), copies to
 data/processed/, and POSTs. Re-running evaluate.py before publishing
 reproduces tonight's fresh numbers as long as the local store hasn't
 topped up since; whatever it prints is what the site will show.
+
+## 20. Patch 0030: the homepage leads with the recent window, sourced
+
+    git am patches/0030-*.patch
+    python -m pytest                 # expect 118 passed (unchanged)
+    cd frontend && npm test && cd .. # expect 5 pass
+    git push
+
+What changes where: the hero's prose claim becomes a stat card fed by
+GET /api/results (series log loss, series accuracy, map log loss, green
+marks the winner), followed by the honest backtest framing and a
+clickable "next up" strip with the live series prediction. The model tab
+now opens with the full recent-window panel (both grains, Brier, per
+tier, provenance line naming evaluate.py and the evaluated model) and
+links to the backtest; bundle details follow. The backtest panel's
+summary sentence now says outright that it replays the full history
+including the early data-starved era. Zero em dashes anywhere in
+displayed copy; no number is typed into the frontend.
+
+Until you run publish_results.py (section 19), /api/results is empty:
+the hero falls back to the previous prose and the model tab omits the
+panel — nothing breaks, nothing is invented. After the publish, hard
+refresh and the card appears with exactly the numbers evaluate.py
+printed. If the fresh run's numbers ever stop supporting the framing,
+the card will say so on its own (green flips sides); the prose fallback
+is the only place a claim lives without numbers behind it, so re-check
+it whenever the story changes.

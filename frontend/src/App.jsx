@@ -92,7 +92,7 @@ function Upcoming({ onOpen }) {
 function Metric({ label, model, elo }) {
   const better =
     model == null || elo == null ? null :
-    label === "accuracy" ? model > elo : model < elo;
+    label.includes("accuracy") ? model > elo : model < elo;
   return (
     <div className="metric">
       <div className="metric-label">{label}</div>
@@ -257,9 +257,10 @@ function Backtest() {
       <p className="note">
         Results are split by event tier (tier1 is the top pro circuit) and
         never pooled into one number. Lower log loss is better; green
-        marks the winner in each tier. The short version: Elo wins most of
-        the two-year history, and the model does better in the most recent
-        stretch. This backtest runs once. It only re-runs if the model
+        marks the winner in each tier. The short version: replayed
+        honestly across its full history, including the early data-starved
+        era, Elo wins most of it and the model does better in the most
+        recent stretch. This backtest runs once. It only re-runs if the model
         changes, and the old result stays archived.
         {data.synthetic_data && (
           <span className="badge">contains synthetic data</span>
@@ -373,7 +374,97 @@ function Scoreboard({ onOpen }) {
   );
 }
 
-function ModelTab() {
+function RecentResults({ go }) {
+  const { data, err } = useApi("/api/results");
+  if (err || !data || !data.generated_at || !data.series) return null;
+  const s = data.series, m = data.map, sel = data.selected || {};
+  const tiers = data.per_tier || [];
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        Where the model stands (recent test window)
+      </div>
+      <p className="note">
+        Matches are split in time order: the oldest 70 percent trains the
+        model, the next 15 percent tunes it, and the newest 15 percent is
+        held out untouched until scoring. The numbers below are that
+        held-out window; the model never saw these matches while training
+        or tuning. Log loss and Brier score the probabilities (lower is
+        better), accuracy counts correct picks (higher is better), and
+        green marks whichever side is ahead. The series line is the one
+        the site actually publishes.
+      </p>
+      <div className="metrics">
+        <div className="metric head">
+          <div className="metric-label" />
+          <div className="metric-val">model</div>
+          <div className="metric-val elo">elo</div>
+        </div>
+        <Metric label={`series log loss (${s.n} series)`}
+          model={s.model.log_loss} elo={s.elo.log_loss} />
+        <Metric label="series brier" model={s.model.brier} elo={s.elo.brier} />
+        <Metric label="series accuracy"
+          model={s.model.accuracy} elo={s.elo.accuracy} />
+        <Metric label={`map log loss (${m.n_rows} maps)`}
+          model={m.model.log_loss} elo={m.elo.log_loss} />
+        <Metric label="map brier" model={m.model.brier} elo={m.elo.brier} />
+        <Metric label="map accuracy"
+          model={m.model.accuracy} elo={m.elo.accuracy} />
+      </div>
+      <table className="ledger">
+        <thead>
+          <tr><th>tier</th><th>test map rows</th><th>model LL</th>
+            <th>model acc</th><th>elo LL</th><th>elo acc</th></tr>
+        </thead>
+        <tbody>
+          {tiers.map((t) => (
+            <tr key={t.tier}>
+              <td>{t.tier}</td>
+              {t.n_map_rows ? (
+                <>
+                  <td>{t.n_map_rows}</td>
+                  <td className={t.model_ll < t.elo_ll ? "ok" : ""}>
+                    {t.model_ll.toFixed(4)}</td>
+                  <td>{fmtPct(t.model_acc)}</td>
+                  <td className={t.elo_ll < t.model_ll ? "ok" : ""}>
+                    {t.elo_ll.toFixed(4)}</td>
+                  <td>{fmtPct(t.elo_acc)}</td>
+                </>
+              ) : (
+                <td colSpan={5} className="dim">no test rows</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="note">
+        Split by event tier, never pooled into one number. The slices are
+        different sizes and the small ones move around; read them with
+        that in mind.
+      </p>
+      <p className="note">
+        Generated {fmtTime(data.generated_at)} by scripts/evaluate.py over
+        the full store ({data.store?.n_matches_usable} usable matches,
+        {" "}{data.store?.window?.[0]} to {data.store?.window?.[1]}).
+        Model evaluated: {sel.name} + {sel.calibration}. Every number
+        here regenerates from that one script; nothing on this page is
+        typed in by hand.
+      </p>
+      <p className="note">
+        The two-year backtest tells the tougher half of the story: the
+        whole system replayed honestly across its full history, including
+        the early data-starved era when the model had almost nothing to
+        learn from. Elo wins most of that history and the model does
+        better in the recent stretch, which is the window above.{" "}
+        <button className="linklike" onClick={() => go("backtest")}>
+          see the full backtest
+        </button>
+      </p>
+    </div>
+  );
+}
+
+function ModelTab({ go }) {
   const { data, err } = useApi("/api/model");
   if (err) return <p className="empty">API unreachable.</p>;
   if (!data) return <p className="empty">Loading…</p>;
@@ -389,6 +480,8 @@ function ModelTab() {
     ["roster factor", data.params?.roster_factor],
   ];
   return (
+    <>
+    <RecentResults go={go} />
     <div className="panel">
       <div className="panel-title">Model details (live bundle)</div>
       {data.synthetic_data && (
@@ -410,6 +503,7 @@ function ModelTab() {
         data so that "65%" is meant to come true about 65% of the time.
       </p>
     </div>
+    </>
   );
 }
 
@@ -598,7 +692,79 @@ function MatchDetail({ id, onBack }) {
   );
 }
 
-function Hero({ go }) {
+function HeroStats() {
+  const { data } = useApi("/api/results");
+  if (!data || !data.generated_at || !data.series) {
+    return (
+      <p className="hero-copy">
+        Where it stands: on the most recent slice of two years of data,
+        the model beats Elo at both the map level and the series level.
+        Replayed over the full two years, Elo wins more of the history.
+        Both views are on this site.
+      </p>
+    );
+  }
+  const s = data.series, m = data.map;
+  return (
+    <div className="hero-stats">
+      <div className="hero-stats-title">
+        Recent test window: {s.n} held-out series the model never trained
+        or tuned on
+      </div>
+      <div className="metrics">
+        <div className="metric head">
+          <div className="metric-label" />
+          <div className="metric-val">model</div>
+          <div className="metric-val elo">elo</div>
+        </div>
+        <Metric label="series log loss"
+          model={s.model.log_loss} elo={s.elo.log_loss} />
+        <Metric label="series accuracy"
+          model={s.model.accuracy} elo={s.elo.accuracy} />
+        <Metric label="map log loss"
+          model={m.model.log_loss} elo={m.elo.log_loss} />
+      </div>
+      <p className="hero-stats-note">
+        Lower log loss is better; higher accuracy is better; green marks
+        the winner. Full table, per-tier numbers, and where these come
+        from are in the model tab.
+      </p>
+    </div>
+  );
+}
+
+function HeroNext({ onOpen }) {
+  const { data } = useApi("/api/upcoming");
+  const now = Date.now();
+  const next = (data?.predictions || [])
+    .filter((p) => p.team1 !== p.team2)
+    .filter((p) => new Date(p.start_ts).getTime() > now)
+    .sort((a, b) => new Date(a.start_ts) - new Date(b.start_ts))[0];
+  if (!next) return null;
+  const p = next.p_model;
+  const fav = p >= 0.5 ? next.team1_name : next.team2_name;
+  return (
+    <div className="hero-next clickable" role="button" tabIndex={0}
+      onClick={() => onOpen(next.match_id)}
+      onKeyDown={(e) => e.key === "Enter" && onOpen(next.match_id)}>
+      <span className="hero-next-label">next up</span>
+      <span className="hero-next-teams">
+        {next.team1_name} <span className="dim">vs</span> {next.team2_name}
+      </span>
+      <span className="dim">{fmtTime(next.start_ts)}</span>
+      <span className="hero-next-prob">
+        model {fmtPct(p >= 0.5 ? p : 1 - p)} {fav}
+      </span>
+      {next.low_history ? (
+        <span className="badge" title={"One or both teams have fewer "
+          + "than 3 recorded maps, so this prediction leans on "
+          + "defaults. Extra doubt advised."}>low history</span>
+      ) : null}
+    </div>
+  );
+}
+
+function Hero({ go, onOpen }) {
   return (
     <div className="hero">
       <svg className="hero-bg" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -648,18 +814,19 @@ function Hero({ go }) {
           simple rating system that is hard to beat) and against real
           sportsbook odds.
         </p>
+        <HeroStats />
         <p className="hero-copy">
-          Where it stands: on the most recent slice of two years of data,
-          the model beats Elo at both the map level and the series level.
-          Replayed over the full two years, Elo wins more of the history.
-          Both views are on this site. The live scoreboard has only just
-          started grading, so treat it as a record being written, not a
-          verdict.
+          Replayed over the full two years of history, including the
+          early data-starved era when the model had almost nothing to
+          learn from, Elo wins more of it. That backtest is kept in full
+          view, one click away. The live scoreboard has only just started
+          grading, so treat it as a record being written, not a verdict.
         </p>
         <nav className="intro-links">
           <button onClick={() => go("upcoming")}>see upcoming predictions</button>
           <button onClick={() => go("backtest")}>see the backtest</button>
         </nav>
+        <HeroNext onOpen={onOpen} />
       </div>
     </div>
   );
@@ -681,7 +848,7 @@ export default function App() {
   };
   return (
     <div className="wrap">
-      <Hero go={go} />
+      <Hero go={go} onOpen={setOpenMatch} />
       {health?.synthetic_model && (
         <p className="warn">
           This is a demo model trained on made-up data. Not real
@@ -701,7 +868,7 @@ export default function App() {
         <>
           {tab === "upcoming" && <Upcoming onOpen={setOpenMatch} />}
           {tab === "scoreboard" && <Scoreboard onOpen={setOpenMatch} />}
-          {tab === "model" && <ModelTab />}
+          {tab === "model" && <ModelTab go={go} />}
         </>
       )}
       <footer>
