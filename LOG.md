@@ -1082,3 +1082,31 @@ where both multipliers are invisible; nothing in the suite asserts a
 latency budget, and the 0034 real-data spot check verified correctness
 without timing. A perf regression gate (endpoint budget on a seeded
 store) is noted as future tooling, not promised.
+
+## Entry 40 — npm ci refused the vite 8 bump: incompatible peer range shipped, verified with the wrong command (2026-07-26 session)
+
+**Symptom.** After applying 0039/0040, `npm ci` on the owner's machine
+failed with ERESOLVE: the root project pins vite ^8.1.5 while
+@vitejs/plugin-react 4.7.0 declares peer support only up to vite 7. The
+install never happened, so the `npm test` run after it exercised stale
+node_modules and verified nothing.
+
+**Cause.** Patch 0039 bumped vite 5 -> 8 to clear the dev-chain esbuild
+advisories but left the react plugin on the 4.x line, whose declared
+peer range stops at vite 7. The mismatch shipped because it was
+verified with the wrong command: `npm install vite@latest` on a warm
+tree, which tolerates the peer conflict, instead of a cold `npm ci`,
+which is exactly what the runbook tells the owner to run and exactly
+what enforces peer ranges strictly.
+
+**Fix.** @vitejs/plugin-react ^6.0.4, whose declared peer range is
+vite ^8 (its rolldown/babel peers are marked optional and are not
+needed by this config), lockfile regenerated. Verified with the
+correct command this time, from scratch: `rm -rf node_modules &&
+npm ci` exits 0, `npm test` passes 8, `npx vite build` succeeds,
+`npm audit` reports zero vulnerabilities.
+
+**Why testing missed it.** Two masking layers: the verification ran
+install-on-a-warm-tree rather than ci-from-scratch, and the install
+output was tail-truncated, which hid the peer warning npm printed. The
+runbook command (`npm ci`) is now the command the verification runs.

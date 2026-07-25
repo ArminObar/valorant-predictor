@@ -615,3 +615,17 @@ serving-family staleness in MODEL_CARD.md / WALKTHROUGH.md corrected
 dated 2026-07-24 metrics block in the card is intentionally left as a
 dated snapshot). After pushing, the working-tree patches/ directory and
 STATE.md stay on disk untracked, which is the point.
+
+## 31. Patch 0041: complete the frontend dep bump (fixes 0039's npm ci)
+
+    git am patches/0041-*.patch
+    cd frontend && rm -rf node_modules && npm ci && npm test && cd ..
+    # expect: npm ci exits 0, 8 tests pass
+    git push
+
+0039's vite 5 -> 8 bump left @vitejs/plugin-react on 4.x, whose peer
+range stops at vite 7, so `npm ci` (correctly) refused the tree. This
+patch bumps the plugin to ^6.0.4 (peer range vite ^8) and regenerates
+the lockfile; no Python changes, pytest count stays 137. Verified here
+with a cold `npm ci` from scratch this time — LOG entry 40 records why
+the previous verification missed it.
