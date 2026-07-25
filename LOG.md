@@ -1051,3 +1051,34 @@ the overlap. Same gradient, same notch, same look.
 regression between two coordinate systems is exactly the class of bug
 the current suite is blind to; catching it earlier would need visual
 regression snapshots, which are noted as future tooling, not promised.
+
+## Entry 39 — Match-detail clicks took 16-19 s: a per-group pandas loop, paid in full by every click (2026-07-26 session)
+
+**Symptom.** Match detail pages noticeably slow since the rating chart
+(patch 0034); measured 16-19 s per request on the full 6,796-match
+store.
+
+**Cause.** Two multipliers. First, `matches_lite_from_maps` rebuilt its
+per-match dicts with a pandas groupby that ran a boolean mask, a
+`sort_values`, and an `.iloc[0]` PER MATCH — 6,796 small frames of
+overhead totalling 12.7 s, while the Elo replay itself cost 0.11 s.
+Second, the endpoint rebuilt those lites from the store on every click
+even though the store only changes when the refresh cycle tops it up:
+maximum cost, zero reuse.
+
+**Fix.** Both multipliers. The builder is now a single pass (one
+filter, one sort, one walk over contiguous groups), pinned
+byte-identical to a verbatim copy of the old implementation by test:
+12.7 s -> 0.19 s. And the serving path now goes through
+`cached_matches_lite`, one cache entry keyed by the store file's
+identity (path, mtime_ns, size) — an append-only JSONL cannot change
+without moving both — built under a lock so concurrent cold requests
+serialize. Measured on the real store: cold click 16-19 s -> 3.1 s,
+warm clicks -> 0.85 s (the remaining team-history stream plus the
+0.1 s replay). Chart output unchanged to the decimal.
+
+**Why testing missed it.** Every functional test runs on toy stores
+where both multipliers are invisible; nothing in the suite asserts a
+latency budget, and the 0034 real-data spot check verified correctness
+without timing. A perf regression gate (endpoint budget on a seeded
+store) is noted as future tooling, not promised.

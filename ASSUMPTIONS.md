@@ -1116,3 +1116,38 @@ the pairing is subject-appropriate and already loaded; a third face
 would add weight without adding identity. Sandbox has no pixel
 rendering, so the aesthetic verdict is the owner's; the sheet is
 deliberately one revertable commit.
+
+## 30. The lites cache — design decisions (2026-07-26 session)
+
+Owner-approved fix for LOG entry 39, with the calls recorded:
+
+**Cache the lites, not per-team Elo.** The expensive object is the
+store-derived lite list; the replay over it costs 0.11 s and caching
+per-team ratings would add invalidation surface for no measurable win.
+
+**Key = (path, mtime_ns, size), one entry.** The store is append-only
+JSONL: any top-up moves both mtime and size, and nanosecond mtime
+makes same-second double top-ups safe. One entry suffices because the
+process serves one store; a different path (tests, tools) simply
+replaces the entry.
+
+**Base lites only.** `extra_maps` (veto-known deciders) varies per
+call on the prediction path, so extras are never cached; the serving
+chart needs none.
+
+**Build under the lock.** Concurrent cold requests serialize behind
+one multi-second build instead of duplicating it; the lock is held
+only during a miss.
+
+**Shared-object contract.** The returned list is shared across
+requests and documented immutable; the only consumer
+(`elo_trajectory`) reads and copies, never mutates.
+
+**Resident memory accepted.** A few MB of lites now stay resident in
+the API process — which on Render is also the refresh process
+(VPREDICT_REFRESH in-process, §8). Accepted against the measured 2 GB
+headroom; the refresh cycle's own streaming paths are unchanged.
+
+**Scope stops at the approved brief.** The warm click's remaining
+0.85 s is the team-history streaming pass; caching it too was not
+approved and is left as recorded future work rather than smuggled in.

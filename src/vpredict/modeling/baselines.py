@@ -15,7 +15,9 @@ before any of that match's own maps update anything (no within-match leak).
 from __future__ import annotations
 
 import heapq
+import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -31,30 +33,71 @@ def matches_lite_from_maps(maps_df: pd.DataFrame,
     """Collapse the long maps frame into one chronologically sorted dict per
     match, oriented so team `a` is the as-listed team1. `extra_maps` adds
     map names (e.g. veto-known deciders that were never played) to a match's
-    Elo snapshot without affecting rating updates."""
+    Elo snapshot without affecting rating updates.
+
+    Single pass by construction (LOG entry 39): one filter, one sort, one
+    walk over contiguous match groups. The previous per-group pandas
+    version (mask + sort + iloc per match) cost ~12.7 s on the full store
+    and made every match-detail click pay it; this one is well under a
+    second for the same output, pinned equal by test."""
     df = add_est_end(maps_df)
     extra_maps = extra_maps or {}
+    d1 = df[df["is_team1"]]
+    if d1.empty:
+        return []
+    d1 = d1.sort_values(["match_id", "map_index"], kind="stable")
     lites: list[dict] = []
-    for mid, g in df.groupby("match_id", sort=False):
-        g1 = g[g["is_team1"]].sort_values("map_index")
-        if g1.empty:
-            continue
-        r0 = g1.iloc[0]
-        lites.append({
-            "match_id": mid,
-            "start_ts": r0["start_ts"],
-            "est_end_ts": r0["est_end_ts"],
-            "a": r0["team"], "b": r0["opp"],
-            "a_name": r0["team_name"], "b_name": r0["opp_name"],
-            "best_of": int(r0["best_of"]),
-            "event": r0.get("event", ""), "series": r0.get("series", ""),
-            "synthetic": bool(r0.get("synthetic", False)),
-            "maps": [(row.map_name, int(row.won), int(row.map_index))
-                     for row in g1.itertuples()],
-            "maps_extra": list(extra_maps.get(mid, [])),
-        })
+    cur: dict | None = None
+    for row in d1.itertuples(index=False):
+        if cur is None or row.match_id != cur["match_id"]:
+            cur = {
+                "match_id": row.match_id,
+                "start_ts": row.start_ts,
+                "est_end_ts": row.est_end_ts,
+                "a": row.team, "b": row.opp,
+                "a_name": row.team_name, "b_name": row.opp_name,
+                "best_of": int(row.best_of),
+                "event": getattr(row, "event", ""),
+                "series": getattr(row, "series", ""),
+                "synthetic": bool(getattr(row, "synthetic", False)),
+                "maps": [],
+                "maps_extra": list(extra_maps.get(row.match_id, [])),
+            }
+            lites.append(cur)
+        cur["maps"].append((row.map_name, int(row.won), int(row.map_index)))
     lites.sort(key=lambda d: (d["start_ts"], d["match_id"]))
     return lites
+
+
+# ------------------------------------------------------------- lites cache
+# Serving reuse (LOG entry 39): the match-detail endpoint needs the lites
+# for the WHOLE store on every click, and the store only changes when the
+# refresh cycle tops it up. One cache entry, keyed by file identity.
+_LITES_CACHE: dict = {"key": None, "lites": None}
+_LITES_LOCK = threading.Lock()
+
+
+def cached_matches_lite(path) -> list[dict]:
+    """Base lites (no extra_maps) for the store file at `path`, rebuilt
+    only when the file's identity (path, mtime_ns, size) changes — an
+    append-only JSONL cannot be topped up without moving both. The build
+    happens under the lock so concurrent cold requests serialize instead
+    of duplicating a multi-second build. Callers MUST treat the returned
+    list and its dicts as immutable: it is shared across requests.
+    Raises FileNotFoundError if the store does not exist (callers that
+    can live without it already guard)."""
+    p = Path(path)
+    st = p.stat()
+    key = (str(p), st.st_mtime_ns, st.st_size)
+    with _LITES_LOCK:
+        if _LITES_CACHE["key"] == key:
+            return _LITES_CACHE["lites"]
+        from ..data import store as _store
+        lites = matches_lite_from_maps(
+            _store.maps_frame(_store.iter_matches(p)))
+        _LITES_CACHE["key"] = key
+        _LITES_CACHE["lites"] = lites
+        return lites
 
 
 def _snapshot_map_names(lite: dict) -> list[str]:

@@ -567,3 +567,19 @@ angular clipped-corner plate. All copy, numbers, markup, and
 information order are untouched — verify with `git show --stat`, the
 diff is index.css alone. If the direction is wrong in the browser,
 `git revert` this one commit restores the previous look exactly.
+
+## 28. Patch 0038: match-detail load-time fix
+
+    git am patches/0038-*.patch
+    python -m pytest                 # expect 130 passed
+    git push
+
+Two changes, both measured on the full real store (LOG entry 39): the
+lite builder is rewritten as a single pass (12.7 s -> 0.19 s, output
+pinned byte-identical to a verbatim copy of the old implementation),
+and the match endpoint now reuses the lites through a cache keyed by
+the store file's identity, rebuilt only when the refresh cycle tops
+the store up. Detail clicks: 16-19 s before; 3.1 s on the first click
+after a store change; 0.85 s warm. Chart numbers unchanged to the
+decimal. After deploy, click any match page twice and feel the second
+one.

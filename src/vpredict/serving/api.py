@@ -273,20 +273,22 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
             # degrades to "no chart", never to a broken page.
             try:
                 import pandas as pd
-                from ..modeling.baselines import (elo_trajectory,
-                                                  matches_lite_from_maps)
+                from ..modeling.baselines import (cached_matches_lite,
+                                                  elo_trajectory)
                 meta_b = _bundle_meta(bundle_path) or {}
                 k_elo = float(meta_b.get("elo_k_baseline")
                               or config.DEFAULT_ELO_K)
                 cutoff = pd.Timestamp(src["start_ts"])
                 if cutoff.tzinfo is None:
                     cutoff = cutoff.tz_localize("UTC")
-                maps_df = _store.maps_frame(
-                    _store.iter_matches(config.MATCHES_JSONL))
+                # Cached per store-file identity (LOG entry 39): warm
+                # clicks skip the store walk entirely and pay only the
+                # ~0.1 s replay.
+                lites = cached_matches_lite(config.MATCHES_JSONL)
                 traj = {}
-                if not maps_df.empty:
+                if lites:
                     traj = elo_trajectory(
-                        matches_lite_from_maps(maps_df), cutoff, keys,
+                        lites, cutoff, keys,
                         n=config.RATING_TRAJECTORY_N, k=k_elo)
                 if traj:
                     out["rating_history"] = {
