@@ -629,3 +629,21 @@ patch bumps the plugin to ^6.0.4 (peer range vite ^8) and regenerates
 the lockfile; no Python changes, pytest count stays 137. Verified here
 with a cold `npm ci` from scratch this time — LOG entry 40 records why
 the previous verification missed it.
+
+## 32. Patch 0042: the scoreboard fix (cache poisoning + healing pass)
+
+    git am patches/0042-*.patch
+    python -m pytest                 # expect 141 passed
+    git push
+
+The proven live bug (LOG entry 41): match pages cached before
+completion were trusted forever, so predicted matches entered the
+store as "live" and could never grade. This patch makes the completed
+crawl verify the cached body and force one refetch when it is stale,
+never stores a non-final state from that path, and adds a healing pass
+to the refresh cycle that releases the already-trapped rows and lets
+the same cycle grade them. After deploying, either wait for the next
+scheduled cycle or run `python -m vpredict.serving.refresh` in the
+Render Shell to watch it live: expect a "heal" block with checked/
+healed counts, a graded count matching the healed completions, and
+n_graded on the public scoreboard finally moving.

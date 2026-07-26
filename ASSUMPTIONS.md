@@ -1225,3 +1225,38 @@ instead of naming a family that can flip; §6 mentions the third
 calibration candidate. The card's dated metrics block (2026-07-24
 regeneration) is left as a dated snapshot on purpose — refresh it from
 the next `scripts/evaluate.py` run rather than by hand.
+
+## 33. Correcting §2: cache-forever is only sound after completion (2026-07-26 session)
+
+§2 recorded "completed match pages are cached forever (they cannot
+change)". The premise was wrong in one case that production found (LOG
+entry 41): a body cached from the upcoming radar predates the result,
+and the completed crawl trusted it forever. §2 stands as the historical
+record; this section records the correction and the new rules.
+
+**Verify, then trust.** The completed path treats "listing says
+completed, body parses non-final" as proof of a pre-completion cache
+body and forces exactly one network refetch, which also rewrites the
+cache entry. Cached-forever now applies to bodies that have EARNED it
+by parsing as completed.
+
+**The completed path never stores a non-final state.** If even the
+fresh body is not final (listing/page race, postponement, reversion),
+nothing is stored and the id stays unknown, which makes the next crawl
+retry it for free. The store moves forward to completed-with-winner or
+not at all.
+
+**The healing pass.** Runs inside the refresh cycle, after crawl and
+before grade so releases grade in the same cycle, and only when
+crawling is enabled (offline cycles stay offline). Candidates: stored
+records still upcoming/live at start + assumed duration +
+HEAL_SLACK_HOURS (2 h — a genuinely long match costs one polite probe
+and is never overwritten, because heal also refuses non-final bodies),
+within HEAL_LOOKBACK_DAYS (14 d — bounds a cancelled fixture's cost to
+one request per cycle for two weeks, then silence). Worst case on
+deploy day: ~15 extra polite requests at the fetcher's 1.1 s spacing;
+steady state: zero.
+
+**Frozen rows untouched.** Healing edits only the match store; the
+ledger's frozen predictions never change, and grading merely fills
+outcomes — same rule as always, now actually reachable.

@@ -1110,3 +1110,56 @@ npm ci` exits 0, `npm test` passes 8, `npx vite build` succeeds,
 install-on-a-warm-tree rather than ci-from-scratch, and the install
 output was tail-truncated, which hid the peer warning npm printed. The
 runbook command (`npm ci`) is now the command the verification runs.
+
+## Entry 41 — The scoreboard starver: the eternal cache served pre-completion bodies, so predicted matches could never grade (2026-07-25/26 session)
+
+**Symptom.** Live n_graded frozen at 1 for days while real matches
+finished. Every pending ledger row stayed pending; the store, checked
+directly, showed those matches as "live" or "upcoming" long after they
+ended — 698897 still "live" 13+ hours after start, while vlr.gg's page,
+fetched fresh, said completed with a 2-1 winner. Cached body age: 11
+hours, from before completion.
+
+**Cause.** A four-step interaction, each step individually reasonable.
+The upcoming radar fetches match pages before they start and every
+fetch writes the disk cache. The completed crawl fetches match pages
+with no TTL, per the "completed pages cannot change" rule — which is
+only sound when the cached body postdates completion; the cache does
+not record which side of completion its body came from. So when a
+predicted match later appeared on the results listing, the crawler
+parsed the stale pre-completion body, upserted a "live" record, and
+from then on the id was known (never re-listed as new) and the cache
+was eternal (never refetched): trapped on both layers. Grading
+requires completed-with-winner, so the row could never grade. The
+mechanism selectively targets exactly the matches that pass through
+the upcoming radar — which is exactly the set the ledger predicts —
+which is why history looked pristine while the live scoreboard
+starved from the day predictions went live.
+
+**Fix.** Three parts. The completed path now verifies the parse: a
+listing that says completed meeting a body that does not parse as
+completed forces one network refetch (which also rewrites the cache
+entry, permanently healing it); if even the fresh body is not final,
+the completed path stores NOTHING — the id stays unknown and the next
+crawl retries. A healing pass in the refresh cycle (before grade, so
+releases grade in the same cycle) refetches any stored record still
+non-final well past start + assumed duration + slack, bounded by a
+lookback so dead fixtures stop consuming requests; the store only
+ever moves forward to completed-with-winner, never to a guess. And
+regression tests now model the cache as what it is — the same URL
+returning different bodies across lifecycle states — poisoning a
+cache with a live body and pinning: refetch happens, non-final is
+never stored, heal releases only the trapped row.
+
+**Why testing missed it.** The crawl tests used a canned fetcher with
+one body per URL, so no test could express "the cache and the network
+disagree" — the defining property of a cache — and the eternal-cache
+rule was reasoned about only from the completed side, then written
+into ASSUMPTIONS §2 as if it covered every cached body. The two-year
+backfill fetched everything after completion, so all historical data
+validated clean; the bug could only begin once predictions and the
+upcoming radar went live. And monitoring watched n_graded without any
+check joining ledger-pending rows against the live site — the store
+was allowed to testify to its own freshness. The diagnosis flipped
+only when a probe compared the stored status against a fresh fetch of
+the same page.

@@ -107,6 +107,15 @@ def _crawl_completed(
                 murl = f"{config.VLR_BASE}{card.href}"
                 try:
                     match = parse_match_page(fetcher.get(murl), card.match_id, murl)
+                    if match.status != "completed":
+                        # The listing says completed, so a non-completed parse
+                        # means the eternal disk cache is serving a body from
+                        # BEFORE completion — cached while this match sat on
+                        # the upcoming radar (LOG entry 41). Force one network
+                        # refetch; the fresh body also heals the cache entry.
+                        match = parse_match_page(
+                            fetcher.get(murl, max_cache_age_s=0),
+                            card.match_id, murl)
                 except RobotsDisallowed:
                     raise
                 except Exception as e:  # noqa: BLE001 — one bad page must not kill a crawl
@@ -116,7 +125,14 @@ def _crawl_completed(
                 if match.start_ts < since:
                     done = True
                     break
-                if tier_b and match.status == "completed":
+                if match.status != "completed":
+                    # Fresh body still not final (listing/page race, postponed,
+                    # reverted). The completed path NEVER stores a non-final
+                    # state; leaving the id unknown makes the next crawl retry.
+                    log.warning("listing says completed but page says %r for "
+                                "%s; not storing", match.status, card.match_id)
+                    continue
+                if tier_b:
                     _attach_tier_b(fetcher, match)
                 batch.append(match)
                 known_ts[card.match_id] = match.start_ts
@@ -164,6 +180,54 @@ def backfill_results(
     and previously fetched match pages come from the disk cache for free."""
     return _crawl_completed(since, max_pages, tier_b, fetcher, store_path,
                             stop_when_all_known=False)
+
+
+def heal_stale_nonfinal(
+    fetcher: PoliteFetcher | None = None,
+    store_path: Path = config.MATCHES_JSONL,
+    now: datetime | None = None,
+) -> dict:
+    """Release matches trapped in a non-final state by a pre-completion
+    cached body (LOG entry 41). Any stored record still upcoming/live well
+    past its start + assumed duration gets ONE forced network refetch per
+    cycle; the store is updated only if the fresh body parses as completed
+    with a winner — the store never regresses and never stores guesses.
+    Lookback is bounded so long-dead fixtures stop consuming requests."""
+    fetcher = fetcher or PoliteFetcher()
+    now = now or datetime.now(timezone.utc)
+    lookback = now - timedelta(days=config.HEAL_LOOKBACK_DAYS)
+    out = {"checked": 0, "healed": 0, "unresolved": 0, "errors": 0}
+    healed: list[Match] = []
+    for m in store.load_matches(store_path):
+        if m.status == "completed" or m.synthetic:
+            continue
+        if m.start_ts < lookback:
+            continue
+        assumed_h = config.ASSUMED_DURATION_HOURS.get(
+            m.best_of, config.DEFAULT_DURATION_HOURS)
+        if now < m.start_ts + timedelta(
+                hours=assumed_h + config.HEAL_SLACK_HOURS):
+            continue          # plausibly still in progress; not stale yet
+        out["checked"] += 1
+        try:
+            fresh = parse_match_page(
+                fetcher.get(m.url, max_cache_age_s=0), m.match_id, m.url)
+        except RobotsDisallowed:
+            raise
+        except Exception as e:  # noqa: BLE001 — one bad page must not kill the pass
+            log.error("heal: refetch failed for %s: %s", m.match_id, e)
+            out["errors"] += 1
+            continue
+        if fresh.status == "completed" and fresh.winner:
+            fresh.scraped_at = utcnow()
+            healed.append(fresh)
+            out["healed"] += 1
+        else:
+            out["unresolved"] += 1   # genuinely delayed; retried next cycle
+    if healed:
+        store.upsert_matches(healed, path=store_path)
+    log.info("heal: %s", out)
+    return out
 
 
 def crawl_upcoming(

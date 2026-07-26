@@ -104,6 +104,17 @@ def refresh_cycle(crawl: bool = True) -> dict:
                 log.error("results crawl failed: %s", e)
                 out["crawl"] = {"error": str(e)}
 
+        # Runs before grade so a healed result grades in the SAME cycle.
+        with phase("heal"):
+            try:
+                from ..scraping.crawl import heal_stale_nonfinal
+                rep = heal_stale_nonfinal()
+                if rep["checked"]:
+                    out["heal"] = rep
+            except Exception as e:
+                log.error("heal pass failed: %s", e)
+                out["heal"] = {"error": str(e)}
+
     with phase("grade"):
         try:
             led = Ledger()

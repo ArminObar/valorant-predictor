@@ -5,8 +5,11 @@ Guarantees, by construction:
   raise RobotsDisallowed and nothing is fetched.
 - single-threaded, with a hard >= MIN_REQUEST_INTERVAL_S gap between network
   requests (cache hits don't count against the site).
-- every fetched page is cached to disk; a cached completed page is never
-  re-requested, so the crawler is safely re-runnable.
+- every fetched page is cached to disk; a cached page whose body parses as
+  completed is never re-requested, so the crawler is safely re-runnable.
+  Cached-forever is only sound AFTER completion: a body cached while the
+  match sat on the upcoming radar predates its result, so the completed
+  crawl verifies the parse and forces one refetch otherwise (LOG entry 41).
 """
 from __future__ import annotations
 

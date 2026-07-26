@@ -43,6 +43,12 @@ CRAWL_FLUSH_MATCHES = 250       # persist parsed matches to the store this often
 # match M never uses a match that had not FINISHED when M started, a prior match
 # is only eligible if start + assumed_duration(best_of) <= M.start.
 ASSUMED_DURATION_HOURS = {1: 1.5, 3: 3.0, 5: 5.0}
+# Healing pass (LOG entry 41): a stored match still upcoming/live this long
+# after start + assumed duration is presumed trapped by a pre-completion
+# cached body and gets one forced refetch per refresh cycle. Lookback bounds
+# how long a cancelled fixture keeps consuming one request per cycle.
+HEAL_SLACK_HOURS = 2.0
+HEAL_LOOKBACK_DAYS = 14
 DEFAULT_DURATION_HOURS = 3.0
 
 # --------------------------------------------------------------------------- feature engine defaults
