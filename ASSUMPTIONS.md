@@ -1304,3 +1304,21 @@ not back into component state.
 **Match detail's back button.** `navigate(-1)` — the real history —
 with one guard: on a direct deep link there is no in-app history, so it
 falls back to `/upcoming` instead of walking the user off the site.
+
+## 35. Backtest on the scoreboard: a derived summary, the table one click away (2026-07-26 session)
+
+Presentation only, by explicit instruction — the numbers, and the
+honesty of Elo winning most of the history, do not move. What changes:
+the scoreboard page no longer ends with the full per-tier backtest
+table (two large model-vs-Elo tables on one page read as repetition);
+it ends with a one-paragraph summary carrying the same "simulated"
+badge and the same kept-apart framing, linking to `/backtest`, where
+the full table now lives as its own tab with a proper empty state.
+
+The summary's numbers ("Elo wins X of N tiers, the model wins Y") are
+NOT prose: they are computed at render time from the same
+`/api/backtest` payload the full table draws, by a pure function
+(`frontend/src/backtestSummary.js`) pinned by node tests — ties count
+for neither side so the sentence stays literally true, and if the
+long-run picture ever flips, the sentence flips with the data instead
+of flattering anyone. Nothing on either page is typed in by hand.

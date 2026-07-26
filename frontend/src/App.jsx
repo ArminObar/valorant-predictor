@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 import { fmtTime } from "./time.js";
 import { buildRatingChart } from "./chart.js";
+import { summarizeBacktestTiers } from "./backtestSummary.js";
 
 const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
 const fmt4 = (v) => (v == null ? "n/a" : v.toFixed(4));
@@ -212,11 +213,18 @@ function MarketPicks() {
 
 function Backtest() {
   const { data, err } = useApi("/api/backtest");
-  if (err || !data || !data.window) return null;
+  if (err) return <p className="empty">API unreachable.</p>;
+  if (!data) return <p className="empty">Loading…</p>;
+  if (!data.window)
+    return (
+      <p className="empty">
+        The backtest has not been run on this deployment yet.
+      </p>
+    );
   const w = data.window;
   const tiers = Object.entries(data.per_tier || {});
   return (
-    <div className="panel" id="backtest">
+    <div className="panel">
       <div className="panel-title">
         Backtest: the system replayed over two years
         <span className="badge" title={"Computed after the fact from "
@@ -272,6 +280,36 @@ function Backtest() {
         {data.synthetic_data && (
           <span className="badge">contains synthetic data</span>
         )}
+      </p>
+    </div>
+  );
+}
+
+function BacktestSummary() {
+  const { data, err } = useApi("/api/backtest");
+  if (err || !data || !data.window) return null;
+  const w = data.window;
+  const t = summarizeBacktestTiers(data.per_tier);
+  if (!t.n) return null;
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        Two-year backtest: the longer record
+        <span className="badge" title={"Computed after the fact from "
+          + "stored data. You can't verify it the way you can the live "
+          + "scoreboard above, which is why the two are kept apart."}>
+          simulated</span>
+      </div>
+      <p className="note">
+        The whole system was also replayed over two years of history as if
+        it had been live the entire time ({w.n_predictions} simulated
+        predictions). Across the {t.n} scored event tiers, Elo wins{" "}
+        {t.eloLeads} on log loss and the model wins {t.modelLeads} — the
+        long history is the tougher half of the story, and it stays in
+        full view, never mixed into the live numbers above.{" "}
+        <Link className="linklike" to="/backtest">
+          see the full per-tier backtest
+        </Link>
       </p>
     </div>
   );
@@ -376,7 +414,7 @@ function Scoreboard({ onOpen }) {
         </div>
       )}
       <MarketPicks />
-      <Backtest />
+      <BacktestSummary />
     </>
   );
 }
