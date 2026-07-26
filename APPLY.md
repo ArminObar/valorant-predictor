@@ -1,4 +1,4 @@
-# APPLY — patch session 2026-07-26 (late): patches 43–47
+# APPLY — patch session 2026-07-26 (late): patches 43–48
 
 What landed, mapped to your list: **1** tab-click trap fixed (clicking
 any top-level tab always shows that tab's own default view; a match
@@ -30,7 +30,13 @@ with log loss and Brier following as the stricter confidence measure;
 and green winner-marking is per-metric and independent everywhere —
 when accuracy and log loss disagree in a tier, both markers stand.
 Also fixes a latent tie bug (Elo used to get the green on an exact
-tie) by routing every marker through one tested helper.
+tie) by routing every marker through one tested helper. Patch 0048 is
+documentation only: an addendum to ASSUMPTIONS §34 recording the full
+verification that the residual react-router advisory is unreachable in
+this deployment — four independent walls (no JS runtime in production,
+no RSC/framework APIs used, no RSC bytes in the shipped bundle, no
+ambient credentials to forge), each with a re-runnable command — so a
+future audit reads evidence, not a trust-me.
 
 Run everything from the repo root: `cd ~/Downloads/valorant-predictor`.
 
@@ -45,9 +51,10 @@ Move them in and apply, in order:
     mkdir -p patches
     mv ~/Downloads/0043-*.patch ~/Downloads/0044-*.patch \
        ~/Downloads/0045-*.patch ~/Downloads/0046-*.patch \
-       ~/Downloads/0047-*.patch patches/
+       ~/Downloads/0047-*.patch ~/Downloads/0048-*.patch patches/
     git am patches/0043-*.patch patches/0044-*.patch \
-       patches/0045-*.patch patches/0046-*.patch patches/0047-*.patch
+       patches/0045-*.patch patches/0046-*.patch \
+       patches/0047-*.patch patches/0048-*.patch
 
 If `git am` complains about uncommitted local edits: `git stash`, apply,
 `git stash pop`.
@@ -67,7 +74,8 @@ Then verify:
 **0 failed**. New this session: 2 SPA-fallback tests in
 `tests/test_api.py` and 7 pool tests in `tests/test_pool.py`. Patch
 0046 is backend-only; 0047 is frontend-only with no dependency
-changes — the one cold install below covers everything. Optional but satisfying —
+changes — the one cold install below covers everything; 0048 touches
+documentation only. Optional but satisfying —
 watch the pool decide, on your local store:
 
     python scripts/inspect_pool.py

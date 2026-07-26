@@ -1306,6 +1306,74 @@ not back into component state.
 with one guard: on a direct deep link there is no in-app history, so it
 falls back to `/upcoming` instead of walking the user off the site.
 
+**Addendum (2026-07-26): the residual advisory verified unreachable —
+evidence, not just a claim.** Challenged directly ("is it actually
+exploitable in this app, walk through what an attacker would need"),
+the answer was re-derived from the artifacts. First, the accounting:
+`npm audit`'s "2 high severity vulnerabilities" is ONE advisory,
+GHSA-qwww-vcr4-c8h2 ("RSC Mode CSRF Bypass Allows Action Execution
+Before 400 Response", published 2026-07-22/24, affects react-router
+>= 7.12.0 < 8.3.0, patched only in 8.3.0 whose peer floor is React
+19), counted once on `react-router` and once on `react-router-dom` —
+the latter transitively, with an empty `via` list. The maintainers'
+own scoping note: "This only affects your application if you are
+using the unstable RSC APIs." The other advisory people reach for,
+the open redirect in Link/useNavigate (GHSA-wrjc-x8rr-h8h6), is not
+installed at all — fixed in 7.18.1, which is the reason for the pin.
+
+The CSRF flaw is server-side (a forged request makes react-router's
+SERVER runtime execute a route action before the 400). Exploiting it
+here requires four things, and each fails independently and
+absolutely — every check re-runnable from the repo root:
+
+1. *A server running react-router's RSC pipeline.* None exists: the
+   production image's final stage is `python:3.12-slim`; Node lives
+   only in the discarded frontend build stage, so no process in the
+   deployment can execute JavaScript at all.
+   Verify: `grep -n FROM Dockerfile`.
+2. *An app calling the unstable RSC (or framework-mode action) APIs.*
+   The entire router surface is `BrowserRouter` plus Link, NavLink,
+   Navigate, Route, Routes, useLocation, useNavigate, useParams —
+   declarative client mode, the mode the advisories exclude.
+   Verify: `grep -rn 'from "react-router' frontend/src/` and
+   `grep -rnE "createBrowserRouter|RouterProvider|loader:|action:|<Form|useFetcher|useSubmit|RSC" frontend/src/`
+   — the only hit is our own `<FormDots>` W/L component.
+3. *The vulnerable bytes shipping somewhere.* The built bundle
+   contains zero RSC transport markers, including the
+   `text/x-component` string literal that survives minification,
+   while provably containing the app and the client router.
+   Verify (after `npm run build`):
+   `grep -c "text/x-component" frontend/dist/assets/index-*.js` -> 0;
+   `grep -c "react-router" frontend/dist/assets/index-*.js` -> nonzero.
+4. *Ambient credentials for a forged request to ride.* There are
+   none: no cookies or sessions anywhere in the backend, frontend
+   fetches set no credentials option, and the only state-changing
+   endpoints (ingest) require an explicit Bearer token header —
+   never attached automatically by a browser — compared in constant
+   time (patch 0039) and disabled outright when the env var is
+   unset. Verify:
+   `grep -rniE "cookie|SessionMiddleware" src/vpredict/serving/` and
+   `grep -rn credentials frontend/src/`.
+
+The patched-away open redirect gets the same belt-and-braces: even
+hypothetically present, it needs a navigation target built from
+attacker-influenced input, and every `to`/`navigate` target in the
+app is a route literal, `navigate(-1)`, or
+`/match/${encodeURIComponent(id)}` with the id from our own API; the
+one stranger-typed string (the `/match/:id` URL segment) flows into a
+backend-validated API fetch, never into a navigation target.
+
+Conclusion, recorded so a future auditor sees the reasoning and not a
+trust-me: the flagged code has no host process, no invoking API call,
+no shipped bytes, and no credentials to abuse — four independent
+walls. No code change is therefore the correct action; npm's
+suggested downgrade to 7.11 would trade an unreachable server-side
+flaw for a client-surface advisory in code we actually execute, and
+the React 19 + react-router 8.3.0 bump (the audit-silencing exit
+above) changes the ledger, not the risk. Registry re-checked
+2026-07-26: 7.18.1 is still the newest 7.x, no backport yet; the
+exact pin means nothing drifts while we wait.
+
 ## 35. Backtest on the scoreboard: a derived summary, the table one click away (2026-07-26 session)
 
 Presentation only, by explicit instruction — the numbers, and the
