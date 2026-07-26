@@ -6,6 +6,7 @@ import {
 import { fmtTime } from "./time.js";
 import { buildRatingChart } from "./chart.js";
 import { summarizeBacktestTiers } from "./backtestSummary.js";
+import { metricLead, liveStanding } from "./compare.js";
 
 const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
 const fmt4 = (v) => (v == null ? "n/a" : v.toFixed(4));
@@ -97,15 +98,17 @@ function Upcoming({ onOpen }) {
   );
 }
 
-function Metric({ label, model, elo }) {
-  const better =
-    model == null || elo == null ? null :
-    label.includes("accuracy") ? model > elo : model < elo;
+function Metric({ label, model, elo, higher = false, pct = false }) {
+  // Direction is an explicit prop (no label sniffing), the winner comes from
+  // metricLead so ties and missing values mark neither side, and each row
+  // judges its own metric independently of its neighbours.
+  const lead = metricLead(model, elo, higher);
+  const show = (v) => (v == null ? "n/a" : pct ? fmtPct(v) : fmt4(v));
   return (
     <div className="metric">
       <div className="metric-label">{label}</div>
-      <div className={`metric-val ${better === true ? "win" : ""}`}>{fmt4(model)}</div>
-      <div className={`metric-val elo ${better === false ? "win" : ""}`}>{fmt4(elo)}</div>
+      <div className={`metric-val ${lead === "model" ? "win" : ""}`}>{show(model)}</div>
+      <div className={`metric-val elo ${lead === "elo" ? "win" : ""}`}>{show(elo)}</div>
     </div>
   );
 }
@@ -233,20 +236,28 @@ function Backtest() {
           simulated</span>
       </div>
       <p className="note">
-        We re-ran the whole system over the past two years as if it had
-        been live the entire time: every prediction uses only information
-        that existed at that moment, and the model retrains on the real
+        This page is the model's toughest exam, on purpose: the whole
+        system replayed over its full two-year history — including its
+        worst stretch, the early data-starved era and a since-fixed
+        calibration bug — with nothing trimmed away to flatter it. It is
+        kept strictly separate from the live scoreboard so neither record
+        can borrow the other's best window, and the two are never mixed
+        into one number. Over this history, Elo wins most tiers. The
+        model has been closing that gap as data accumulates
+        <LiveStandingClause />
+      </p>
+      <p className="note">
+        How the replay works: every prediction uses only information that
+        existed at that moment, and the model retrains on the real
         production schedule ({w.n_retrains} retrains).
         {" "}{w.n_predictions} simulated predictions
         ({w.n_low_history} of them low-history, counted but not scored)
         from {fmtTime(w.first_prediction)} to {fmtTime(w.last_prediction)}.
-        Because it's simulated, it is kept strictly separate from the live
-        scoreboard above. The two are never mixed into one number.
       </p>
       <table className="ledger">
         <thead>
-          <tr><th>tier</th><th>n scored</th><th>model LL</th>
-            <th>model acc</th><th>elo LL</th><th>elo acc</th></tr>
+          <tr><th>tier</th><th>n scored</th><th>model acc</th>
+            <th>elo acc</th><th>model LL</th><th>elo LL</th></tr>
         </thead>
         <tbody>
           {tiers.map(([tier, m]) => (
@@ -255,12 +266,14 @@ function Backtest() {
               {m.n_scored ? (
                 <>
                   <td>{m.n_scored}</td>
-                  <td className={m.model_ll < m.elo_ll ? "ok" : ""}>
-                    {m.model_ll.toFixed(4)}</td>
-                  <td>{fmtPct(m.model_acc)}</td>
-                  <td className={m.elo_ll < m.model_ll ? "ok" : ""}>
-                    {m.elo_ll.toFixed(4)}</td>
-                  <td>{fmtPct(m.elo_acc)}</td>
+                  <td className={metricLead(m.model_acc, m.elo_acc, true)
+                    === "model" ? "ok" : ""}>{fmtPct(m.model_acc)}</td>
+                  <td className={metricLead(m.model_acc, m.elo_acc, true)
+                    === "elo" ? "ok" : ""}>{fmtPct(m.elo_acc)}</td>
+                  <td className={metricLead(m.model_ll, m.elo_ll)
+                    === "model" ? "ok" : ""}>{m.model_ll.toFixed(4)}</td>
+                  <td className={metricLead(m.model_ll, m.elo_ll)
+                    === "elo" ? "ok" : ""}>{m.elo_ll.toFixed(4)}</td>
                 </>
               ) : (
                 <td colSpan={5} className="dim">no scored rows</td>
@@ -271,18 +284,40 @@ function Backtest() {
       </table>
       <p className="note">
         Results are split by event tier (tier1 is the top pro circuit) and
-        never pooled into one number. Lower log loss is better; green
-        marks the winner in each tier. The short version: replayed
-        honestly across its full history, including the early data-starved
-        era, Elo wins most of it and the model does better in the most
-        recent stretch. This backtest runs once. It only re-runs if the model
-        changes, and the old result stays archived.
+        never pooled into one number. Correct picks (accuracy) are the
+        simplest read; log loss is the stricter measure of how confident
+        each call should have been (lower is better). Green marks the
+        leader of each comparison independently — accuracy and log loss
+        can genuinely disagree in a tier, and when they do, both markers
+        stand rather than forcing one verdict. This backtest runs once.
+        It only re-runs if the model changes, and the old result stays
+        archived.
         {data.synthetic_data && (
           <span className="badge">contains synthetic data</span>
         )}
       </p>
     </div>
   );
+}
+
+function LiveStandingClause() {
+  // The claim about the live record is derived at render time, never typed
+  // in: it flips with the data (ASSUMPTIONS §37). Ties and unscored states
+  // fall through to the neutral phrasing.
+  const { data } = useApi("/api/scoreboard");
+  const standing = liveStanding(data?.summary);
+  const sb = (
+    <Link className="linklike" to="/scoreboard">live scoreboard</Link>
+  );
+  if (standing === "ahead")
+    return <>, and on the {sb}'s real graded matches it is currently ahead.</>;
+  if (standing === "behind")
+    return <>, though on the {sb}'s real graded matches it is currently behind.</>;
+  if (standing === "mixed")
+    return <>, and on the {sb}'s real graded matches the lead is currently split
+      between the two.</>;
+  return <>; the {sb} tracks the same head-to-head on real graded matches as
+    they finish.</>;
 }
 
 function BacktestSummary() {
@@ -351,9 +386,10 @@ function Scoreboard({ onOpen }) {
               <div className="metric-val">model</div>
               <div className="metric-val elo">elo</div>
             </div>
+            <Metric label="correct picks (accuracy)" pct higher
+              model={s.model.accuracy} elo={s.elo.accuracy} />
             <Metric label="log loss" model={s.model.log_loss} elo={s.elo.log_loss} />
             <Metric label="brier" model={s.model.brier} elo={s.elo.brier} />
-            <Metric label="accuracy" model={s.model.accuracy} elo={s.elo.accuracy} />
           </div>
         )}
         {s.n_scored > 0 && (
@@ -361,9 +397,11 @@ function Scoreboard({ onOpen }) {
             Scored over {s.n_scored} graded matches
             {s.n_low_history > 0 &&
               ` (${s.n_low_history} more graded but low-history, not scored)`}.
-            Log loss and Brier measure how good the probabilities are
-            (lower is better). Accuracy just counts correct picks (higher
-            is better). Green marks whichever side is ahead.
+            Correct picks are the simplest read. Log loss and Brier are
+            the stricter measure: how confident each probability should
+            have been (lower is better). Green marks the leader of each
+            row independently — accuracy and log loss can disagree, and
+            when they do, both markers stand.
           </p>
         )}
       </div>
@@ -434,10 +472,12 @@ function RecentResults() {
         model, the next 15 percent tunes it, and the newest 15 percent is
         held out untouched until scoring. The numbers below are that
         held-out window; the model never saw these matches while training
-        or tuning. Log loss and Brier score the probabilities (lower is
-        better), accuracy counts correct picks (higher is better), and
-        green marks whichever side is ahead. The series line is the one
-        the site actually publishes.
+        or tuning. Correct picks (accuracy) are the simplest read; log
+        loss and Brier are the stricter measure of how confident each
+        probability should have been (lower is better). Green marks the
+        leader of each row independently — accuracy and log loss can
+        disagree, and when they do, both markers stand. The series line
+        is the one the site actually publishes.
       </p>
       <div className="metrics">
         <div className="metric head">
@@ -445,21 +485,21 @@ function RecentResults() {
           <div className="metric-val">model</div>
           <div className="metric-val elo">elo</div>
         </div>
-        <Metric label={`series log loss (${s.n} series)`}
+        <Metric label={`correct picks (${s.n} series)`} pct higher
+          model={s.model.accuracy} elo={s.elo.accuracy} />
+        <Metric label="series log loss"
           model={s.model.log_loss} elo={s.elo.log_loss} />
         <Metric label="series brier" model={s.model.brier} elo={s.elo.brier} />
-        <Metric label="series accuracy"
-          model={s.model.accuracy} elo={s.elo.accuracy} />
-        <Metric label={`map log loss (${m.n_rows} maps)`}
+        <Metric label={`correct picks (${m.n_rows} maps)`} pct higher
+          model={m.model.accuracy} elo={m.elo.accuracy} />
+        <Metric label="map log loss"
           model={m.model.log_loss} elo={m.elo.log_loss} />
         <Metric label="map brier" model={m.model.brier} elo={m.elo.brier} />
-        <Metric label="map accuracy"
-          model={m.model.accuracy} elo={m.elo.accuracy} />
       </div>
       <table className="ledger">
         <thead>
-          <tr><th>tier</th><th>test map rows</th><th>model LL</th>
-            <th>model acc</th><th>elo LL</th><th>elo acc</th></tr>
+          <tr><th>tier</th><th>test map rows</th><th>model acc</th>
+            <th>elo acc</th><th>model LL</th><th>elo LL</th></tr>
         </thead>
         <tbody>
           {tiers.map((t) => (
@@ -468,12 +508,14 @@ function RecentResults() {
               {t.n_map_rows ? (
                 <>
                   <td>{t.n_map_rows}</td>
-                  <td className={t.model_ll < t.elo_ll ? "ok" : ""}>
-                    {t.model_ll.toFixed(4)}</td>
-                  <td>{fmtPct(t.model_acc)}</td>
-                  <td className={t.elo_ll < t.model_ll ? "ok" : ""}>
-                    {t.elo_ll.toFixed(4)}</td>
-                  <td>{fmtPct(t.elo_acc)}</td>
+                  <td className={metricLead(t.model_acc, t.elo_acc, true)
+                    === "model" ? "ok" : ""}>{fmtPct(t.model_acc)}</td>
+                  <td className={metricLead(t.model_acc, t.elo_acc, true)
+                    === "elo" ? "ok" : ""}>{fmtPct(t.elo_acc)}</td>
+                  <td className={metricLead(t.model_ll, t.elo_ll)
+                    === "model" ? "ok" : ""}>{t.model_ll.toFixed(4)}</td>
+                  <td className={metricLead(t.model_ll, t.elo_ll)
+                    === "elo" ? "ok" : ""}>{t.elo_ll.toFixed(4)}</td>
                 </>
               ) : (
                 <td colSpan={5} className="dim">no test rows</td>
@@ -830,17 +872,18 @@ function HeroStats() {
           <div className="metric-val">model</div>
           <div className="metric-val elo">elo</div>
         </div>
+        <Metric label="series correct picks" pct higher
+          model={s.model.accuracy} elo={s.elo.accuracy} />
         <Metric label="series log loss"
           model={s.model.log_loss} elo={s.elo.log_loss} />
-        <Metric label="series accuracy"
-          model={s.model.accuracy} elo={s.elo.accuracy} />
         <Metric label="map log loss"
           model={m.model.log_loss} elo={m.elo.log_loss} />
       </div>
       <p className="hero-stats-note">
-        Lower log loss is better; higher accuracy is better; green marks
-        the winner. Full table, per-tier numbers, and where these come
-        from are in the model tab.
+        Correct picks are the simplest read; log loss is the stricter
+        measure of how confident each call should have been (lower is
+        better). Green marks each row's leader independently. Full table,
+        per-tier numbers, and where these come from are in the model tab.
       </p>
     </div>
   );

@@ -1365,3 +1365,45 @@ tests). Ties break alphabetically after weight, deterministically.
 Option C from the investigation (derive the pool from tier-1/2 events
 only, reacting in days) remains the principled refinement if pool
 latency ever matters again.
+
+## 37. Metric presentation: accuracy first, judged independently, and a framed backtest (2026-07-26 session)
+
+Three owner-directed presentation changes, all display-only — no number
+on any page moved, and every figure keeps coming from its API payload.
+
+**Ordering.** Accuracy ("correct picks") now leads every metric display
+— live scoreboard, hero, model tab, backtest — with log loss and Brier
+following as the stricter measure of how confident each call should
+have been. The rule is applied uniformly precisely so the ordering
+cannot be read as leading with whichever metric flatters a given table:
+on the live scoreboard accuracy-first currently favours the model, on
+the backtest it currently favours Elo, and both get the identical
+layout. Accuracy renders as a percentage in metric rows now (68.8%,
+not 0.6875) — the plain-language read was the point.
+
+**Independent winner marking.** Every green marker routes through one
+helper (`frontend/src/compare.js: metricLead`), direction-aware and
+judged per metric: accuracy gets its own comparison everywhere, instead
+of only log loss carrying a marker in the per-tier tables. When
+accuracy and log loss disagree in a row — which genuinely happens —
+both markers stand; no single verdict is forced, because the
+disagreement is a real signal (a side can pick more winners while
+pricing them worse). Two latent display bugs died in the move: the old
+Metric row marked ELO the winner on an exact tie (`model < elo` is
+false on a tie, and isotonic step outputs make exact ties possible in
+small slices), and win direction was sniffed from the label string,
+which the relabel to "correct picks" would have silently broken. Ties
+and missing values now mark neither side, matching §35's tie handling.
+
+**Backtest framing.** /backtest now opens with the framing paragraph:
+this is the model's toughest exam on purpose — full history, worst
+stretch included (the early data-starved era and the since-fixed
+calibration episode), nothing trimmed; Elo wins most of it; kept
+strictly separate from the live scoreboard so neither record borrows
+the other's best window. The sentence about the live record ("currently
+ahead", today) is NOT typed in: `liveStanding` derives it from the live
+/api/scoreboard payload at render time with four honest states — ahead,
+behind, split, or neutral when nothing is scored yet — so if the live
+record turns, the backtest page says so in the same breath. Same
+principle as §35: sentences flip with the data, never with the author's
+mood.

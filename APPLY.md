@@ -1,4 +1,4 @@
-# APPLY — patch session 2026-07-26 (late): patches 43–46
+# APPLY — patch session 2026-07-26 (late): patches 43–47
 
 What landed, mapped to your list: **1** tab-click trap fixed (clicking
 any top-level tab always shows that tab's own default view; a match
@@ -21,7 +21,16 @@ retroactively on deploy — Sunset in, Fracture out, immediately; Pearl
 yields the last slot to Summit as live Stage 2 plays accrue. Averaging
 across the pool stays uniform, frozen ledger rows never move, and the
 published backtest artifact is untouched (a future backtest RE-RUN
-inherits the rule, run-once stays run-once).
+inherits the rule, run-once stays run-once). Patch 0047 is the trio
+of presentation asks (ASSUMPTIONS §37): /backtest opens with the
+honest-framing intro whose "currently ahead" clause is DERIVED from
+the live scoreboard payload (it flips to behind/split/neutral if the
+data does); accuracy leads every metric display as "correct picks"
+with log loss and Brier following as the stricter confidence measure;
+and green winner-marking is per-metric and independent everywhere —
+when accuracy and log loss disagree in a tier, both markers stand.
+Also fixes a latent tie bug (Elo used to get the green on an exact
+tie) by routing every marker through one tested helper.
 
 Run everything from the repo root: `cd ~/Downloads/valorant-predictor`.
 
@@ -35,9 +44,10 @@ Move them in and apply, in order:
 
     mkdir -p patches
     mv ~/Downloads/0043-*.patch ~/Downloads/0044-*.patch \
-       ~/Downloads/0045-*.patch ~/Downloads/0046-*.patch patches/
+       ~/Downloads/0045-*.patch ~/Downloads/0046-*.patch \
+       ~/Downloads/0047-*.patch patches/
     git am patches/0043-*.patch patches/0044-*.patch \
-       patches/0045-*.patch patches/0046-*.patch
+       patches/0045-*.patch patches/0046-*.patch patches/0047-*.patch
 
 If `git am` complains about uncommitted local edits: `git stash`, apply,
 `git stash pop`.
@@ -48,7 +58,7 @@ Then verify:
     python -m pytest                  # expect 152 passed
     cd frontend
     rm -rf node_modules && npm ci     # cold install, per LOG entry 40
-    npm test                          # expect 12 pass
+    npm test                          # expect 20 pass
     npm run build                     # must succeed
     cd ..
 
@@ -56,8 +66,8 @@ Then verify:
 3.14 venv carries 2 extra parametrizations — the number that matters is
 **0 failed**. New this session: 2 SPA-fallback tests in
 `tests/test_api.py` and 7 pool tests in `tests/test_pool.py`. Patch
-0046 is backend-only, so the frontend cold install below is for
-0043/0044 and does not need repeating for it. Optional but satisfying —
+0046 is backend-only; 0047 is frontend-only with no dependency
+changes — the one cold install below covers everything. Optional but satisfying —
 watch the pool decide, on your local store:
 
     python scripts/inspect_pool.py
