@@ -1475,3 +1475,57 @@ behind, split, or neutral when nothing is scored yet — so if the live
 record turns, the backtest page says so in the same breath. Same
 principle as §35: sentences flip with the data, never with the author's
 mood.
+
+## 38. The landing page, the copy diet, and the raised board (2026-07-26 session)
+
+Four owner-directed changes, visual and copy only. No number moved and
+no endpoint changed; the two deliberate additions are noted below.
+
+**The homepage is now a landing page.** "/" no longer redirects to
+/upcoming. It renders the wordmark large over the site's own
+probability bar (the teal/ember split with the coin-flip notch at 50%,
+the one motif the whole design runs on), a one-line tagline, five
+doors (upcoming, scoreboard, model, market picks, backtest), a
+three-sentence what-this-is that keeps the honesty line (Elo still
+wins most of the backtest), and the live next-up strip. The old
+full-bleed hero is retired; interior pages get a small wordmark
+linking home, above the tab bar. Where the hero's information went,
+item by item: its intro paragraph became the landing copy, tightened;
+its honesty paragraph survives in the landing copy, the scoreboard
+summary, the backtest intro, and the model tab; its recent-window
+stat block duplicated the model tab's fuller table and is gone as a
+block, not as information; the next-up strip moved to the landing.
+
+**Market picks became directly reachable.** The landing needed a
+market-picks door, so /markets is a real route and a fifth tab,
+rendering the same MarketPicks component the scoreboard embeds. The
+panel stays on the scoreboard: one component, two mounts, zero
+divergence possible. The component gained a `standalone` prop so the
+route shows loading and unreachable states where the embedded panel
+correctly stays silent.
+
+**The board got raised, not replaced.** The backdrop was designed
+(patch 0037: contour rings from two poles over graph dots) but tuned
+so faint it read as one flat colour. The rework keeps the exact motif
+and gives it presence: ring alphas up roughly 60%, two soft glow
+poles at the same anchors the rings emanate from, background fixed
+for depth. Middle ground on purpose: visible atmosphere that never
+competes with content.
+
+**Model tab grouping.** The recent-test-window panel now reads as
+three plates: Series (the published grain), Maps, and By event tier.
+Each title row carries the context the old row labels repeated, so
+labels shrink to correct picks / log loss / brier and the reader
+scans three short blocks instead of one flat list of alternating
+green numbers.
+
+**The copy diet.** Every rendered sentence on the site was rewritten
+shorter: plain, direct, student register, no hedging, no filler
+transitions, and zero em dashes in rendered text or frontend source
+(comments included, so the sweep is checkable in one command:
+`grep -rn "—" frontend/src frontend/index.html` with the real
+character returns nothing). Served backend text was checked too: its
+dashes live only in code comments and docstrings, never in anything
+sent to a client. Meaning was preserved everywhere. In particular
+"Not betting advice", the freeze rule, the low-history rule, the
+simulated badge, and every honesty statement survive, just shorter.

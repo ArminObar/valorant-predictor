@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Link, NavLink, Navigate, Route, Routes,
+  Link, NavLink, Route, Routes,
   useLocation, useNavigate, useParams,
 } from "react-router-dom";
 import { fmtTime } from "./time.js";
@@ -60,9 +60,9 @@ function UpcomingCard({ m, onOpen }) {
         <span className="mid">
           model picks <b>{fav}</b> · Elo says {fmtPct(m.p_elo)}
           {m.low_history ? (
-            <span className="badge" title={"One or both teams have fewer "
-              + "than 3 recorded maps, so this prediction leans on "
-              + "defaults. Extra doubt advised."}>low history</span>
+            <span className="badge" title={"Fewer than 3 recorded maps "
+              + "for one or both teams, so this leans on defaults. "
+              + "Trust it less."}>low history</span>
           ) : null}
         </span>
         <span className="num b">{fmtPct(1 - p)}</span>
@@ -86,10 +86,9 @@ function Upcoming({ onOpen }) {
   return (
     <>
       <p className="note">
-        Matches that haven't started yet. Each prediction is locked in
-        ("frozen") at least 5 minutes before the match, so it can't be
-        changed after the fact. Generated {fmtTime(data.generated_at)} by
-        model {data.model_version}.
+        Matches that have not started yet. Each prediction locks at least
+        5 minutes before the match and cannot change after. Generated
+        {" "}{fmtTime(data.generated_at)} by model {data.model_version}.
       </p>
       {data.predictions.map((m) => (
         <UpcomingCard key={m.match_id} m={m} onOpen={onOpen} />
@@ -113,9 +112,14 @@ function Metric({ label, model, elo, higher = false, pct = false }) {
   );
 }
 
-function MarketPicks() {
+function MarketPicks({ standalone = false }) {
+  // A silent null is right when this sits on the scoreboard, wrong when
+  // it IS the page: the /markets route passes standalone for real states.
   const { data, err } = useApi("/api/markets");
-  if (err || !data) return null;
+  if (err) return standalone
+    ? <p className="empty">API unreachable.</p> : null;
+  if (!data) return standalone
+    ? <p className="empty">Loading…</p> : null;
   const gate = data.gate || {};
   const s = data.summary;
   const picks = data.picks || [];
@@ -126,24 +130,22 @@ function MarketPicks() {
       </div>
       <p className="note">
         When a sportsbook prices a match we predicted, we compare our
-        locked-in probability to their price. EV is the expected profit
-        per $1 staked if our probability is right; "de-vig" means the
-        bookmaker's built-in margin has been removed from their implied
-        probability. Live rows only. Not betting advice.
+        locked probability to their price. EV is expected profit per $1
+        if our probability is right. De-vig strips the bookmaker's
+        margin. Live rows only. Not betting advice.
       </p>
       {!gate.ev_validated && (
         <p className="warn">
-          EV numbers are unvalidated until {gate.required} market-covered
-          picks have graded ({gate.n_graded} so far). That threshold was
-          set before the first pick graded, so it can't be moved to
-          flatter the results.
+          EV numbers stay unvalidated until {gate.required} market-covered
+          picks grade ({gate.n_graded} so far). The threshold was set
+          before the first pick graded. It does not move.
         </p>
       )}
       {picks.length === 0 ? (
         <p className="empty">
-          No market-covered picks yet. They appear once a captured
-          sportsbook price matches up with a frozen prediction (prices are
-          captured every 10 minutes, off-site).
+          No market-covered picks yet. One appears when a captured price
+          lines up with a frozen prediction. Prices are captured every
+          10 minutes.
         </p>
       ) : (
         <>
@@ -153,10 +155,9 @@ function MarketPicks() {
               {s.avg_ev_pct != null && <> · avg EV {s.avg_ev_pct}%</>}
               {s.avg_clv_pct != null && <> · avg CLV {s.avg_clv_pct}% ·
                 beat close {fmtPct(s.beat_close_rate)}</>}
-              {" "}· picks marked "extrapolation" or "EV excluded" are
-              left out of these averages (map totals are excluded for now:
-              their probabilities carry a known bias we've measured and
-              not yet fixed)
+              {" "}· picks marked "extrapolation" or "EV excluded" sit
+              outside these averages. Map totals are excluded for now:
+              their probabilities carry a measured bias we have not fixed.
             </p>
           )}
           <table className="ledger">
@@ -172,18 +173,15 @@ function MarketPicks() {
                       ? "map total" : "moneyline"} · {p.source}</span></td>
                   <td>{p.selection}
                     {p.extrapolated &&
-                      <span className="badge" title={"Our probability is "
-                        + "outside the range where calibration was checked "
-                        + "(15% to 88%), so trust it less."}>
+                      <span className="badge" title={"Outside the range "
+                        + "where calibration was checked (15% to 88%). "
+                        + "Trust it less."}>
                         extrapolation</span>}
                     {p.ev_excluded === "totals_independence_bias" &&
-                      <span className="badge" title={"Map-total "
-                        + "probabilities currently assume maps are "
-                        + "independent, and measured reality says they "
-                        + "aren't (2-0s happen about 7 points more often "
-                        + "than assumed). The EV here would be a known-"
-                        + "biased number, so it's excluded until that's "
-                        + "fixed."}>EV excluded</span>}</td>
+                      <span className="badge" title={"Map totals assume "
+                        + "maps are independent. Measured reality disagrees "
+                        + "by about 7 points, so this EV is excluded until "
+                        + "that is fixed."}>EV excluded</span>}</td>
                   <td>{fmtPct(p.p_model)}</td>
                   <td className="dim">{fmtPct(p.implied)}</td>
                   <td className="dim">{fmtPct(p.shin)}</td>
@@ -202,11 +200,9 @@ function MarketPicks() {
             </tbody>
           </table>
           <p className="note">
-            EV = our locked-in probability times the price at capture,
-            minus 1. Positive means the price looked better than our
-            probability said it should be. The de-vig column uses Shin's
-            method. Only match winners and total-maps bets are scored,
-            nothing else.
+            EV = locked probability times the capture price, minus 1.
+            Positive means the price looked too generous. De-vig uses
+            Shin's method. Only match winners and map totals are scored.
           </p>
         </>
       )}
@@ -236,23 +232,20 @@ function Backtest() {
           simulated</span>
       </div>
       <p className="note">
-        This page is the model's toughest exam, on purpose: the whole
-        system replayed over its full two-year history — including its
-        worst stretch, the early data-starved era and a since-fixed
-        calibration bug — with nothing trimmed away to flatter it. It is
-        kept strictly separate from the live scoreboard so neither record
-        can borrow the other's best window, and the two are never mixed
-        into one number. Over this history, Elo wins most tiers. The
-        model has been closing that gap as data accumulates
-        <LiveStandingClause />
+        This page is the model's hardest exam, on purpose. The whole
+        system is replayed over two years, including its worst stretch:
+        the early data-starved era and a calibration bug fixed since.
+        Nothing is trimmed to flatter it. It stays strictly separate from
+        the live scoreboard, so neither record can borrow the other's
+        best window. Over this history, Elo wins most tiers. The model
+        has been closing the gap<LiveStandingClause />
       </p>
       <p className="note">
-        How the replay works: every prediction uses only information that
-        existed at that moment, and the model retrains on the real
-        production schedule ({w.n_retrains} retrains).
+        The replay uses only what was known at each moment, and the model
+        retrains on the production schedule ({w.n_retrains} retrains).
         {" "}{w.n_predictions} simulated predictions
-        ({w.n_low_history} of them low-history, counted but not scored)
-        from {fmtTime(w.first_prediction)} to {fmtTime(w.last_prediction)}.
+        ({w.n_low_history} low-history, counted but not scored), from
+        {" "}{fmtTime(w.first_prediction)} to {fmtTime(w.last_prediction)}.
       </p>
       <table className="ledger">
         <thead>
@@ -283,15 +276,12 @@ function Backtest() {
         </tbody>
       </table>
       <p className="note">
-        Results are split by event tier (tier1 is the top pro circuit) and
-        never pooled into one number. Correct picks (accuracy) are the
-        simplest read; log loss is the stricter measure of how confident
-        each call should have been (lower is better). Green marks the
-        leader of each comparison independently — accuracy and log loss
-        can genuinely disagree in a tier, and when they do, both markers
-        stand rather than forcing one verdict. This backtest runs once.
-        It only re-runs if the model changes, and the old result stays
-        archived.
+        Split by event tier (tier1 is the top circuit), never pooled.
+        Correct picks is the simple score. Log loss grades the confidence
+        behind each call (lower is better). Green marks each comparison's
+        leader on its own. Accuracy and log loss can disagree in a tier.
+        When they do, both greens stay. The backtest runs once; it only
+        re-runs if the model changes, and old results stay archived.
         {data.synthetic_data && (
           <span className="badge">contains synthetic data</span>
         )}
@@ -310,14 +300,16 @@ function LiveStandingClause() {
     <Link className="linklike" to="/scoreboard">live scoreboard</Link>
   );
   if (standing === "ahead")
-    return <>, and on the {sb}'s real graded matches it is currently ahead.</>;
+    return <>, and it is currently ahead on the {sb}'s real graded
+      matches.</>;
   if (standing === "behind")
-    return <>, though on the {sb}'s real graded matches it is currently behind.</>;
+    return <>, though it is currently behind on the {sb}'s real graded
+      matches.</>;
   if (standing === "mixed")
-    return <>, and on the {sb}'s real graded matches the lead is currently split
-      between the two.</>;
-  return <>; the {sb} tracks the same head-to-head on real graded matches as
-    they finish.</>;
+    return <>, and it is currently splitting the {sb}'s real graded
+      matches with Elo.</>;
+  return <>. The {sb} tracks the same head-to-head as real matches
+    grade.</>;
 }
 
 function BacktestSummary() {
@@ -331,19 +323,19 @@ function BacktestSummary() {
       <div className="panel-title">
         Two-year backtest: the longer record
         <span className="badge" title={"Computed after the fact from "
-          + "stored data. You can't verify it the way you can the live "
-          + "scoreboard above, which is why the two are kept apart."}>
+          + "stored data. You cannot verify it like the live scoreboard, "
+          + "which is why the two stay apart."}>
           simulated</span>
       </div>
       <p className="note">
-        The whole system was also replayed over two years of history as if
-        it had been live the entire time ({w.n_predictions} simulated
-        predictions). Across the {t.n} scored event tiers, Elo wins{" "}
-        {t.eloLeads} on log loss and the model wins {t.modelLeads} — the
-        long history is the tougher half of the story, and it stays in
-        full view, never mixed into the live numbers above.{" "}
+        The whole system was also replayed over two years as if it had
+        been live the whole time ({w.n_predictions} simulated
+        predictions). Across the {t.n} scored tiers, Elo wins{" "}
+        {t.eloLeads} on log loss and the model wins {t.modelLeads}. The
+        long history is the tougher half of the story. It stays in full
+        view and never mixes into the live numbers above.{" "}
         <Link className="linklike" to="/backtest">
-          see the full per-tier backtest
+          see the full backtest
         </Link>
       </p>
     </div>
@@ -362,22 +354,19 @@ function Scoreboard({ onOpen }) {
           Live scoreboard: {s.n_graded} graded, {s.n_pending} pending
         </div>
         <p className="note">
-          Every row here was locked in before its match started, then graded
-          when the match ended. This is the record the model has to live
-          with. Rows marked "low history" (like unresolved TBD bracket
-          slots) stay in the record but are not scored, the same rule the
-          backtest uses. The sample grows as pending matches finish; be
-          careful reading much into small counts.
+          Every row locked in before its match and graded after. This is
+          the record the model lives with. Low-history rows (like TBD
+          bracket slots) stay listed but are not scored, same rule as the
+          backtest. The sample is small early, so do not read too much
+          into it.
         </p>
         {s.n_scored === 0 ? (
           <p className="empty">
             {s.n_graded > 0
-              ? `${s.n_graded} graded so far, all low-history, so nothing is
-                 scored yet. The scoreboard fills in as predicted matches
-                 finish, and this page is the honest record either way.`
+              ? `${s.n_graded} graded so far, all low-history, so nothing
+                 is scored yet. The scoreboard fills in as matches finish.`
               : `Nothing graded yet. The scoreboard fills in as predicted
-                 matches finish, and this page is the honest record either
-                 way.`}
+                 matches finish.`}
           </p>
         ) : (
           <div className="metrics">
@@ -397,11 +386,10 @@ function Scoreboard({ onOpen }) {
             Scored over {s.n_scored} graded matches
             {s.n_low_history > 0 &&
               ` (${s.n_low_history} more graded but low-history, not scored)`}.
-            Correct picks are the simplest read. Log loss and Brier are
-            the stricter measure: how confident each probability should
-            have been (lower is better). Green marks the leader of each
-            row independently — accuracy and log loss can disagree, and
-            when they do, both markers stand.
+            Correct picks is the simple score. Log loss and Brier grade
+            the confidence behind each pick (lower is better). Green marks
+            each row's leader on its own; when accuracy and log loss
+            disagree, both greens stay.
           </p>
         )}
       </div>
@@ -421,10 +409,9 @@ function Scoreboard({ onOpen }) {
                       onClick={() => onOpen(r.match_id)}>
                     <td>{r.team1_name} <span className="dim">vs</span> {r.team2_name}
                       {Boolean(r.low_history) && (
-                        <span className="badge" title={"One or both teams "
-                          + "had almost no history when this was locked in "
-                          + "(often an unresolved TBD bracket slot). Kept "
-                          + "in the record, not scored."}>low history</span>
+                        <span className="badge" title={"Almost no history "
+                          + "when this locked (often a TBD bracket slot). "
+                          + "Kept in the record, not scored."}>low history</span>
                       )}
                     </td>
                     <td className="dim">{fmtTime(r.start_ts)}</td>
@@ -468,33 +455,54 @@ function RecentResults() {
         Where the model stands (recent test window)
       </div>
       <p className="note">
-        Matches are split in time order: the oldest 70 percent trains the
-        model, the next 15 percent tunes it, and the newest 15 percent is
-        held out untouched until scoring. The numbers below are that
-        held-out window; the model never saw these matches while training
-        or tuning. Correct picks (accuracy) are the simplest read; log
-        loss and Brier are the stricter measure of how confident each
-        probability should have been (lower is better). Green marks the
-        leader of each row independently — accuracy and log loss can
-        disagree, and when they do, both markers stand. The series line
-        is the one the site actually publishes.
+        Matches split in time order: the oldest 70% trains, the next 15%
+        tunes, the newest 15% stays untouched until scoring. The model
+        never saw the window below. Correct picks is the simple score.
+        Log loss and Brier grade the confidence behind each pick (lower
+        is better). Green marks each leader on its own; when accuracy and
+        log loss disagree, both greens stay.
       </p>
-      <div className="metrics">
-        <div className="metric head">
-          <div className="metric-label" />
-          <div className="metric-val">model</div>
-          <div className="metric-val elo">elo</div>
+      <div className="mgroup">
+        <div className="mgroup-title">Series
+          <span className="mgroup-sub">
+            what the site publishes · {s.n} held-out series
+          </span>
         </div>
-        <Metric label={`correct picks (${s.n} series)`} pct higher
-          model={s.model.accuracy} elo={s.elo.accuracy} />
-        <Metric label="series log loss"
-          model={s.model.log_loss} elo={s.elo.log_loss} />
-        <Metric label="series brier" model={s.model.brier} elo={s.elo.brier} />
-        <Metric label={`correct picks (${m.n_rows} maps)`} pct higher
-          model={m.model.accuracy} elo={m.elo.accuracy} />
-        <Metric label="map log loss"
-          model={m.model.log_loss} elo={m.elo.log_loss} />
-        <Metric label="map brier" model={m.model.brier} elo={m.elo.brier} />
+        <div className="metrics">
+          <div className="metric head">
+            <div className="metric-label" />
+            <div className="metric-val">model</div>
+            <div className="metric-val elo">elo</div>
+          </div>
+          <Metric label="correct picks" pct higher
+            model={s.model.accuracy} elo={s.elo.accuracy} />
+          <Metric label="log loss"
+            model={s.model.log_loss} elo={s.elo.log_loss} />
+          <Metric label="brier" model={s.model.brier} elo={s.elo.brier} />
+        </div>
+      </div>
+      <div className="mgroup">
+        <div className="mgroup-title">Maps
+          <span className="mgroup-sub">
+            one row per map played · {m.n_rows} held-out maps
+          </span>
+        </div>
+        <div className="metrics">
+          <div className="metric head">
+            <div className="metric-label" />
+            <div className="metric-val">model</div>
+            <div className="metric-val elo">elo</div>
+          </div>
+          <Metric label="correct picks" pct higher
+            model={m.model.accuracy} elo={m.elo.accuracy} />
+          <Metric label="log loss"
+            model={m.model.log_loss} elo={m.elo.log_loss} />
+          <Metric label="brier" model={m.model.brier} elo={m.elo.brier} />
+        </div>
+      </div>
+      <div className="mgroup">
+      <div className="mgroup-title">By event tier
+        <span className="mgroup-sub">map grain · never pooled</span>
       </div>
       <table className="ledger">
         <thead>
@@ -525,24 +533,21 @@ function RecentResults() {
         </tbody>
       </table>
       <p className="note">
-        Split by event tier, never pooled into one number. The slices are
-        different sizes and the small ones move around; read them with
+        Slices differ in size and the small ones swing. Read them with
         that in mind.
       </p>
+      </div>
       <p className="note">
         Generated {fmtTime(data.generated_at)} by scripts/evaluate.py over
         the full store ({data.store?.n_matches_usable} usable matches,
         {" "}{data.store?.window?.[0]} to {data.store?.window?.[1]}).
-        Model evaluated: {sel.name} + {sel.calibration}. Every number
-        here regenerates from that one script; nothing on this page is
-        typed in by hand.
+        Model: {sel.name} + {sel.calibration}. Every number regenerates
+        from that one script. Nothing here is typed in by hand.
       </p>
       <p className="note">
-        The two-year backtest tells the tougher half of the story: the
-        whole system replayed honestly across its full history, including
-        the early data-starved era when the model had almost nothing to
-        learn from. Elo wins most of that history and the model does
-        better in the recent stretch, which is the window above.{" "}
+        The two-year backtest is the tougher half of the story: Elo wins
+        most of it, and the model does better in the recent stretch,
+        which is the window above.{" "}
         <Link className="linklike" to="/backtest">see the full backtest</Link>
       </p>
     </div>
@@ -580,12 +585,11 @@ function ModelTab() {
         </tbody>
       </table>
       <p className="note">
-        The model predicts one map at a time, trained on scraped vlr.gg
-        history. Every stat it uses comes only from matches that had
-        already finished before the match being predicted started (no
-        peeking at the future). Per-map probabilities get combined into
-        one series probability, and everything is calibrated on held-out
-        data so that "65%" is meant to come true about 65% of the time.
+        The model predicts one map at a time from scraped vlr.gg history.
+        Every input comes from matches that finished before the predicted
+        match started. No peeking. Per-map probabilities combine into one
+        series probability, calibrated on held-out data so 65% means
+        about 65%.
       </p>
     </div>
     </>
@@ -631,11 +635,9 @@ function RatingChart({ rh, team1 }) {
         ))}
       </svg>
       <p className="note">
-        Overall Elo (K={rh.k}) after each of each team's last {rh.n}
-        completed matches, up to this match's start. Points are evenly
-        spaced by match, not by date. This is the same rating family the
-        Elo comparison uses; it is history for context, and the locked
-        prediction above never moves.
+        Overall Elo (K={rh.k}) after each team's last {rh.n} completed
+        matches, up to this match's start. Points are spaced by match,
+        not date. Context only; the locked prediction above never moves.
       </p>
     </div>
   );
@@ -690,35 +692,32 @@ function MatchDetail() {
             locked in {data.ledger ? fmtTime(data.ledger.made_at) : "pre-match"}
             {" "}· Elo says {fmtPct(src.p_elo)}
             {Boolean(src.low_history) && (
-              <span className="badge" title={"One or both teams had almost "
-                + "no history when this was locked in. Kept in the record, "
-                + "not scored."}>low history</span>
+              <span className="badge" title={"Almost no history when this "
+                + "locked. Kept in the record, not scored."}>low history</span>
             )}
           </span>
           <span className="num b">{fmtPct(1 - p)}</span>
         </div>
         {placeholder && (
           <p className="warn">
-            This was an unresolved bracket slot ("TBD") when the prediction
-            locked, so the model was effectively comparing a team to
-            itself. The frozen call stands because the first call per match
-            can never be changed, but it is flagged low-history and not
-            scored anywhere. The teams that eventually played this slot
-            never got a fresh prediction here; that is the cost of the
-            freeze rule, kept on the record rather than papered over.
+            This was an unresolved TBD slot when the prediction locked, so
+            the model compared a team to itself. The first call per match
+            can never change, so it stands, flagged low-history and never
+            scored. The teams that filled the slot got no fresh prediction.
+            That is the cost of the freeze rule, kept on the record.
           </p>
         )}
         {graded && !placeholder && (
           <p className="note result-line">
             Result: <b>{winner}</b> won
             {data.ledger.maps_played ? ` in ${data.ledger.maps_played} maps` : ""}.
-            The prediction above is exactly what was locked in beforehand.
+            The prediction above is exactly what was locked beforehand.
           </p>
         )}
         {!graded && data.ledger && (
           <p className="note">
-            This prediction is frozen in the public ledger. It cannot change,
-            whatever happens between now and the match.
+            This prediction is frozen in the public ledger. It cannot
+            change, no matter what happens before the match.
           </p>
         )}
       </div>
@@ -729,17 +728,15 @@ function MatchDetail() {
         <div className="panel">
           <div className="panel-title">Per-map view</div>
           <p className="note">
-            Each bar is the Elo lean: {src.team1_name}'s map-specific
-            strength edge going into the model, the one signal that
-            actually varies map to map (right of center favours{" "}
-            {src.team1_name}, left favours {src.team2_name}). The model's
-            calibrated percentage sits at the end of each row; calibration
-            maps raw scores onto a small set of levels learned from
-            held-out results, so those percentages often tie across maps.
-            The headline above remains the number that counts.
-            {data.ledger ? " It is the frozen public call; the rows below"
-              + " are the current model's live view and can differ from"
-              + " it." : ""}
+            Each bar is the Elo lean: {src.team1_name}'s map-specific edge
+            going into the model (right favours {src.team1_name}, left
+            favours {src.team2_name}). It is the one input that really
+            varies by map. The calibrated percentage sits at each row's
+            end; calibration maps raw scores onto a few learned levels,
+            so maps often tie. The headline above is the number that
+            counts.
+            {data.ledger ? " It is the frozen public call. The rows are"
+              + " the current model's live view and can differ." : ""}
           </p>
           {(() => {
             const leans = pred.per_map_elo || null;
@@ -762,8 +759,8 @@ function MatchDetail() {
               return (
                 <div className="permap-row" key={m}
                   title={`Map-specific Elo edge for ${src.team1_name} on `
-                    + `${m} (negative favours ${src.team2_name}). This is `
-                    + `the model's per-map input, before calibration.`}>
+                    + `${m}. Negative favours ${src.team2_name}. Model `
+                    + `input, before calibration.`}>
                   <span className="permap-name">{m}</span>
                   <div className="lean-bar" aria-hidden="true">
                     <span className={`lean-fill ${side}`}
@@ -847,48 +844,6 @@ function MatchDetail() {
   );
 }
 
-function HeroStats() {
-  const { data } = useApi("/api/results");
-  if (!data || !data.generated_at || !data.series) {
-    return (
-      <p className="hero-copy">
-        Where it stands: on the most recent slice of two years of data,
-        the model beats Elo at both the map level and the series level.
-        Replayed over the full two years, Elo wins more of the history.
-        Both views are on this site.
-      </p>
-    );
-  }
-  const s = data.series, m = data.map;
-  return (
-    <div className="hero-stats">
-      <div className="hero-stats-title">
-        Recent test window: {s.n} held-out series the model never trained
-        or tuned on
-      </div>
-      <div className="metrics">
-        <div className="metric head">
-          <div className="metric-label" />
-          <div className="metric-val">model</div>
-          <div className="metric-val elo">elo</div>
-        </div>
-        <Metric label="series correct picks" pct higher
-          model={s.model.accuracy} elo={s.elo.accuracy} />
-        <Metric label="series log loss"
-          model={s.model.log_loss} elo={s.elo.log_loss} />
-        <Metric label="map log loss"
-          model={m.model.log_loss} elo={m.elo.log_loss} />
-      </div>
-      <p className="hero-stats-note">
-        Correct picks are the simplest read; log loss is the stricter
-        measure of how confident each call should have been (lower is
-        better). Green marks each row's leader independently. Full table,
-        per-tier numbers, and where these come from are in the model tab.
-      </p>
-    </div>
-  );
-}
-
 function HeroNext({ onOpen }) {
   const { data } = useApi("/api/upcoming");
   const now = Date.now();
@@ -912,86 +867,69 @@ function HeroNext({ onOpen }) {
         model {fmtPct(p >= 0.5 ? p : 1 - p)} {fav}
       </span>
       {next.low_history ? (
-        <span className="badge" title={"One or both teams have fewer "
-          + "than 3 recorded maps, so this prediction leans on "
-          + "defaults. Extra doubt advised."}>low history</span>
+        <span className="badge" title={"Fewer than 3 recorded maps "
+          + "for one or both teams, so this leans on defaults. "
+          + "Trust it less."}>low history</span>
       ) : null}
     </div>
   );
 }
 
-function Hero({ onOpen, onHome }) {
+const LAND_LINKS = [
+  ["upcoming", "predictions locked before each match"],
+  ["scoreboard", "the live record, graded as matches end"],
+  ["model", "what it is and how it scores"],
+  ["markets", "model picks vs real sportsbook prices"],
+  ["backtest", "two years replayed, worst stretch included"],
+];
+
+function Landing({ onOpen }) {
   return (
-    <div className="hero">
-      <svg className="hero-bg" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-        <defs>
-          <linearGradient id="hgA" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#37b3a8" stopOpacity="0.16" />
-            <stop offset="1" stopColor="#37b3a8" stopOpacity="0.02" />
-          </linearGradient>
-          <linearGradient id="hgB" x1="1" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#e06a4e" stopOpacity="0.14" />
-            <stop offset="1" stopColor="#e06a4e" stopOpacity="0.02" />
-          </linearGradient>
-          <linearGradient id="hgBar" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#37b3a8" />
-            <stop offset="0.58" stopColor="#37b3a8" />
-            <stop offset="0.58" stopColor="#e06a4e" />
-            <stop offset="1" stopColor="#e06a4e" />
-          </linearGradient>
-        </defs>
-        <polygon points="0,0 560,0 260,420 0,420" fill="url(#hgA)" />
-        <polygon points="1200,0 700,0 980,420 1200,420" fill="url(#hgB)" />
-        <g stroke="#37b3a8" strokeOpacity="0.10" strokeWidth="1">
-          <path d="M-40,90 L1240,30" /><path d="M-40,180 L1240,120" />
-          <path d="M-40,270 L1240,210" /><path d="M-40,360 L1240,300" />
-        </g>
-        <g stroke="#e06a4e" strokeOpacity="0.08" strokeWidth="1">
-          <path d="M-40,60 L1240,150" /><path d="M-40,150 L1240,240" />
-          <path d="M-40,240 L1240,330" /><path d="M-40,330 L1240,420" />
-        </g>
-      </svg>
-      <div className="hero-bar" aria-hidden="true">
-        <span className="hero-bar-notch" />
+    <div className="land">
+      <h1 className="logo land-logo">
+        v<span className="logo-accent">predict</span>
+      </h1>
+      <div className="land-bar" aria-hidden="true">
+        <span className="land-notch" />
       </div>
-      <div className="hero-inner">
-        <div className="logo hero-logo clickable" role="button" tabIndex={0}
-          title="back to the homepage"
-          onClick={onHome}
-          onKeyDown={(e) => e.key === "Enter" && onHome()}>
-          v<span className="logo-accent">predict</span>
-        </div>
-        <div className="tagline hero-tagline">
-          Valorant win probabilities, locked in before each match and graded
-          in public.
-        </div>
-        <p className="hero-copy">
-          This site predicts who wins pro Valorant matches, then shows its
-          work. Every prediction is locked in at least 5 minutes before the
-          match starts and graded in public once it ends, against Elo (a
-          simple rating system that is hard to beat) and against real
-          sportsbook odds.
-        </p>
-        <HeroStats />
-        <p className="hero-copy">
-          Replayed over the full two years of history, including the
-          early data-starved era when the model had almost nothing to
-          learn from, Elo wins more of it. That backtest is kept in full
-          view, one click away. The live scoreboard has only just started
-          grading, so treat it as a record being written, not a verdict.
-        </p>
-        <nav className="intro-links">
-          <Link to="/upcoming">see upcoming predictions</Link>
-          <Link to="/backtest">see the backtest</Link>
-        </nav>
-        <HeroNext onOpen={onOpen} />
-      </div>
+      <p className="land-tag">
+        Valorant win probabilities, locked before each match and graded
+        in public.
+      </p>
+      <nav className="land-links" aria-label="site sections">
+        {LAND_LINKS.map(([path, sub]) => (
+          <Link className="land-link" key={path} to={`/${path}`}>
+            <span className="land-link-name">
+              {path === "markets" ? "market picks" : path}
+            </span>
+            <span className="land-link-sub">{sub}</span>
+            <span className="land-link-arrow" aria-hidden="true">&rarr;</span>
+          </Link>
+        ))}
+      </nav>
+      <p className="land-copy">
+        A student project that calls pro Valorant matches before they
+        start, then grades itself in public against Elo and real
+        sportsbook odds. Elo still wins most of the two-year backtest.
+        That stays in full view.
+      </p>
+      <HeroNext onOpen={onOpen} />
     </div>
   );
 }
 
+function SiteHeader() {
+  return (
+    <header>
+      <Link className="logo site-logo" to="/" title="back to the homepage">
+        v<span className="logo-accent">predict</span>
+      </Link>
+    </header>
+  );
+}
+
 function ScrollToTop() {
-  // New URL, top of the new page — the behaviour every multi-page site
+  // New URL, top of the new page: the behaviour every multi-page site
   // gives for free. Back/forward still land where the browser puts them.
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
@@ -1003,7 +941,7 @@ function NotFound() {
     <div className="panel">
       <p className="empty">
         No such page.{" "}
-        <Link className="linklike" to="/upcoming">back to upcoming</Link>
+        <Link className="linklike" to="/">back to the homepage</Link>
       </p>
     </div>
   );
@@ -1011,48 +949,50 @@ function NotFound() {
 
 export default function App() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { data: health } = useApi("/api/health");
   // Every view owns a URL now. Clicking a tab is navigation, so it always
-  // lands on that tab's own default view — a match detail can't shadow it
-  // (the trap in LOG entry 42) — and browser back/forward, reloads, and
-  // shared links all behave like any normal site.
+  // lands on that tab's own default view; a match detail can't shadow it
+  // (the trap in LOG entry 42), and browser back/forward, reloads, and
+  // shared links all behave like any normal site. The landing page is
+  // its own nav, so the header and tab bar sit on interior pages only.
   const openMatch = (id) => navigate(`/match/${encodeURIComponent(id)}`);
-  const goHome = () => {
-    navigate("/upcoming");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const landing = pathname === "/";
   return (
     <div className="wrap">
       <ScrollToTop />
-      <Hero onOpen={openMatch} onHome={goHome} />
+      {!landing && <SiteHeader />}
       {health?.synthetic_model && (
         <p className="warn">
-          This is a demo model trained on made-up data. Not real
-          predictions.
+          Demo model trained on made-up data. Not real predictions.
         </p>
       )}
-      <nav className="tabs">
-        {["upcoming", "scoreboard", "model", "backtest"].map((t) => (
-          <NavLink key={t} to={`/${t}`}
-            className={({ isActive }) => (isActive ? "on" : "")}>
-            {t}
-          </NavLink>
-        ))}
-      </nav>
+      {!landing && (
+        <nav className="tabs">
+          {["upcoming", "scoreboard", "model", "markets", "backtest"]
+            .map((t) => (
+              <NavLink key={t} to={`/${t}`}
+                className={({ isActive }) => (isActive ? "on" : "")}>
+                {t}
+              </NavLink>
+            ))}
+        </nav>
+      )}
       <Routes>
-        <Route path="/" element={<Navigate to="/upcoming" replace />} />
+        <Route path="/" element={<Landing onOpen={openMatch} />} />
         <Route path="/upcoming" element={<Upcoming onOpen={openMatch} />} />
         <Route path="/scoreboard" element={<Scoreboard onOpen={openMatch} />} />
         <Route path="/model" element={<ModelTab />} />
+        <Route path="/markets" element={<MarketPicks standalone />} />
         <Route path="/backtest" element={<Backtest />} />
         <Route path="/match/:id" element={<MatchDetail />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <footer>
-        Data scraped politely from vlr.gg (robots.txt respected, at least 1s
+        Data scraped politely from vlr.gg (robots.txt respected, 1s+
         between requests). Predictions lock at least 5 minutes before each
-        match, and the first call stands. Not affiliated with Riot Games.
-        Not betting advice.{" "}
+        match; the first call stands. Not affiliated with Riot Games. Not
+        betting advice.{" "}
         <a className="repo-link"
            href="https://github.com/ArminObar/valorant-predictor"
            target="_blank" rel="noreferrer">source on GitHub</a>

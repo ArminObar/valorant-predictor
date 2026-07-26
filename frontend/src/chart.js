@@ -4,7 +4,7 @@
 
    Layout rules: y grows downward (higher rating = smaller y), the most
    recent match of EVERY team sits on the shared right edge (trajectories
-   are right-aligned, evenly spaced by match, not by date — the caption
+   are right-aligned, evenly spaced by match, not by date; the caption
    says so), and the rating domain is padded so lines never touch the
    frame. */
 

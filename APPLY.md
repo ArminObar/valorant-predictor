@@ -1,4 +1,4 @@
-# APPLY — patch session 2026-07-26 (late): patches 43–48
+# APPLY — patch session 2026-07-26 (late): patches 43–49
 
 What landed, mapped to your list: **1** tab-click trap fixed (clicking
 any top-level tab always shows that tab's own default view; a match
@@ -36,7 +36,14 @@ verification that the residual react-router advisory is unreachable in
 this deployment — four independent walls (no JS runtime in production,
 no RSC/framework APIs used, no RSC bytes in the shipped bundle, no
 ambient credentials to forge), each with a re-runnable command — so a
-future audit reads evidence, not a trust-me.
+future audit reads evidence, not a trust-me. Patch 0049 is the visual
+and copy pass (ASSUMPTIONS §38): "/" becomes a real landing page
+(wordmark over the probability-bar motif, five doors including a new
+/markets route and tab), the backdrop's tactical-board motif is raised
+from near-invisible to present, the model tab's comparison reads as
+three grouped plates instead of one flat list, every sentence on the
+site is rewritten shorter in plain student voice, and the em-dash
+sweep leaves frontend source and rendered text completely clean.
 
 Run everything from the repo root: `cd ~/Downloads/valorant-predictor`.
 
@@ -49,12 +56,10 @@ First, per your own workflow note, confirm the downloads exist:
 Move them in and apply, in order:
 
     mkdir -p patches
-    mv ~/Downloads/0043-*.patch ~/Downloads/0044-*.patch \
-       ~/Downloads/0045-*.patch ~/Downloads/0046-*.patch \
-       ~/Downloads/0047-*.patch ~/Downloads/0048-*.patch patches/
+    mv ~/Downloads/004*.patch patches/
     git am patches/0043-*.patch patches/0044-*.patch \
        patches/0045-*.patch patches/0046-*.patch \
-       patches/0047-*.patch patches/0048-*.patch
+       patches/0047-*.patch patches/0048-*.patch patches/0049-*.patch
 
 If `git am` complains about uncommitted local edits: `git stash`, apply,
 `git stash pop`.
@@ -73,9 +78,10 @@ Then verify:
 3.14 venv carries 2 extra parametrizations — the number that matters is
 **0 failed**. New this session: 2 SPA-fallback tests in
 `tests/test_api.py` and 7 pool tests in `tests/test_pool.py`. Patch
-0046 is backend-only; 0047 is frontend-only with no dependency
-changes — the one cold install below covers everything; 0048 touches
-documentation only. Optional but satisfying —
+0046 is backend-only; 0047 and 0049 are frontend-only with no
+dependency changes, so the one cold install below covers everything;
+0048 touches documentation only. After deploy, open the site root:
+you should land on the new homepage, and /markets should be a page. Optional but satisfying —
 watch the pool decide, on your local store:
 
     python scripts/inspect_pool.py

@@ -1,20 +1,16 @@
 /* ============================================================ vpredict
-   Ground-up stylesheet (patch 0037): the tactical board.
+   The tactical board (patch 0037), landing revamp (patch 0049).
 
    Direction: the page is a designed surface, not a dark void with
-   floating cards. The backdrop is a tactical map — faint contour
-   rings sweeping from two poles (teal high, ember low) over graph
-   dots; the hero and footer run full-bleed like broadcast bands; a
-   thin two-tone spine anchors the left edge on wide screens; and
-   every panel is an angular clipped-corner plate (the HUD language of
-   the subject) instead of a rounded web card. One motif everywhere:
-   the teal/ember split of a win probability.
-
-   Rewrite, not a fourth append layer: three earlier polish passes had
-   begun overriding each other, and a redesign that must not touch
-   markup, copy, or numbers needs one authoritative sheet. Every class
-   in App.jsx is covered; reduced motion disables all movement.
-   ==================================================================== */
+   floating cards. The backdrop is a tactical map: two glow poles
+   (teal high, ember low) with faint contour rings over graph dots;
+   the footer runs full-bleed like a broadcast band; a thin two-tone
+   spine holds the left edge on wide screens; every panel is an
+   angular clipped-corner plate (the HUD language of the subject).
+   One motif everywhere: the teal/ember split of a win probability.
+   The landing page is that motif at its quietest: the wordmark over
+   a single probability bar, five doors, one live strip.
+   Reduced motion disables all movement. ============================ */
 
 :root {
   --bg0: #090e15;
@@ -40,20 +36,25 @@ body {
   font-size: 15.5px;
   line-height: 1.55;
   background:
-    radial-gradient(rgba(233, 238, 244, .020) 1px, transparent 1.4px),
+    radial-gradient(rgba(233, 238, 244, .022) 1px, transparent 1.4px),
     repeating-radial-gradient(circle at 82% -12%,
-      transparent 0 92px, rgba(55, 179, 168, .030) 92px 93px),
+      transparent 0 92px, rgba(55, 179, 168, .048) 92px 93px),
     repeating-radial-gradient(circle at -6% 108%,
-      transparent 0 124px, rgba(224, 106, 78, .026) 124px 125px),
+      transparent 0 124px, rgba(224, 106, 78, .042) 124px 125px),
+    radial-gradient(56vw 42vh at 82% -6%,
+      rgba(55, 179, 168, .085), transparent 68%),
+    radial-gradient(60vw 46vh at -4% 104%,
+      rgba(224, 106, 78, .07), transparent 68%),
     linear-gradient(158deg, #0d1522 0%, #090e15 52%, #0b1119 100%);
-  background-size: 26px 26px, auto, auto, auto;
+  background-size: 26px 26px, auto, auto, auto, auto, auto;
+  background-attachment: fixed;
 }
 ::selection { background: rgba(55, 179, 168, .35); }
 
 .wrap { max-width: 1040px; margin: 0 auto; padding: 0 28px 88px;
   position: relative; }
 /* the spine: a quiet two-tone rule holding the left margin on wide
-   screens — page architecture, no words */
+   screens. Page architecture, no words. */
 @media (min-width: 1160px) {
   .wrap::before { content: ""; position: fixed; top: 108px; bottom: 96px;
     left: calc(50vw - 596px); width: 2px; border-radius: 1px; opacity: .5;
@@ -67,41 +68,51 @@ header { margin-bottom: 8px; }
 .logo-accent { color: var(--a); }
 .tagline { color: var(--dim); margin-top: 4px; }
 
-/* ---------------------------------------------------- full-bleed hero */
-.hero { position: relative; overflow: hidden;
-  width: 100vw; margin: 0 0 34px calc(50% - 50vw);
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, #0e1724 0%, #0a1119 100%); }
-.hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.hero-inner { position: relative; max-width: 1040px; margin: 0 auto;
-  padding: 58px 28px 66px; }
-.hero-logo { font-size: 58px; letter-spacing: .02em; }
-.hero-logo.clickable { cursor: pointer; }
-.hero-logo.clickable:hover { outline: none;
-  text-shadow: 0 0 26px rgba(55, 179, 168, .4); }
-.hero-logo.clickable:focus-visible { outline: 2px solid var(--a);
-  outline-offset: 5px; border-radius: 4px; }
-.hero-tagline { font-size: 17.5px; color: #b9c6d6; margin: 8px 0 20px; }
-.hero-copy { color: var(--dim); font-size: 14.5px; max-width: 660px;
-  margin: 0 0 12px; line-height: 1.6; }
-.hero .intro-links { border-bottom: none; margin: 12px 0 0; }
-.hero-bar { position: absolute; bottom: 26px; left: 50%;
-  transform: translateX(-50%); width: min(984px, calc(100% - 56px));
-  height: 6px; border-radius: 3px; opacity: .55; pointer-events: none;
-  background: linear-gradient(90deg, var(--a) 0%, var(--a) 58%,
-    var(--b) 58%, var(--b) 100%); }
-.hero-bar-notch { position: absolute; left: 58%; top: -8px; width: 2px;
-  height: 22px; background: #e7e2d9; opacity: .6; }
-
-/* the recent-window stat card + next-up strip live ON the hero band */
-.hero-stats { position: relative; border: 1px solid var(--line);
-  border-radius: 4px; padding: 14px 18px 12px; margin: 6px 0 16px;
-  max-width: 500px; background: rgba(9, 14, 21, .55);
+/* ------------------------------------------- landing page (patch 0049) */
+.land { text-align: center; padding: 12vh 0 40px; }
+.land-logo { font-size: clamp(64px, 11vw, 118px); letter-spacing: .015em;
+  margin: 0; text-shadow: 0 0 46px rgba(55, 179, 168, .22); }
+/* the signature underline: the site's own probability bar as wordmark
+   rule, split at the teal/ember seam with the coin-flip notch at 50% */
+.land-bar { position: relative; width: min(380px, 72%);
+  height: 6px; border-radius: 3px; margin: 18px auto 0; opacity: .8;
+  background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
+.land-notch { position: absolute; left: 50%; top: -7px; width: 2px;
+  height: 20px; background: #e7e2d9; opacity: .55; }
+.land-tag { color: #b9c6d6; font-size: 17px; margin: 22px auto 30px;
+  max-width: 460px; }
+.land-links { display: grid; gap: 10px; width: min(460px, 100%);
+  margin: 0 auto; }
+.land-link { display: grid; grid-template-columns: auto 1fr auto;
+  align-items: baseline; gap: 12px; text-align: left;
+  border: 1px solid var(--line); border-radius: 3px; padding: 13px 18px;
+  text-decoration: none; color: var(--text);
+  background: rgba(19, 27, 38, .55);
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut),
-    100% 100%, 0 100%); }
-.hero-stats-title { font-family: "Rajdhani", sans-serif; font-weight: 600;
-  letter-spacing: .04em; font-size: 14.5px; margin-bottom: 9px; }
-.hero-stats-note { color: var(--dim); font-size: 12.5px; margin: 10px 0 0; }
+    100% 100%, 0 100%);
+  transition: border-color .15s ease, background .15s ease; }
+.land-link:hover { border-color: rgba(55, 179, 168, .55);
+  background: rgba(55, 179, 168, .06); }
+.land-link-name { font-family: "Rajdhani", sans-serif; font-weight: 600;
+  font-size: 16px; letter-spacing: .08em; text-transform: uppercase; }
+.land-link-sub { color: var(--dim); font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.land-link-arrow { color: var(--dim); transition: color .15s ease,
+  transform .15s ease; }
+.land-link:hover .land-link-arrow { color: var(--a);
+  transform: translateX(2px); }
+.land-copy { color: var(--dim); font-size: 13.5px; max-width: 480px;
+  margin: 28px auto 0; line-height: 1.6; }
+.land .hero-next { max-width: 460px; margin: 22px auto 0;
+  justify-content: center; }
+
+/* interior header: small wordmark, links back to the landing */
+.site-logo { display: inline-block; font-size: 30px; margin-top: 26px;
+  text-decoration: none; color: var(--text);
+  transition: text-shadow .15s ease; }
+.site-logo:hover { text-shadow: 0 0 22px rgba(55, 179, 168, .4); }
+
+/* next-up strip (landing) */
 .hero-next { position: relative; display: flex; flex-wrap: wrap; gap: 10px;
   align-items: baseline; border: 1px solid var(--line); border-radius: 4px;
   padding: 11px 16px; margin: 16px 0 0; font-size: 13.5px;
@@ -109,7 +120,7 @@ header { margin-bottom: 8px; }
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut),
     100% 100%, 0 100%); }
 @supports (backdrop-filter: blur(2px)) {
-  .hero-stats, .hero-next { background: rgba(9, 14, 21, .42);
+  .hero-next { background: rgba(9, 14, 21, .42);
     backdrop-filter: blur(8px) saturate(1.15); }
 }
 .hero-next-label { font-family: "Rajdhani", sans-serif; font-weight: 600;
@@ -137,12 +148,6 @@ nav.tabs button.on::after, nav.tabs a.on::after { content: "";
   position: absolute; left: 12px;
   right: 12px; bottom: 4px; height: 2px; border-radius: 1px;
   background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
-nav.intro-links { margin: 4px 0 0; }
-nav.intro-links button, nav.intro-links a { border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 7px 14px; font-size: 14.5px; }
-nav.intro-links button:hover, nav.intro-links a:hover {
-  border-color: #35506e; }
 
 /* --------------------------- the plate system: every panel and card */
 .panel, .card { position: relative; border: 1px solid var(--line);
@@ -223,6 +228,19 @@ nav.intro-links button:hover, nav.intro-links a:hover {
   padding: 1px 7px; margin-left: 8px; }
 
 /* --------------------------------------------------- metrics + tables */
+.mgroup { margin: 4px 0 16px; padding: 13px 16px 11px;
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid rgba(55, 179, 168, .4);
+  border-radius: 2px; background: rgba(233, 238, 244, .022); }
+.mgroup-title { font-family: "Rajdhani", sans-serif; font-weight: 600;
+  font-size: 13.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: rgba(233, 238, 244, .85); margin-bottom: 10px;
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.mgroup-sub { font-family: "Inter", system-ui, sans-serif;
+  font-weight: 400; font-size: 12px; letter-spacing: .01em;
+  text-transform: none; color: var(--dim); }
+.mgroup table.ledger { margin-bottom: 10px; }
+.mgroup .note { margin-bottom: 2px; }
 .metrics { display: flex; flex-direction: column; gap: 6px; }
 .metric { display: grid; grid-template-columns: 1fr 110px 110px; gap: 8px; }
 .metric.head { color: var(--dim); font-size: 12px; text-transform: uppercase;
@@ -341,8 +359,10 @@ a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
   .panel, .card { animation: none; }
   .tug-fill { animation: none; }
   .card.clickable, .pending-row.clickable, .hero-next.clickable,
-  nav button, nav a, table.ledger tbody tr, .linklike, .back {
+  nav button, nav a, table.ledger tbody tr, .linklike, .back,
+  .land-link, .land-link-arrow, .site-logo {
     transition: none; }
+  .land-link:hover .land-link-arrow { transform: none; }
   .card.clickable:hover, .hero-next.clickable:hover { transform: none; }
   .card.clickable::before { transition: none; }
 }
@@ -350,10 +370,10 @@ a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
 @media (max-width: 720px) {
   body { font-size: 15px; }
   .wrap { padding: 0 16px 64px; }
-  .hero-inner { padding: 36px 16px 54px; }
-  .hero-logo { font-size: 44px; }
-  .hero-tagline { font-size: 15.5px; }
-  .hero-bar { bottom: 22px; width: calc(100% - 32px); }
+  .land { padding-top: 9vh; }
+  .land-tag { font-size: 15px; }
+  .land-link-sub { white-space: normal; }
+  .site-logo { margin-top: 18px; }
   nav.tabs { display: flex; flex-wrap: wrap; }
   nav.tabs button, nav.tabs a { flex: 1 1 auto; text-align: center; }
   .panel, .card { padding: 16px 16px; }

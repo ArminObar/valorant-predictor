@@ -1,7 +1,7 @@
 /** Comparison helpers for metric displays (ASSUMPTIONS §37).
  *
  * metricLead decides ONE metric's winner, direction-aware, and returns null
- * on ties or missing values so neither side gets marked — the old inline
+ * on ties or missing values so neither side gets marked; the old inline
  * checks green-marked Elo on an exact tie because `model < elo` is false.
  * Every green marker in the UI routes through this so accuracy and log loss
  * are judged independently: they can genuinely disagree, and when they do
