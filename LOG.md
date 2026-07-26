@@ -1163,3 +1163,39 @@ check joining ledger-pending rows against the live site — the store
 was allowed to testify to its own freshness. The diagnosis flipped
 only when a probe compared the stored status against a fresh fetch of
 the same page.
+
+## Entry 42 — The tab-click trap: match detail shadowed every tab, and no view had a URL (2026-07-26 session)
+
+**Symptom.** From any match detail view, clicking a top-level tab
+highlighted the tab but kept showing the match; only the in-page back
+button escaped. Browser back/forward did nothing meaningful anywhere on
+the site, a reload always reset to the upcoming list, and there was no
+such thing as a link to a specific tab or match.
+
+**Cause.** Navigation was two `useState` variables in `App`: `tab` and
+`openMatch`. The render gated on `openMatch` FIRST — while a match was
+open, the tab content never rendered, so tab clicks mutated state that
+had no visible effect. Nothing wrote to the browser's history, so the
+URL never changed and back/forward had nothing to walk. Two views, one
+render slot, no addresses.
+
+**Fix.** Views own URLs now (react-router 6): `/upcoming`,
+`/scoreboard`, `/model`, `/backtest`, `/match/:id`, with `/`
+redirecting to `/upcoming`. Tabs are `NavLink`s, so clicking one IS
+navigation and always lands on that tab's own default view; a match
+detail is a page, not a modal squatting over every tab; back/forward,
+reload, middle-click, and shared links behave like any normal site.
+Server side, a narrow fallback answers unmatched extensionless GETs
+with the SPA shell so deep links survive a reload, while `/api` and
+extensioned paths (missing assets, sensitive-file probes) keep their
+honest 404s — pinned by two new API tests.
+
+**Why testing missed it.** Navigation existed only as implicit state
+coupling inside one component, so there was nothing for a test to
+address: the frontend suite covers pure functions (`node --test` on
+chart/time), and no navigation sequence was expressible, let alone
+pinned. Manual checks always left a match via the in-page back button —
+the one path that worked — because that is the path the person who
+wrote the view habitually used. The fix makes navigation a first-class,
+addressable thing (URLs), which is also what makes it testable at the
+server boundary.

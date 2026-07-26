@@ -1260,3 +1260,47 @@ steady state: zero.
 **Frozen rows untouched.** Healing edits only the match store; the
 ledger's frozen predictions never change, and grading merely fills
 outcomes — same rule as always, now actually reachable.
+
+## 34. Real routes: decisions behind the router (2026-07-26 session)
+
+**BrowserRouter over HashRouter.** The ask was URLs that behave "the way
+they do on any normal site", and `/scoreboard` is that; `#/scoreboard`
+is the compromise you make when you can't touch the server. We can:
+the cost is a ~20-line SPA fallback in `api.py`. It is deliberately
+narrow — only 404s, only GET/HEAD, never `/api/*`, never a path whose
+last segment has an extension — so a stale bundle hash or a probe for
+`ledger.sqlite` still 404s honestly (every sensitive artifact path has
+an extension; the existing static-mount security test passes untouched,
+and the handler can only ever emit `dist/index.html`). Extensionless
+non-routes (`/nonsense`) get the shell and the client renders a small
+not-found panel; that 200-for-unknown-pages trade is standard SPA
+behaviour, accepted deliberately.
+
+**A dependency, not a hand-rolled router — and the version is an
+eyes-open compromise.** Hand-rolled history handling is where popstate,
+focus, and middle-click bugs live, so react-router it is. Version
+walk, because no reachable version is audit-silent: v6 and v7 ≤ 7.17
+carry an open-redirect advisory in `<Link>`/`useNavigate`
+(GHSA-wrjc-x8rr-h8h6) — the one surface this app actually uses — fixed
+in 7.18.1; 7.18.1 itself carries GHSA-qwww-vcr4-c8h2, an RSC-mode CSRF
+that requires framework-mode server actions, code paths that cannot
+execute in this static SPA (no SSR, no RSC, no actions; FastAPI serves
+`dist/`); the fully clean line is react-router 8, whose floor is React
+≥ 19.2 — a framework major that does not belong inside a navigation
+patch. npm's own suggested "fix" is a downgrade to 7.11.0, which would
+REINTRODUCE the open-redirect advisory on a live surface to silence an
+unreachable one. So: pinned exact 7.18.1, residual advisory named
+here, exit path = a deliberate React 19 + react-router 8 patch later.
+Per LOG entry 40 the change was verified with a cold `rm -rf
+node_modules && npm ci`, `vite build`, and the node test suite.
+
+**Tab clicks reset to the tab's default view — on purpose.** That is
+the requested semantics and the router gives it by construction
+(navigation remounts the route). It also means returning to a tab
+re-fetches and shows defaults rather than restoring scroll/filter
+state; if per-tab state ever needs to survive, it goes in query params,
+not back into component state.
+
+**Match detail's back button.** `navigate(-1)` — the real history —
+with one guard: on a direct deep link there is no in-app history, so it
+falls back to `/upcoming` instead of walking the user off the site.

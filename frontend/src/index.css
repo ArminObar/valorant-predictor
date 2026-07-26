@@ -120,24 +120,29 @@ header { margin-bottom: 8px; }
 
 /* -------------------------------------------------------- navigation */
 nav { display: flex; gap: 8px; margin: 20px 0 24px; }
-nav button { background: none; border: none; color: var(--dim);
+nav button, nav a { background: none; border: none; color: var(--dim);
+  text-decoration: none; display: inline-block;
   font-family: "Rajdhani", sans-serif; font-weight: 600; font-size: 16px;
   letter-spacing: .08em; text-transform: uppercase;
   padding: 8px 14px; cursor: pointer; transition: color .15s ease; }
-nav button:hover { color: var(--text); }
+nav button:hover, nav a:hover { color: var(--text); }
 nav.tabs { display: inline-flex; gap: 4px; padding: 4px;
   background: rgba(19, 27, 38, .78); border: 1px solid var(--line);
   border-radius: 4px; margin: 26px 0 30px; }
-nav.tabs button { position: relative; border-radius: 3px;
+nav.tabs button, nav.tabs a { position: relative; border-radius: 3px;
   padding: 7px 16px; font-size: 15.5px; letter-spacing: .07em; }
-nav.tabs button.on { background: var(--panel-hi); color: var(--text); }
-nav.tabs button.on::after { content: ""; position: absolute; left: 12px;
+nav.tabs button.on, nav.tabs a.on { background: var(--panel-hi);
+  color: var(--text); }
+nav.tabs button.on::after, nav.tabs a.on::after { content: "";
+  position: absolute; left: 12px;
   right: 12px; bottom: 4px; height: 2px; border-radius: 1px;
   background: linear-gradient(90deg, var(--a) 0 58%, var(--b) 58% 100%); }
 nav.intro-links { margin: 4px 0 0; }
-nav.intro-links button { border: 1px solid var(--line); border-radius: 3px;
+nav.intro-links button, nav.intro-links a { border: 1px solid var(--line);
+  border-radius: 3px;
   padding: 7px 14px; font-size: 14.5px; }
-nav.intro-links button:hover { border-color: #35506e; }
+nav.intro-links button:hover, nav.intro-links a:hover {
+  border-color: #35506e; }
 
 /* --------------------------- the plate system: every panel and card */
 .panel, .card { position: relative; border: 1px solid var(--line);
@@ -336,7 +341,8 @@ a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
   .panel, .card { animation: none; }
   .tug-fill { animation: none; }
   .card.clickable, .pending-row.clickable, .hero-next.clickable,
-  nav button, table.ledger tbody tr, .linklike, .back { transition: none; }
+  nav button, nav a, table.ledger tbody tr, .linklike, .back {
+    transition: none; }
   .card.clickable:hover, .hero-next.clickable:hover { transform: none; }
   .card.clickable::before { transition: none; }
 }
@@ -349,7 +355,7 @@ a:focus-visible { outline: 2px solid var(--a); outline-offset: 2px;
   .hero-tagline { font-size: 15.5px; }
   .hero-bar { bottom: 22px; width: calc(100% - 32px); }
   nav.tabs { display: flex; flex-wrap: wrap; }
-  nav.tabs button { flex: 1 1 auto; }
+  nav.tabs button, nav.tabs a { flex: 1 1 auto; text-align: center; }
   .panel, .card { padding: 16px 16px; }
   .teams { font-size: 20px; }
   .teams.big .team { font-size: 22px; }

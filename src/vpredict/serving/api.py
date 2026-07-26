@@ -30,8 +30,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from vpredict.frontend_locate import locate_frontend_dist
 
 from .. import config
@@ -372,6 +374,31 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
 
     if dist is not None:
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
+        index_file = Path(dist) / "index.html"
+
+        @app.exception_handler(StarletteHTTPException)
+        async def _spa_fallback(request: Request,
+                                exc: StarletteHTTPException):
+            """The frontend's views live at real URLs now (/upcoming,
+            /scoreboard, /match/562119, ...), so a reload or a shared deep
+            link reaches this server, misses the static mount, and must be
+            answered with the SPA shell for the client router to resolve.
+            Narrow on purpose: /api stays an honest JSON 404, and any path
+            whose last segment carries an extension (a missing asset, a
+            stale bundle hash, /favicon.ico) stays a real 404 — answering
+            those with HTML would mask deploy breakage and soften the
+            static-mount guarantee that data files are never served
+            (test_static_mount_cannot_serve_data_files: every sensitive
+            artifact path has an extension). This handler can only ever
+            emit dist/index.html, never any other file."""
+            last_segment = request.url.path.rsplit("/", 1)[-1]
+            if (exc.status_code == 404
+                    and request.method in ("GET", "HEAD")
+                    and not request.url.path.startswith("/api")
+                    and "." not in last_segment
+                    and index_file.is_file()):
+                return FileResponse(index_file)
+            return await http_exception_handler(request, exc)
 
     if os.environ.get("VPREDICT_REFRESH", "0") == "1":
         interval = int(os.environ.get("VPREDICT_REFRESH_INTERVAL_S", "21600"))

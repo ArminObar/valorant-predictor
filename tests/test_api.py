@@ -145,3 +145,38 @@ def test_results_endpoint_empty_then_ingest_roundtrip(tmp_path, monkeypatch):
     got = c.get("/api/results").json()
     assert got["series"]["model"]["log_loss"] == 0.65
     assert got["per_tier"][0]["tier"] == "tier1"
+
+
+def _client_with_dist(tmp_path, monkeypatch):
+    """App with a fake built frontend, same trick the security tests use."""
+    import vpredict.serving.api as api_mod
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html>spa-shell</html>")
+    monkeypatch.setattr(api_mod, "locate_frontend_dist", lambda: dist)
+    return TestClient(create_app(data_dir=tmp_path))
+
+
+def test_spa_fallback_serves_shell_for_client_routes(tmp_path, monkeypatch):
+    """Deep links and reloads on client routes get the SPA shell (200),
+    with the security headers still applied by the middleware."""
+    c = _client_with_dist(tmp_path, monkeypatch)
+    for path in ("/upcoming", "/scoreboard", "/model", "/backtest",
+                 "/match/562119"):
+        r = c.get(path)
+        assert r.status_code == 200, path
+        assert "spa-shell" in r.text
+        assert "Content-Security-Policy" in r.headers
+    assert "spa-shell" in c.get("/").text  # the mount's own index intact
+
+
+def test_spa_fallback_never_masks_api_or_asset_404s(tmp_path, monkeypatch):
+    """The fallback is for page URLs only: unknown /api paths stay JSON
+    404s, and extensioned paths (missing assets, sensitive-file probes —
+    which all carry extensions) stay real 404s."""
+    c = _client_with_dist(tmp_path, monkeypatch)
+    r = c.get("/api/definitely-not-a-route")
+    assert r.status_code == 404 and "spa-shell" not in r.text
+    for path in ("/assets/stale-bundle-abc123.js", "/favicon.ico",
+                 "/serving/ledger.sqlite"):
+        assert c.get(path).status_code == 404, path

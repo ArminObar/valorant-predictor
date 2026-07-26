@@ -1,4 +1,8 @@
 import React, { useEffect, useState } from "react";
+import {
+  Link, NavLink, Navigate, Route, Routes,
+  useLocation, useNavigate, useParams,
+} from "react-router-dom";
 import { fmtTime } from "./time.js";
 import { buildRatingChart } from "./chart.js";
 
@@ -377,7 +381,7 @@ function Scoreboard({ onOpen }) {
   );
 }
 
-function RecentResults({ go }) {
+function RecentResults() {
   const { data, err } = useApi("/api/results");
   if (err || !data || !data.generated_at || !data.series) return null;
   const s = data.series, m = data.map, sel = data.selected || {};
@@ -459,15 +463,13 @@ function RecentResults({ go }) {
         the early data-starved era when the model had almost nothing to
         learn from. Elo wins most of that history and the model does
         better in the recent stretch, which is the window above.{" "}
-        <button className="linklike" onClick={() => go("backtest")}>
-          see the full backtest
-        </button>
+        <Link className="linklike" to="/backtest">see the full backtest</Link>
       </p>
     </div>
   );
 }
 
-function ModelTab({ go }) {
+function ModelTab() {
   const { data, err } = useApi("/api/model");
   if (err) return <p className="empty">API unreachable.</p>;
   if (!data) return <p className="empty">Loading…</p>;
@@ -484,7 +486,7 @@ function ModelTab({ go }) {
   ];
   return (
     <>
-    <RecentResults go={go} />
+    <RecentResults />
     <div className="panel">
       <div className="panel-title">Model details (live bundle)</div>
       {data.synthetic_data && (
@@ -559,8 +561,15 @@ function RatingChart({ rh, team1 }) {
   );
 }
 
-function MatchDetail({ id, onBack }) {
-  const { data, err } = useApi(`/api/match/${id}`);
+function MatchDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Real history now: back is the browser's back. A direct deep link has
+  // no in-app history to return to, so fall back to the upcoming list.
+  const onBack = () =>
+    location.key !== "default" ? navigate(-1) : navigate("/upcoming");
+  const { data, err } = useApi(`/api/match/${encodeURIComponent(id)}`);
   if (err) return <p className="empty">API unreachable.</p>;
   if (!data) return <p className="empty">Loading…</p>;
   const src = data.ledger || data.prediction;
@@ -830,7 +839,7 @@ function HeroNext({ onOpen }) {
   );
 }
 
-function Hero({ go, onOpen, onHome }) {
+function Hero({ onOpen, onHome }) {
   return (
     <div className="hero">
       <svg className="hero-bg" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -891,8 +900,8 @@ function Hero({ go, onOpen, onHome }) {
           grading, so treat it as a record being written, not a verdict.
         </p>
         <nav className="intro-links">
-          <button onClick={() => go("upcoming")}>see upcoming predictions</button>
-          <button onClick={() => go("backtest")}>see the backtest</button>
+          <Link to="/upcoming">see upcoming predictions</Link>
+          <Link to="/backtest">see the backtest</Link>
         </nav>
         <HeroNext onOpen={onOpen} />
       </div>
@@ -900,28 +909,41 @@ function Hero({ go, onOpen, onHome }) {
   );
 }
 
+function ScrollToTop() {
+  // New URL, top of the new page — the behaviour every multi-page site
+  // gives for free. Back/forward still land where the browser puts them.
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
+
+function NotFound() {
+  return (
+    <div className="panel">
+      <p className="empty">
+        No such page.{" "}
+        <Link className="linklike" to="/upcoming">back to upcoming</Link>
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
-  const [tab, setTab] = useState("upcoming");
-  const [openMatch, setOpenMatch] = useState(null);
+  const navigate = useNavigate();
   const { data: health } = useApi("/api/health");
+  // Every view owns a URL now. Clicking a tab is navigation, so it always
+  // lands on that tab's own default view — a match detail can't shadow it
+  // (the trap in LOG entry 42) — and browser back/forward, reloads, and
+  // shared links all behave like any normal site.
+  const openMatch = (id) => navigate(`/match/${encodeURIComponent(id)}`);
   const goHome = () => {
-    setOpenMatch(null);
-    setTab("upcoming");
+    navigate("/upcoming");
     window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-  const go = (where) => {
-    if (where === "backtest") {
-      setTab("scoreboard");
-      setTimeout(() =>
-        document.getElementById("backtest")?.scrollIntoView(
-          { behavior: "smooth" }), 60);
-    } else {
-      setTab(where);
-    }
   };
   return (
     <div className="wrap">
-      <Hero go={go} onOpen={setOpenMatch} onHome={goHome} />
+      <ScrollToTop />
+      <Hero onOpen={openMatch} onHome={goHome} />
       {health?.synthetic_model && (
         <p className="warn">
           This is a demo model trained on made-up data. Not real
@@ -929,21 +951,22 @@ export default function App() {
         </p>
       )}
       <nav className="tabs">
-        {["upcoming", "scoreboard", "model"].map((t) => (
-          <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
+        {["upcoming", "scoreboard", "model", "backtest"].map((t) => (
+          <NavLink key={t} to={`/${t}`}
+            className={({ isActive }) => (isActive ? "on" : "")}>
             {t}
-          </button>
+          </NavLink>
         ))}
       </nav>
-      {openMatch ? (
-        <MatchDetail id={openMatch} onBack={() => setOpenMatch(null)} />
-      ) : (
-        <>
-          {tab === "upcoming" && <Upcoming onOpen={setOpenMatch} />}
-          {tab === "scoreboard" && <Scoreboard onOpen={setOpenMatch} />}
-          {tab === "model" && <ModelTab go={go} />}
-        </>
-      )}
+      <Routes>
+        <Route path="/" element={<Navigate to="/upcoming" replace />} />
+        <Route path="/upcoming" element={<Upcoming onOpen={openMatch} />} />
+        <Route path="/scoreboard" element={<Scoreboard onOpen={openMatch} />} />
+        <Route path="/model" element={<ModelTab />} />
+        <Route path="/backtest" element={<Backtest />} />
+        <Route path="/match/:id" element={<MatchDetail />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
       <footer>
         Data scraped politely from vlr.gg (robots.txt respected, at least 1s
         between requests). Predictions lock at least 5 minutes before each
