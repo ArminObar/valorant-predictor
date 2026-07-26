@@ -138,8 +138,10 @@ third-decimal. Every figure regenerates from `scripts/evaluate.py`.
 - **Memory footprint.** The full feature build peaks ~0.7 GB RSS; 512 MB
   deploy instances cannot run the retrain/predict cycle (serving the API
   alone is light). See the deploy notes.
-- **Uniform pool weights.** Upcoming-match series probabilities average the
-  current 7-map pool uniformly; team pick/ban tendencies are not modeled.
+- **Uniform pool weights.** Pool membership is the top-7 maps by
+  recency-weighted play frequency (14-day half-life within a 60-day
+  window), so map rotations phase in within weeks; averaging across the
+  chosen pool is uniform, and team pick/ban tendencies are not modeled.
 - **Calibrated outputs are piecewise constant whenever step isotonic
   wins selection.** Step isotonic is a step function (a few dozen output
   levels on current data); a smooth monotone candidate now competes in

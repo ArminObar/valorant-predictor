@@ -116,6 +116,11 @@ LEAKAGE_SPOT_CHECKS = 12    # random rows re-verified with truncated history at 
 LEDGER_FREEZE_MARGIN_S = 300  # predictions must be logged >= 5 min before match start
 CURRENT_POOL_WINDOW_DAYS = 60
 CURRENT_POOL_SIZE = 7
+# Recency half-life for pool MEMBERSHIP (ASSUMPTIONS §36): each in-window
+# play is weighted 0.5 ** (age_days / half_life) so map rotations phase in
+# within weeks instead of a full window length. None or <= 0 restores raw
+# counts. Averaging across the chosen pool remains uniform (§8).
+CURRENT_POOL_HALF_LIFE_DAYS = 14.0
 
 # --------------------------------------------------------------------------- hand weights
 # The original 13 hand-designed metrics from the project brief. The brief did not

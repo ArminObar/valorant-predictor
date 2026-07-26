@@ -1,4 +1,4 @@
-# APPLY — patch session 2026-07-26 (late): patches 43–45
+# APPLY — patch session 2026-07-26 (late): patches 43–46
 
 What landed, mapped to your list: **1** tab-click trap fixed (clicking
 any top-level tab always shows that tab's own default view; a match
@@ -12,8 +12,16 @@ to the full per-tier table at its new home, the `backtest` tab (patch
 0044, ASSUMPTIONS §35). Layout only: no metric, and none of the
 "Elo wins most of the history" framing, changed. The "what you'd have
 won tailing the model" percentage was **not built**, as instructed.
-The map-pool question was an investigation, so it is reported in chat
-with reproduction commands — nothing built, your call pending.
+The map-pool investigation came back with your decision — option B —
+and patch 0046 ships it: pool MEMBERSHIP is now recency-weighted
+(14-day half-life inside the unchanged 60-day window; ASSUMPTIONS §36,
+new tests, plus `scripts/inspect_pool.py` to see the decision on any
+store). Measured on the real store: the corrected pool applies
+retroactively on deploy — Sunset in, Fracture out, immediately; Pearl
+yields the last slot to Summit as live Stage 2 plays accrue. Averaging
+across the pool stays uniform, frozen ledger rows never move, and the
+published backtest artifact is untouched (a future backtest RE-RUN
+inherits the rule, run-once stays run-once).
 
 Run everything from the repo root: `cd ~/Downloads/valorant-predictor`.
 
@@ -26,8 +34,10 @@ First, per your own workflow note, confirm the downloads exist:
 Move them in and apply, in order:
 
     mkdir -p patches
-    mv ~/Downloads/0043-*.patch ~/Downloads/0044-*.patch ~/Downloads/0045-*.patch patches/
-    git am patches/0043-*.patch patches/0044-*.patch patches/0045-*.patch
+    mv ~/Downloads/0043-*.patch ~/Downloads/0044-*.patch \
+       ~/Downloads/0045-*.patch ~/Downloads/0046-*.patch patches/
+    git am patches/0043-*.patch patches/0044-*.patch \
+       patches/0045-*.patch patches/0046-*.patch
 
 If `git am` complains about uncommitted local edits: `git stash`, apply,
 `git stash pop`.
@@ -35,18 +45,22 @@ If `git am` complains about uncommitted local edits: `git stash`, apply,
 Then verify:
 
     source .venv/bin/activate
-    python -m pytest                  # expect 145 passed
+    python -m pytest                  # expect 152 passed
     cd frontend
     rm -rf node_modules && npm ci     # cold install, per LOG entry 40
     npm test                          # expect 12 pass
     npm run build                     # must succeed
     cd ..
 
-`python -m pytest` count: 143 in the sandbox came from its Python 3.12;
-your 3.14 venv has passed the same suite with 2 extra parametrizations
-before — the number that matters is **0 failed**, and the two new tests
-are `test_spa_fallback_serves_shell_for_client_routes` and
-`test_spa_fallback_never_masks_api_or_asset_404s` in `tests/test_api.py`.
+`python -m pytest` count: 150 in the sandbox on its Python 3.12; your
+3.14 venv carries 2 extra parametrizations — the number that matters is
+**0 failed**. New this session: 2 SPA-fallback tests in
+`tests/test_api.py` and 7 pool tests in `tests/test_pool.py`. Patch
+0046 is backend-only, so the frontend cold install below is for
+0043/0044 and does not need repeating for it. Optional but satisfying —
+watch the pool decide, on your local store:
+
+    python scripts/inspect_pool.py
 
 **Expected `npm audit` output — read before reacting:** it will report
 GHSA-qwww-vcr4-c8h2 (React Router RSC-mode CSRF; shows as 2 highs, one
@@ -86,13 +100,23 @@ After deploy, three spot checks:
     https://vpredict.onrender.com/api/health     -> JSON, ok true
     https://vpredict.onrender.com/assets/nope.js -> 404, not HTML
 
+Fourth check, for the pool: in Render's Shell tab run
+
+    python scripts/inspect_pool.py
+
+(read-only) — expect Sunset in and Fracture out of the serving pool at
+once; Pearl's slot passes to Summit as Stage 2 plays land over the
+coming days. Upcoming predictions adopt the new pool at the first
+refresh cycle after deploy; already-frozen ledger rows keep their
+original calls by design.
+
 ## 4. What was deliberately not done
 
 - No "tailing the model" payout number (your instruction; the gated
   Market Picks EV/CLV panel remains the correct version of that idea).
-- No map-pool code change: the investigation (in chat) found the pool
-  logic working exactly as specified and the spec lagging the June 24
-  rotation by design; options are listed there and wait on your
-  decision.
+- No half-life tuning to force a same-day Summit flip: even a 7-day
+  half-life cannot seat 15 stored plays on the frozen snapshot (§36),
+  so 14 stands as agreed instead of being bent to flatter deploy day.
+  Option C (tier-restricted pool) stays future work.
 - No commit-authorship rewrite: that remains your deliberate,
   well-rested, mirror-backup-first action from the previous session.

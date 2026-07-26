@@ -1,10 +1,10 @@
 """Predict upcoming matches with the trained bundle.
 
 Pre-veto series probability: per-map calibrated probabilities are computed for
-every map in the CURRENT pool (top-N maps by play frequency over the last
-CURRENT_POOL_WINDOW_DAYS), averaged with uniform pool weights (documented
-simplification — real pick/ban tendencies are future work), and pushed through
-the exact best-of DP. The as-of cutoff is NOW: only matches whose estimated
+every map in the CURRENT pool (top-N maps by recency-weighted play frequency —
+half-life CURRENT_POOL_HALF_LIFE_DAYS — over the last CURRENT_POOL_WINDOW_DAYS),
+averaged with uniform pool weights (documented simplification — real pick/ban
+tendencies are future work), and pushed through the exact best-of DP. The as-of cutoff is NOW: only matches whose estimated
 finish precedes this moment contribute — the same leakage rule as training.
 """
 from __future__ import annotations
@@ -28,16 +28,55 @@ from ..modeling.train import predict_calibrated
 log = logging.getLogger("vpredict.predict")
 
 
+def pool_table(maps_df: pd.DataFrame, now: pd.Timestamp,
+               window_days: int = config.CURRENT_POOL_WINDOW_DAYS,
+               half_life_days: float | None = config.CURRENT_POOL_HALF_LIFE_DAYS,
+               ) -> pd.DataFrame:
+    """One row per map with plays finished before `now` and started inside the
+    window: raw play count, recency-weighted count, and last start time.
+
+    Each play is weighted 0.5 ** (age_days / half_life_days), age taken from
+    its start. Raw 60-day frequency kept rotated-out maps in the served pool
+    for weeks after the 2026-06-24 rotation (ASSUMPTIONS §36); the half-life
+    lets a rotation phase in within a couple of weeks while the window stays a
+    hard support bound. `half_life_days` of None or <= 0 restores raw counts.
+    Sorted by weighted count descending, ties alphabetical — deterministic.
+    The weighting chooses pool MEMBERSHIP only; averaging across the chosen
+    pool remains uniform (module docstring)."""
+    df = add_est_end(maps_df)
+    finished = df[df["est_end_ts"] <= now]
+    recent = finished[finished["start_ts"] >= now - pd.Timedelta(days=window_days)]
+    if recent.empty:
+        recent = finished
+    plays = recent[recent["is_team1"]]
+    if plays.empty:
+        return pd.DataFrame(
+            {"plays": pd.Series(dtype=int),
+             "weighted": pd.Series(dtype=float),
+             "last_played": pd.Series(dtype="datetime64[us, UTC]")})
+    age_days = (now - plays["start_ts"]).dt.total_seconds() / 86400.0
+    if half_life_days and half_life_days > 0:
+        w = 0.5 ** (age_days / float(half_life_days))
+    else:
+        w = pd.Series(1.0, index=plays.index)
+    tbl = (pd.DataFrame({"map_name": plays["map_name"].to_numpy(),
+                         "w": w.to_numpy(),
+                         "start": plays["start_ts"].to_numpy()})
+           .groupby("map_name")
+           .agg(plays=("w", "size"), weighted=("w", "sum"),
+                last_played=("start", "max")))
+    # groupby sorts the index alphabetically; a stable sort on top makes
+    # equal-weight ties come out alphabetical rather than order-of-appearance.
+    return tbl.sort_values("weighted", ascending=False, kind="mergesort")
+
+
 def current_pool(maps_df: pd.DataFrame, now: pd.Timestamp,
                  window_days: int = config.CURRENT_POOL_WINDOW_DAYS,
-                 size: int = config.CURRENT_POOL_SIZE) -> list[str]:
-    df = add_est_end(maps_df)
-    recent = df[(df["est_end_ts"] <= now) &
-                (df["start_ts"] >= now - pd.Timedelta(days=window_days))]
-    if recent.empty:
-        recent = df[df["est_end_ts"] <= now]
-    counts = recent[recent["is_team1"]]["map_name"].value_counts()
-    return counts.head(size).index.tolist()
+                 size: int = config.CURRENT_POOL_SIZE,
+                 half_life_days: float | None = config.CURRENT_POOL_HALF_LIFE_DAYS,
+                 ) -> list[str]:
+    return pool_table(maps_df, now, window_days=window_days,
+                      half_life_days=half_life_days).head(size).index.tolist()
 
 
 def _elo_p(pair) -> float:

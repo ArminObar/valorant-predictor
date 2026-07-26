@@ -210,7 +210,7 @@ durations (above), decay half-life default 90 d and roster factor default 0.8
 (both sit on declared tuning grids; the ablation harness that tunes them is
 scheduled with the training milestone, currently held pending the first
 real-data evaluation), rest-day cap 30, prediction ledger freeze margin 300 s,
-map-pool window 60 d / size 7 for the deferred serving milestone.
+map-pool window 60 d / size 7, membership recency half-life 14 d (§36).
 
 ## 8. Serving & scoreboard semantics
 - **Freeze rule.** A prediction is accepted only ≥5 minutes before scheduled
@@ -218,8 +218,9 @@ map-pool window 60 d / size 7 for the deferred serving milestone.
   match is immutable — later calls (including from retrained bundles) are
   ignored. "Called in advance" therefore means the earliest public call.
 - **Pre-veto aggregation.** Upcoming-match series probabilities average
-  per-map model probabilities over the current pool (top-7 maps by 60-day
-  play frequency) with UNIFORM weights, then apply the exact best-of DP.
+  per-map model probabilities over the current pool (top-7 maps by
+  recency-weighted play frequency — 14-day half-life within a 60-day
+  window, §36) with UNIFORM weights, then apply the exact best-of DP.
   Team-specific pick/ban tendencies are future work; the uniform choice is
   stated on the model card.
 - **As-of NOW.** Serving features use the same eligibility rule as training
@@ -1322,3 +1323,45 @@ NOT prose: they are computed at render time from the same
 for neither side so the sentence stays literally true, and if the
 long-run picture ever flips, the sentence flips with the data instead
 of flattering anyone. Nothing on either page is typed in by hand.
+
+## 36. Map-pool membership is recency-weighted, half-life 14 days (2026-07-26 session)
+
+The June 24 rotation (patch 13.00: Pearl and Fracture out, Summit and
+Sunset in; VCT Stage 2 runs patch 13.01 with the new seven) exposed the
+cost of raw 60-day frequency: the served pool kept both rotated-out maps
+and, on frozen data, would have until early September — two months of
+the old act outweighs two weeks of the new one. Fix (owner's call from
+three presented options): keep the 60-day window as a hard support
+bound, weight each in-window play by `0.5 ** (age_days / 14)` from its
+start time, pool = top 7 by weighted count. Membership only — averaging
+across the chosen pool stays uniform (§8), and frozen ledger rows keep
+their original first calls by construction.
+
+What the weighting does and does not do, measured on the real store
+(`scripts/inspect_pool.py` regenerates every claim): applied
+retroactively to data frozen at 2026-07-22 it corrects the pool from
+5/7 to 6/7 the moment it deploys — Fracture out, Sunset in — because
+it is a read-time transform over plays the store already holds; no
+crawl accumulation is needed for the plays that already happened. It
+does NOT accelerate exits on a frozen store: a shared exponential decay
+preserves ratios, so with zero new data Pearl still holds the last slot
+until the window edge does its old-rule work (~Sep 6, measured). The
+half-life's advantage is entirely on the inflow side: a play this
+fortnight counts roughly double a month-old one, so a rotation's fresh
+maps displace idle incumbents after days of normal crawling rather than
+weeks of raw-count catch-up. Sensitivity, to close the tuning door:
+even a 7-day half-life does not seat Summit on the frozen 07-22
+snapshot (15 plays is 15 plays), so no knob value flatters deploy day
+and 14 stands as agreed rather than tuned to the outcome.
+
+Consequences for the other caller: the walk-forward backtest replays
+the serving path, so any FUTURE backtest regeneration inherits the rule
+at historical timestamps (where it also tracks past rotations more
+faithfully). The published backtest artifact predates the change and
+does not move until deliberately re-run — run-once stays run-once.
+Escape hatch: `half_life_days` of None or <= 0 restores raw counts
+(used for the old-rule column in the inspection script and pinned by
+tests). Ties break alphabetically after weight, deterministically.
+Option C from the investigation (derive the pool from tier-1/2 events
+only, reacting in days) remains the principled refinement if pool
+latency ever matters again.
