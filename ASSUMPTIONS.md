@@ -1529,3 +1529,38 @@ dashes live only in code comments and docstrings, never in anything
 sent to a client. Meaning was preserved everywhere. In particular
 "Not betting advice", the freeze rule, the low-history rule, the
 simulated badge, and every honesty statement survive, just shorter.
+
+## 39. The visual redesign handoff: applied on review, not on trust (2026-07-28 session)
+
+The redesign arrived as three drop-in files with a claim of no
+dependency, backend, route, or data-flow changes. The claim was
+checked, not assumed. Imports, derived-copy helpers
+(`summarizeBacktestTiers`, `metricLead`, `liveStanding`), the
+per-metric winner marking, the low-history flags, and the derived
+backtest and scoreboard sentences all match the current tree, so the
+handoff was cut from the post-49 file. Three regressions were still
+found and fixed before anything was committed; they are LOG entry 43.
+The dependency claim held: `package.json` untouched, cold `npm ci`
+clean.
+
+Judgment calls made while integrating:
+
+- **The backtest summary keeps its integrity sentence.** The handoff's
+  copy diet kept the derived "Elo wins X of N tiers" line but dropped
+  the clause saying nothing is trimmed to flatter the model. That
+  clause is the point of the page, so it returns in compact form. The
+  full-history-vs-recent framing survives in both places it lived:
+  the scoreboard summary panel and the backtest tab intro, each with
+  the derived live-standing clause, none of it hand-typed.
+- **Fonts stay on the host the CSP already permits.** The swap
+  (Rajdhani/Inter to Space Grotesk/IBM Plex) changes families, not
+  hosts, so the security-pass CSP needs no edit. Self-hosting the
+  woff2 files remains the right move if third-party requests should
+  ever go to zero; deferred because it adds binary weight to the repo
+  for no current requirement.
+- **Theme verification scope, stated plainly.** The persistence
+  contract is proven by unit tests against the storage API surface
+  (get, set, junk, throwing, absent) plus a clean production build.
+  It was not exercised in a running browser here. A ten-second manual
+  check after deploy closes that gap: toggle, reload, confirm the
+  choice sticks, once more in a private window.

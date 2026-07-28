@@ -1199,3 +1199,36 @@ the one path that worked — because that is the path the person who
 wrote the view habitually used. The fix makes navigation a first-class,
 addressable thing (URLs), which is also what makes it testable at the
 server boundary.
+
+## Entry 43: Three regressions in the visual-redesign handoff, caught in review, never shipped (2026-07-28 session)
+
+**Symptom.** The redesign handoff (drop-in `index.html`, `index.css`,
+`App.jsx`) claimed routes and data flow untouched. Review against the
+current tree found three regressions: the route table had no `/` entry,
+so the landing page was orphaned and the root URL would have rendered
+the 404 view; the theme attribute was applied only in a post-mount
+effect, so a stored light choice on a dark-system machine would flash
+dark on every load; and the stylesheet dropped the Elo win color, so a
+metric row where Elo wins would have rendered in the model's teal,
+visually crediting the model with Elo's win.
+
+**Cause.** The handoff was produced against the right file but outside
+a running browser, and rebuilt the route table and stylesheet from
+scratch. Nothing in the repo asserts the route table or the
+theme-persistence contract, so nothing could have flagged the drops
+automatically.
+
+**Fix.** Root route restored. Theme logic extracted to
+`frontend/src/theme.js` (pure module, storage injected) and applied
+pre-render from `main.jsx`, so the stored choice paints before first
+render and a throwing or absent `localStorage` (private windows,
+locked-down contexts) degrades to the system theme without breaking
+the page. `.metric-val.elo` rules restored. Eight new node tests pin
+the theme contract: default, round trip, junk values, throwing
+storage, attribute set and clear, pre-render init.
+
+**Why testing missed it.** It could not have: the defects arrived in
+the handoff, and the repo's frontend tests only reach pure modules by
+design (`node --test`, no DOM). The theme contract is now in that
+reachable set. The route table still is not; it stays a manual review
+item, checked here by diffing the route block against HEAD.
