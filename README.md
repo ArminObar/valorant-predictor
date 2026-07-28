@@ -1,25 +1,25 @@
 # vpredict
 
 Win probabilities for pro Valorant matches, published before the matches
-start, graded in public against a baseline that is genuinely hard to beat.
+start and graded in public against a baseline that is hard to beat.
 
 **Live: <https://vpredict.onrender.com>**
 
 ## Why I built this
 
-I wanted to know if stats I could scrape myself could actually beat a
-tuned Elo rating at calling pro Valorant matches. I also wanted a public
-record I could not quietly edit when the answer embarrassed me. So every
+I wanted to know if stats I scraped myself could beat a tuned Elo
+rating at calling pro matches. I also wanted a public record I could
+not quietly edit if the answer embarrassed me. So every
 prediction freezes to a ledger before match start, and the site grades
 them as results come in, next to Elo's call on the same match.
 
 ## What it does
 
-The pipeline scrapes vlr.gg politely, builds features with a strict
-as-of rule (only matches that finished before the target match started
-can contribute), trains a calibrated map-level model, and turns per-map
-probabilities into a series probability with an exact dynamic program
-over the best-of format. Upcoming matches get predicted on a schedule.
+The pipeline scrapes vlr.gg politely and builds features under a
+strict as-of rule: only matches that finished before the target match
+started can contribute. It trains a calibrated map-level model, then
+turns per-map probabilities into a series probability with an exact
+dynamic program over the best-of format. Upcoming matches get predicted on a schedule.
 The first prediction per match is frozen forever. Later retrains cannot
 touch it. Elo's probability is logged at the same instant, so the
 comparison is locked at prediction time too.
@@ -39,7 +39,7 @@ test window. One command regenerates every number:
 python scripts/evaluate.py --data data/raw/matches.jsonl
 ```
 
-On the current regeneration the model beats tuned Elo (K=24, tuned on
+As of the July 2026 regeneration, the model beats tuned Elo (K=24, tuned on
 validation only) on test log loss at both grains: 0.6693 vs 0.6719 at
 map level, 0.6570 vs 0.6580 at series level, with accuracy 62.1% vs
 61.3% on 824 test series. Those gaps are small. I report them anyway,
@@ -59,16 +59,15 @@ completed match in the store, the same frozen-style prediction the live
 system would have made, under bundles retrained on the production
 cadence. Its verdict is that Elo leads most of the two-year history,
 and the model's edge only shows up in the recent period, which is
-exactly what the static test window measures. That result is on the
-site, labeled as a simulation, separated from the live ledger, and
-protected by a run-once rule so I cannot rerun it until it flatters me.
+exactly what the static test window measures. That result is on the site, labeled as a simulation and kept apart
+from the live ledger. A run-once rule protects it, so I cannot rerun
+it until it flatters me.
 
 The backtest also caught a real calibration bug the static evaluation
 could not see: in one July 2025 window, isotonic calibration saturated
 to exact 0 and 1 plateaus right after its admission threshold was first
-crossed, so a handful of predictions claimed certainty. The fix bounds
-every calibrated output away from 0 and 1, shipped as a labeled model
-change with the old result archived, not overwritten.
+crossed, so a handful of predictions claimed certainty. The fix bounds every calibrated output away from 0 and 1. It shipped
+as a labeled model change and the old result stays archived.
 
 ## Model selection, the boring honest version
 
@@ -147,7 +146,7 @@ visually separated because they answer different questions.
 
 ```bash
 pip install -e . && pip install pytest httpx   # or: make setup
-make test          # 137 tests
+make test          # 150 tests
 make backfill      # deep history walk, resumable, interrupt-safe
 make evaluate      # writes data/reports/
 ```
@@ -180,7 +179,7 @@ src/vpredict/
   serving/      SQLite ledger, refresh cycle, FastAPI app
 scripts/        evaluate | train | predict_upcoming | refresh | backtest | ...
 frontend/       Vite + React scoreboard UI
-tests/          137 tests: leakage, parsers, series math, ledger, API,
+tests/          150 tests: leakage, parsers, series math, ledger, API,
                 odds, markets, backtest, timezone, selection, security
 ```
 
@@ -195,9 +194,9 @@ actually happened, including the bugs.
 
 ## Conduct and credits
 
-Data comes from [vlr.gg](https://www.vlr.gg), scraped respectfully:
-robots.txt honored at runtime, at least 1.1 s between requests,
-aggressive disk caching, no parallel hammering. Selector knowledge was
+Data comes from [vlr.gg](https://www.vlr.gg), scraped respectfully.
+robots.txt is honored at runtime, requests stay at least 1.1 s apart,
+every page is cached to disk, and nothing runs in parallel. Selector knowledge was
 grounded in two open-source scrapers, axsddlr/vlrggapi (MIT) and
 akhilnarang/vlrgg-scraper, credited here; all code in this repository
 is original. Not affiliated with Riot Games. Probabilities are
