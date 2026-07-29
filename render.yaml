@@ -31,4 +31,4 @@ services:
       - key: VPREDICT_REFRESH
         value: "1"
       - key: VPREDICT_REFRESH_INTERVAL_S
-        value: "21600"     # 6 hours
+        value: "1800"      # 30 minutes (ASSUMPTIONS 41)

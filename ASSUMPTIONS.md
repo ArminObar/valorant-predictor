@@ -1581,3 +1581,18 @@ a wiped processed dir rebuilds them once with the then-current engine,
 which is stated here rather than hidden. BUNDLE_BEHAVIOR_REV is not
 bumped: publishing changed, model behavior did not, and a forced
 retrain would change nothing about this fix.
+
+## 41. Refresh cadence: 30 minutes, retrain triggers untouched (2026-07-28 session)
+
+The 6-hour interval was a conservative default, not a constraint. Per
+cycle the crawler touches the upcoming pages and one results listing
+(3 to 6 requests, 15-minute TTL cache) plus new match pages fetched
+once ever; at 30 minutes that adds roughly 150 to 300 requests per day,
+serialized at the 1.1 s floor, a few minutes of total crawl time daily,
+inside the politeness rules by a wide margin. The scheduler is
+run-then-sleep, so cycles cannot overlap at any interval. Grading
+latency drops from up to 6 h to up to 30 min, and the never-frozen
+window (Entry 44) shrinks from "listed under 6 h out" to "under 30
+min". Retraining is unchanged on purpose: the 7-day and 100-new-match
+triggers are evaluated per cycle and fire at the same data-driven rate,
+and cadence is not model behavior, so BUNDLE_BEHAVIOR_REV stays put.
