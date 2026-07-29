@@ -1,4 +1,11 @@
-# APPLY — patch session 2026-07-28: patches 52–55
+# APPLY — patch session 2026-07-28: patches 52–56
+
+**Second pass added patch 0056**: the /how explainer page (linked from
+the homepage and footer) and short hover tooltips on all five section
+titles, each linking to /how. Content only, no logic or data changes;
+apply it after 0055 with the same `git am` flow, rerun the frontend
+gates, push. No new server steps.
+
 
 What landed, mapped to your go list. **1** the frozen-payload fix:
 /api/upcoming now serves the ledger's first call verbatim, uncalled

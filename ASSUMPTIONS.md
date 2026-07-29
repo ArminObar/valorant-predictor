@@ -1649,3 +1649,20 @@ EV. Rules fixed now, before any graded pick exists under this policy:
 
 With a single book the pick reduces exactly to the old headline
 behavior, pinned by test.
+
+## 44. The explanatory layer: one page of record, tooltips that defer to it (2026-07-28 session, second pass)
+
+A /how page now explains the whole system in plain language, linked
+from the homepage and the footer. Judgment calls: static copy states
+rules, never results, so nothing on it can go stale when the numbers
+move; the preregistered EV threshold is described as "a preregistered
+number" with the actual value living on the markets page where it is
+served from data. The old "about" toggles on Scoreboard, Backtest, and
+Markets are replaced by small info icons on all five section titles:
+hover or focus opens, click pins for touch, Escape or an outside click
+closes, and every tooltip is one to two sentences that link to /how
+for the full story. The long about-paragraphs were not deleted, they
+were rewritten into the page. The footer keeps the standing "not
+betting advice" line and gains the /how link, which also gives the
+honest backtest framing a permanent home that no homepage redesign can
+strip by accident.

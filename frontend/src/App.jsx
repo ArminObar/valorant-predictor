@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Link, NavLink, Route, Routes,
   useLocation, useNavigate, useParams,
@@ -85,16 +85,69 @@ function ThemeToggle() {
 }
 
 /* Panel title with an "about" toggle that expands the long explanation. */
-function TitleWithInfo({ title, badge, info }) {
-  const [open, setOpen] = useState(false);
+const TIPS = {
+  upcoming: "Win probabilities locked at least five minutes before each "
+    + "match starts. Once locked, a call never changes.",
+  scoreboard: "Every locked call, graded after its match finishes, with an "
+    + "Elo baseline scored on the same matches.",
+  model: "The exact model serving right now: what it trained on and how "
+    + "its probabilities are calibrated.",
+  markets: "Locked model probabilities against captured sportsbook prices, "
+    + "labeled unvalidated until the preregistered pick count grades. "
+    + "Not betting advice.",
+  backtest: "A simulated replay of two years of history, retrained on the "
+    + "production schedule. Kept apart from the live scoreboard because a "
+    + "simulation is not a live record.",
+};
+
+function InfoTip({ tip, label = "about this section" }) {
+  const [pinned, setPinned] = useState(false);
+  const [hover, setHover] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!pinned) return undefined;
+    const away = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setPinned(false);
+    };
+    const esc = (e) => { if (e.key === "Escape") setPinned(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [pinned]);
+  const open = pinned || hover;
+  const focusWithin = (e) =>
+    setHover(ref.current ? ref.current.contains(e.target) : false);
+  const blurAway = (e) => {
+    if (ref.current && !ref.current.contains(e.relatedTarget)) {
+      setHover(false); setPinned(false);
+    }
+  };
   return (
-    <>
-      <div className="panel-title">
-        {title}{badge}
-        <button className="about" onClick={() => setOpen(!open)}>about</button>
-      </div>
-      {open && <p className="note info">{info}</p>}
-    </>
+    <span className="infotip" ref={ref}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onFocus={focusWithin} onBlur={blurAway}>
+      <button type="button" className="i-btn" aria-expanded={open}
+        aria-label={label} onClick={() => setPinned(!pinned)}>i</button>
+      {open && (
+        <span className="infotip-pop" role="note">
+          {tip}{" "}
+          <Link className="linklike" to="/how">full story: how it works</Link>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function TitleWithInfo({ title, badge, info }) {
+  return (
+    <div className="panel-title">
+      {title}{badge}
+      <InfoTip tip={info} />
+    </div>
   );
 }
 
@@ -161,7 +214,7 @@ function Upcoming({ onOpen }) {
   return (
     <>
       <div className="page-head">
-        <h1>Upcoming</h1>
+        <h1>Upcoming<InfoTip tip={TIPS.upcoming} label="about upcoming" /></h1>
         <span className="page-sub">{data.predictions.length} locked predictions</span>
       </div>
       <p className="note">
@@ -203,15 +256,7 @@ function MarketPicks({ standalone = false }) {
   return (
     <div className="panel">
       <TitleWithInfo title="Market picks: model vs real odds"
-        info={"When a sportsbook prices a match we predicted, the locked "
-          + "probability is compared to their price. EV equals locked "
-          + "probability times the capture price, minus one; positive means "
-          + "the price looked too generous. De-vig strips the bookmaker's "
-          + "margin using Shin's method. Map totals are excluded from EV "
-          + "for now: their probabilities carry a measured bias. The "
-          + `${gate.required || 100}-pick validation threshold was set `
-          + "before the first pick graded and does not move. "
-          + "Not betting advice."} />
+        info={TIPS.markets} />
       <p className="note">Locked model probability vs the captured price. Not betting advice.</p>
       {!gate.ev_validated && (
         <p className="warn">
@@ -309,15 +354,7 @@ function Backtest() {
           + "stored data. You can't verify it the way you can the live "
           + "scoreboard, which is why the two are kept apart."}>
           simulated</span>}
-        info={"This is the model's hardest exam, on purpose. The replay "
-          + "uses only what was known at each moment, includes the early "
-          + "data-starved era and a since-fixed calibration bug, and "
-          + "retrains on the production schedule. Nothing is trimmed to "
-          + "flatter it. It stays strictly separate from the live "
-          + "scoreboard, so neither record can borrow the other's best "
-          + "window. Low-history predictions are counted but not scored. "
-          + "The backtest runs once; it only re-runs if the model changes, "
-          + "and old results stay archived."} />
+        info={TIPS.backtest} />
       <p className="note">
         Two years replayed, worst stretch included. {w.n_predictions} simulated
         predictions, {w.n_retrains} retrains,
@@ -420,13 +457,7 @@ function Scoreboard({ onOpen }) {
       <div className="panel">
         <TitleWithInfo
           title={`Live scoreboard \u00b7 ${s.n_graded} graded, ${s.n_pending} pending`}
-          info={"Every row locked in before its match and graded after. "
-            + "Low-history rows stay listed but are not scored, same rule "
-            + "as the backtest. Correct picks is the simple score. Log loss "
-            + "and Brier grade the confidence behind each pick (lower is "
-            + "better). The accent marks each row's leader on its own; when "
-            + "metrics disagree, both marks stay. The sample is small "
-            + "early, so do not read too much into it."} />
+          info={TIPS.scoreboard} />
         {s.n_scored === 0 ? (
           <p className="empty">
             {s.n_graded > 0
@@ -638,7 +669,7 @@ function ModelTab() {
     <>
     <RecentResults />
     <div className="panel">
-      <div className="panel-title">Model details (live bundle)</div>
+      <TitleWithInfo title="Model details (live bundle)" info={TIPS.model} />
       {data.synthetic_data && (
         <p className="warn">This model was trained on made-up demo data.</p>
       )}
@@ -941,6 +972,158 @@ function HeroNext({ onOpen }) {
   );
 }
 
+function HowItWorks() {
+  return (
+    <div className="how">
+      <div className="page-head"><h1>How it works</h1></div>
+      <div className="panel">
+        <div className="panel-title">The idea</div>
+        <p>
+          vpredict makes win probability calls on professional Valorant
+          matches before they start, in public, and keeps score. Every
+          number on this site is generated by the system from stored data.
+          Nothing is typed in by hand. This page explains the machinery in
+          plain language.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">Where the data comes from</div>
+        <p>
+          A small crawler reads vlr.gg, the community results site. It
+          honors their robots.txt, waits at least 1.1 seconds between
+          requests, and runs single file. Every fetched page is cached to
+          disk, so nothing is downloaded twice. The store reaches back
+          about two years and grows as matches finish.
+        </p>
+        <p>
+          Match pages provide the raw material: map scores, attack and
+          defense splits, first kills, and pistol rounds. That is what the
+          features are built from.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">How predictions are made</div>
+        <p>
+          For each map, the model looks at the difference between the two
+          teams as of that moment: recent round share, attack and defense
+          efficiency, first kills, pistol rounds, rest days, roster
+          stability, and Elo ratings overall and per map.
+        </p>
+        <p>
+          One rule sits above everything. A feature may only use matches
+          that finished before the match being predicted started. The same
+          rule applies in training and in serving, and a test suite guards
+          it. Per map probabilities are combined across the current map
+          pool and pushed through the exact best-of math to produce a
+          series probability.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">Training and calibration</div>
+        <p>
+          Splits are chronological, never shuffled. The model learns on
+          the oldest matches, picks its settings on the next slice, and is
+          judged once on the newest. Two candidates compete, a regularized
+          logistic regression and a gradient boosted model, and validation
+          decides which one ships.
+        </p>
+        <p>
+          Calibration then adjusts the raw scores so probabilities mean
+          what they say: across many matches called at 60 percent, about
+          60 percent should be wins. A tuned Elo baseline is built from
+          the same data as the yardstick. Beating it is the bar.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">The freeze rule</div>
+        <p>
+          The first accepted prediction for a match is the record. To be
+          accepted it has to be made at least five minutes before the
+          scheduled start. After that, nothing can change it. Not a
+          retrain, not a better model, not new information. The scoreboard
+          shows what the model said at the time, word for word.
+        </p>
+        <p>
+          Without this rule a prediction site can quietly rewrite its
+          history. With it, being wrong stays on the page.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">Grading</div>
+        <p>
+          When a match finishes, the crawler picks up the result and the
+          frozen row is graded. Correct picks is the simple score. Log
+          loss and Brier grade the confidence behind each pick, and they
+          punish a confident miss much harder than a cautious one. Lower
+          is better for both. The Elo baseline is graded at the same
+          moments under the same rules.
+        </p>
+        <p>
+          Predictions where either team had fewer than three recorded maps
+          stay listed but are not scored. Those calls lean on defaults and
+          would only add noise.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">The backtest, and why it stays separate</div>
+        <p>
+          The backtest replays the full two years of history. It walks
+          forward through time, retrains on the production schedule, and
+          predicts each match using only what was knowable at that moment.
+          It answers one question: what would this system have done.
+        </p>
+        <p>
+          It is still a simulation, computed after the fact. So it never
+          mixes with the live scoreboard, which holds only calls made in
+          real time before real matches. The full backtest is shown per
+          tier, including the stretches where the baseline wins. Nothing
+          is trimmed to flatter the model.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">Market picks</div>
+        <p>
+          Sportsbooks price some of the matches the model predicts. For
+          those, the locked probability is compared with the captured
+          price. EV is the locked probability times the decimal price,
+          minus one. Positive means the price looked too generous against
+          the model's view.
+        </p>
+        <p>
+          The de-vig column strips the bookmaker's margin with Shin's
+          method to show a fair probability. When more than one book
+          priced a match, the pick takes the best captured price and names
+          the book. Closing line value compares the entry price to the
+          same book's closing price.
+        </p>
+        <p>
+          All of it stays labeled unvalidated until a preregistered number
+          of picks has graded, a threshold set before the first pick and
+          never moved. Map totals are excluded from EV for now because
+          their probabilities carry a measured bias. None of this is
+          betting advice. It is a measurement of the model.
+        </p>
+      </div>
+      <div className="panel">
+        <div className="panel-title">The honesty rules</div>
+        <p>
+          A few rules hold everything together. Numbers are computed by
+          scripts from stored data, never typed in. Evaluation is
+          chronological only, with no peeking at the future, and the test
+          window is read once. Findings that make the model look bad stay
+          on record instead of being patched away.
+        </p>
+        <p>
+          The code, the assumptions, and the bug log are public.{" "}
+          <a className="linklike"
+             href="https://github.com/ArminObar/valorant-predictor"
+             target="_blank" rel="noreferrer">Read the source on GitHub.</a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 const LAND_LINKS = [
   ["upcoming", "upcoming"],
   ["scoreboard", "scoreboard"],
@@ -969,6 +1152,9 @@ function Landing({ onOpen }) {
           </Link>
         ))}
       </nav>
+      <Link className="land-how" to="/how">
+        new here? read how it works &rarr;
+      </Link>
       <HeroNext onOpen={onOpen} />
     </div>
   );
@@ -1046,6 +1232,7 @@ export default function App() {
           <Route path="/model" element={<ModelTab />} />
           <Route path="/markets" element={<MarketPicks standalone />} />
           <Route path="/backtest" element={<Backtest />} />
+          <Route path="/how" element={<HowItWorks />} />
           <Route path="/match/:id" element={<MatchDetail />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -1053,6 +1240,7 @@ export default function App() {
       <footer>
         Data from vlr.gg. Predictions lock before each match; the first call
         stands. Not affiliated with Riot Games. Not betting advice.{" "}
+        <Link className="repo-link" to="/how">how it works</Link>{" \u00b7 "}
         <a className="repo-link"
            href="https://github.com/ArminObar/valorant-predictor"
            target="_blank" rel="noreferrer">source on GitHub</a>
