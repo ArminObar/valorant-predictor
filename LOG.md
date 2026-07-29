@@ -1232,3 +1232,35 @@ the handoff, and the repo's frontend tests only reach pure modules by
 design (`node --test`, no DOM). The theme contract is now in that
 reachable set. The route table still is not; it stays a manual review
 item, checked here by diffing the route block against HEAD.
+
+## Entry 44: The upcoming page published the live model, not the frozen call (2026-07-28 session)
+
+**Symptom.** The probability on an Upcoming card disagreed with the same
+match's detail page, by as much as 0.2332 on a live match. The gap grew
+with time-to-start and jumped after retrains.
+
+**Cause.** `run_predictions` wrote `upcoming_predictions.json` from the
+current cycle's fresh engine output for every match, every cycle, while
+the detail page and Markets served the frozen ledger row. The api.py
+docstring already said "/api/upcoming: latest pre-match predictions (as
+published to the ledger)"; the implementation drifted from the stated
+intent. A second consequence: matches whose freeze window had passed
+(`too_late`, no ledger row) were still published, so an uncalled match
+displayed as a call and then vanished at start without ever reaching
+Markets.
+
+**Fix.** The payload is now built FROM the ledger: the engine runs only
+for matches with no frozen row (or whose display extras need a rebuild
+after a fresh disk), the published p_model/p_elo/maps_dist/model_version
+are the stored row's values verbatim, and a match without a row is not
+published at all. Schedule and naming fields still come from the current
+listing, so reschedules and resolved TBDs display correctly while the
+call stays frozen. Side effect: cycles where everything is frozen skip
+the expensive feature build entirely, which matters at the new cadence.
+
+**Why testing missed it.** The freeze rule was tested at the ledger
+layer only; nothing asserted the published JSON against the ledger. A
+single local cycle shows zero drift by construction, so the bug needed
+multiple cycles or a retrain to become visible, and production was the
+first place both happened. Four tests now pin payload==ledger, absence
+of uncalled matches, the engine skip, and reschedule display.

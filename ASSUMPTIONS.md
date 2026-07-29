@@ -1564,3 +1564,20 @@ Judgment calls made while integrating:
   It was not exercised in a running browser here. A ten-second manual
   check after deploy closes that gap: toggle, reload, confirm the
   choice sticks, once more in a private window.
+
+## 40. The public payload serves the record, and only the record (2026-07-28 session)
+
+Decision: /api/upcoming publishes the frozen ledger values, drops
+anything the ledger does not hold, and keeps the fresh model's number
+out of the payload entirely. The alternative, publishing both values
+labeled, was rejected: two probabilities for one match on a public page
+invites exactly the confusion the freeze rule exists to prevent, and
+the current view is recoverable any time by running the predictor.
+Display metadata (start time, names, event) follows the live listing,
+matching §15's rule that names and times are metadata while the call is
+the record. Per-map leans are display-only and never in the ledger, so
+they freeze in practice by carry-forward of the first published values;
+a wiped processed dir rebuilds them once with the then-current engine,
+which is stated here rather than hidden. BUNDLE_BEHAVIOR_REV is not
+bumped: publishing changed, model behavior did not, and a forced
+retrain would change nothing about this fix.

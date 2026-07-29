@@ -198,9 +198,14 @@ def predict_upcoming(bundle: dict, history, upcoming: list[Match],
 def run_predictions(bundle: dict, history, upcoming: list[Match],
                     ledger, now: datetime | None = None,
                     json_path=None) -> dict:
-    """Predict, write the ledger (freeze rules apply), and publish the JSON the
-    API serves. Returns counters."""
+    """Predict what needs predicting, write the frozen ledger, and publish the
+    JSON the API serves FROM THE LEDGER. The public payload carries the frozen
+    first call for every match (LOG entry 44): the fresh model is consulted
+    only for matches with no frozen row yet. Matches whose freeze window has
+    passed without a row are not published at all — an uncalled match must
+    never display as a call. Returns counters."""
     now = now or datetime.now(timezone.utc)
+    json_path = json_path or (config.PROCESSED_DIR / "upcoming_predictions.json")
     # Unresolved bracket slots ("TBD vs TBD") collide to the SAME team key,
     # which is the model predicting a team against itself: p_elo is exactly
     # 0.5 and p_model is pure intercept bias. Skip them; the slot gets a
@@ -210,31 +215,105 @@ def run_predictions(bundle: dict, history, upcoming: list[Match],
     # the low-history scoring rule.
     playable = [um for um in upcoming
                 if um.key_team("team1") != um.key_team("team2")]
-    skipped = len(upcoming) - len(playable)
-    upcoming = playable
     counters = {"inserted": 0, "frozen": 0, "too_late": 0,
-                "skipped_placeholder": skipped}
-    # Nothing playable: skip the (expensive) engine build entirely and
-    # still publish an empty, honest JSON.
-    preds = (predict_upcoming(bundle, history, upcoming, now=now)
-             if upcoming else [])
-    for p, um in zip(preds, upcoming):
+                "skipped_placeholder": len(upcoming) - len(playable)}
+
+    frozen_rows = {str(r["match_id"]): r
+                   for r in ledger.rows(graded=None, limit=100000)}
+    prev = {}
+    prev_pool: list[str] = []
+    if json_path.exists():
+        try:
+            old = json.loads(json_path.read_text())
+            prev = {str(r.get("match_id")): r
+                    for r in old.get("predictions", [])}
+            prev_pool = old.get("pool", []) or []
+        except ValueError:
+            log.warning("previous %s unreadable; display extras rebuilt",
+                        json_path)
+
+    def _margin_ok(um: Match) -> bool:
+        return ((um.start_ts - now).total_seconds()
+                >= config.LEDGER_FREEZE_MARGIN_S)
+
+    to_predict, publishable = [], []
+    for um in playable:
+        mid = str(um.match_id)
+        if mid in frozen_rows:
+            counters["frozen"] += 1
+            publishable.append(um)
+            if mid not in prev:      # display extras lost (fresh disk/deploy):
+                to_predict.append(um)  # recompute per-map surface only
+        elif _margin_ok(um):
+            to_predict.append(um)
+            publishable.append(um)
+        else:
+            counters["too_late"] += 1   # never called -> never displayed
+
+    # The expensive engine build runs only when something actually needs it.
+    preds = (predict_upcoming(bundle, history, to_predict, now=now)
+             if to_predict else [])
+    fresh = {}
+    for pd_row, um in zip(preds, to_predict):
+        fresh[str(um.match_id)] = pd_row
+        if str(um.match_id) in frozen_rows:
+            continue                      # display-only recompute, no insert
         status = ledger.insert_prediction(
-            match_id=p["match_id"], start_ts=um.start_ts,
-            team1=p["team1"], team2=p["team2"],
-            team1_name=p["team1_name"], team2_name=p["team2_name"],
-            event=p["event"], best_of=p["best_of"],
-            p_model=p["p_model"], p_elo=p["p_elo"],
-            model_version=p["model_version"], low_history=p["low_history"],
-            p_maps_dist=p.get("maps_dist"), now=now)
+            match_id=pd_row["match_id"], start_ts=um.start_ts,
+            team1=pd_row["team1"], team2=pd_row["team2"],
+            team1_name=pd_row["team1_name"], team2_name=pd_row["team2_name"],
+            event=pd_row["event"], best_of=pd_row["best_of"],
+            p_model=pd_row["p_model"], p_elo=pd_row["p_elo"],
+            model_version=pd_row["model_version"],
+            low_history=pd_row["low_history"],
+            p_maps_dist=pd_row.get("maps_dist"), now=now)
         counters[status] += 1
-    json_path = json_path or (config.PROCESSED_DIR / "upcoming_predictions.json")
+        if status == "too_late":          # raced the margin since the check
+            publishable.remove(um)
+
+    # Re-read once so the payload can only contain what the ledger stored.
+    frozen_rows = {str(r["match_id"]): r
+                   for r in ledger.rows(graded=None, limit=100000)}
+
+    published = []
+    for um in publishable:
+        mid = str(um.match_id)
+        row = frozen_rows.get(mid)
+        if row is None:                   # belt and braces; never publish
+            continue                      # a call the record does not hold
+        extras = fresh.get(mid) or prev.get(mid) or {}
+        maps_dist = row.get("p_maps_dist")
+        if isinstance(maps_dist, str):
+            try:
+                maps_dist = json.loads(maps_dist)
+            except ValueError:
+                maps_dist = None
+        published.append({
+            # Schedule and naming come from the CURRENT listing: reschedules
+            # and resolved TBDs must display, and are metadata (§15).
+            "match_id": um.match_id,
+            "start_ts": um.start_ts.isoformat(),
+            "event": um.event, "series": um.series, "best_of": um.best_of,
+            "team1": row["team1"], "team2": row["team2"],
+            "team1_name": um.team1_name, "team2_name": um.team2_name,
+            # The call itself comes from the LEDGER, verbatim.
+            "p_model": row["p_model"], "p_elo": row["p_elo"],
+            "low_history": bool(row["low_history"]),
+            "model_version": row["model_version"],
+            "maps_dist": maps_dist,
+            # Display-only per-map surface (never in the ledger): frozen in
+            # practice by carrying the first published values forward.
+            "per_map": extras.get("per_map"),
+            "per_map_elo": extras.get("per_map_elo"),
+        })
+
+    pool = (preds[0]["pool"] if preds else prev_pool)
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps({
         "generated_at": now.astimezone(timezone.utc).isoformat(),
         "model_version": bundle.get("version", "unknown"),
-        "pool": preds[0]["pool"] if preds else [],
-        "predictions": preds,
+        "pool": pool,
+        "predictions": published,
     }, indent=1), encoding="utf-8")
     log.info("predictions: %s", counters)
     return counters
