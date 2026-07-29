@@ -5,6 +5,7 @@ transient failure in one doesn't stop the others; a robots.txt disallow stops
 crawling entirely (conduct rules) but never blocks grading or serving."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -74,9 +75,68 @@ def topup_since(matches, now: datetime) -> datetime:
     return now - timedelta(days=config.TOPUP_BOOTSTRAP_DAYS)
 
 
-def refresh_cycle(crawl: bool = True) -> dict:
+def _odds_phase(out: dict) -> None:
+    """Cloudbet capture, server-side. Skips loudly-but-safely without a key
+    (the Pinnacle leg still arrives via /api/ingest/odds from the Mac)."""
+    if not os.environ.get("CLOUDBET_API_KEY"):
+        out["odds"] = {"skipped": "no CLOUDBET_API_KEY"}
+        return
+    from ..odds.capture import acquire_capture_lock, run_once
+    lock = acquire_capture_lock()
+    if lock is None:
+        out["odds"] = {"skipped": "capture already running"}
+        return
+    try:
+        report, _ = run_once(["cloudbet"], prefer_local=True)
+        out["odds"] = report
+    finally:
+        lock.close()
+
+
+def _markets_phase(out: dict) -> None:
+    """Build markets.json in-cycle from the ledger (read directly, no
+    pending cap — LOG entry 45) and the server odds log. Atomic write, same
+    derived-view semantics as the old Mac push."""
+    from ..odds.markets import build_markets_report
+    from ..odds.schema import iter_captures
+    if not config.ODDS_JSONL.exists():
+        out["markets"] = {"skipped": "no odds log yet"}
+        return
+    led = Ledger()
+    try:
+        rows = led.rows(graded=None, limit=100000)
+    finally:
+        led.close()
+    report = build_markets_report(rows, list(iter_captures()))
+    path = config.PROCESSED_DIR / "markets.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    tmp.replace(path)
+    out["markets"] = {"picks": len(report.get("picks", [])),
+                      "gate": report.get("gate")}
+
+
+def refresh_cycle(crawl: bool = True,
+                  odds_only: bool = False) -> dict:
     now = datetime.now(timezone.utc)
     out: dict = {"ts": now.isoformat()}
+
+    if odds_only:
+        with phase("odds"):
+            try:
+                _odds_phase(out)
+            except Exception as e:
+                log.error("odds capture failed: %s", e)
+                out["odds"] = {"error": str(e)}
+        with phase("markets"):
+            try:
+                _markets_phase(out)
+            except Exception as e:
+                log.error("markets build failed: %s", e)
+                out["markets"] = {"error": str(e)}
+        log.info("odds tick: %s", out)
+        return out
 
     # Run-once, marker-guarded (LOG entry 29). Must precede the crawl so a
     # store written by the old parser is corrected before rows from the fixed
@@ -171,6 +231,19 @@ def refresh_cycle(crawl: bool = True) -> dict:
             log.error("prediction failed: %s", e)
             out["predict"] = {"error": str(e)}
 
+    with phase("odds"):
+        try:
+            _odds_phase(out)
+        except Exception as e:
+            log.error("odds capture failed: %s", e)
+            out["odds"] = {"error": str(e)}
+    with phase("markets"):
+        try:
+            _markets_phase(out)
+        except Exception as e:
+            log.error("markets build failed: %s", e)
+            out["markets"] = {"error": str(e)}
+
     log.info("refresh cycle: %s", out)
     return out
 
@@ -195,8 +268,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-crawl", action="store_true",
                     help="skip network steps (grade + retrain + predict "
                          "from disk)")
+    ap.add_argument("--odds-only", action="store_true",
+                    help="light pass: cloudbet capture + markets build only")
     args = ap.parse_args(argv)
-    print(_json.dumps(refresh_cycle(crawl=not args.no_crawl),
+    print(_json.dumps(refresh_cycle(crawl=not args.no_crawl,
+                                    odds_only=args.odds_only),
                       indent=1, default=str))
     return 0
 

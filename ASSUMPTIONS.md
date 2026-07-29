@@ -1596,3 +1596,32 @@ window (Entry 44) shrinks from "listed under 6 h out" to "under 30
 min". Retraining is unchanged on purpose: the 7-day and 100-new-match
 triggers are evaluated per cycle and fire at the same data-driven rate,
 and cadence is not model behavior, so BUNDLE_BEHAVIOR_REV stays put.
+
+## 42. Odds capture splits homes: Cloudbet on the server, Pinnacle on the Mac (2026-07-28 session)
+
+The probes settled it: class ii misses (laptop asleep while a match
+was listed and started) were a structural limit of running ALL capture
+on the Mac. Cloudbet is plain REST, so its leg and the markets build
+move into the refresh cycle; Pinnacle needs a real browser and stays on
+the Mac, pushing its captures through a new /api/ingest/odds.
+
+Judgment calls, on record before first server capture:
+
+- **The ingest boundary is relaxed by exactly one append-only
+  surface.** The hardening pass said ingest writes derived views only.
+  /api/ingest/odds appends schema-validated OddsCapture records, deduped
+  by full record identity, never truncating, never touching the ledger.
+  A stolen token can add odds rows (display and EV inputs) and nothing
+  else. Stated as the new wall, not hidden behind the old comment.
+- **Two cadences, one scheduler thread.** Full cycle every 30 min; a
+  light odds+markets subprocess every 10 min between. Arithmetic: the
+  close window is 20 min, so a 30-min-only cadence misses roughly one
+  close in three outright. 10 min matches the proven Mac cron rate; 144
+  Cloudbet passes per day is what the Mac already did.
+- **aliases.json stays a manually synced file.** Making it ingestible
+  would let a stolen token redirect odds onto wrong matches, a worse
+  failure than the chore of copying a rarely-changing file to /data
+  when suggest_aliases adds entries. Revisit only if alias churn grows.
+- **Seeding.** The server log starts empty; the Mac's full history is
+  pushed once through the same deduping ingest (--push-log), so entry
+  captures keep their true earliest timestamps and re-runs are no-ops.

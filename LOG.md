@@ -1264,3 +1264,21 @@ single local cycle shows zero drift by construction, so the bug needed
 multiple cycles or a retrain to become visible, and production was the
 first place both happened. Four tests now pin payload==ledger, absence
 of uncalled matches, the engine skip, and reschedule display.
+
+## Entry 45: The markets build read the scoreboard endpoint and inherited its 100-pending cap (2026-07-28 session)
+
+**Symptom.** None yet, latent: with more than 100 pending frozen rows,
+the Mac-side markets build would silently drop the oldest pending
+matches from the join and their picks would never appear.
+
+**Cause.** publish_markets fetched ledger rows over HTTP from
+/api/scoreboard, whose pending list is capped at 100 for the UI.
+
+**Fix.** The markets build now runs in the refresh cycle on the server
+and reads the ledger directly (limit 100000). The Mac script keeps
+working for offline analysis; its HTTP path keeps the cap, which is now
+documented on the endpoint it borrowed.
+
+**Why testing missed it.** The board has never exceeded 100 pending
+rows; nothing exercised the truncation branch. Caught by reading the
+join's inputs during the server-side move, not by a failure.

@@ -174,11 +174,10 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         finally:
             led.close()
 
-    async def _ingest(request: Request, filename: str,
-                      required_key: str) -> JSONResponse:
-        """Shared guard for derived-view uploads from the Mac-side scripts.
-        Derived views only — overwriting them can never touch the ledger or
-        the odds log. Bearer token; disabled entirely when the env var is
+    def _ingest_denied(request: Request) -> JSONResponse | None:
+        """Shared bearer guard for every ingest path. Bytes on both sides:
+        timing-safe AND total — compare_digest on str raises for non-ASCII,
+        and the header is attacker-controlled. Disabled when the env var is
         unset."""
         token = os.environ.get("VPREDICT_INGEST_TOKEN")
         if not token:
@@ -186,11 +185,73 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                                  "VPREDICT_INGEST_TOKEN not set"},
                                 status_code=503)
         got = request.headers.get("authorization", "")
-        # Bytes on both sides: timing-safe AND total — compare_digest on
-        # str raises for non-ASCII, and the header is attacker-controlled.
         if not hmac.compare_digest(got.encode("utf-8"),
                                    f"Bearer {token}".encode("utf-8")):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return None
+
+    @app.post("/api/ingest/odds")
+    async def ingest_odds(request: Request) -> JSONResponse:
+        """Append VALIDATED capture records to the server's odds log so the
+        in-cycle markets build sees the Mac-captured Pinnacle leg
+        (ASSUMPTIONS §42). This deliberately relaxes the old 'derived views
+        only' ingest rule by exactly one append-only surface: every record
+        must validate as an OddsCapture, appends are deduped by full record
+        identity so pushes are idempotent, the log is never truncated or
+        rewritten here, and the ledger remains untouchable. A stolen token
+        can therefore add odds rows (display/EV inputs), and nothing else —
+        the frozen record cannot be edited from this door."""
+        denied = _ingest_denied(request)
+        if denied is not None:
+            return denied
+        body = await request.body()
+        if len(body) > 5_000_000:
+            return JSONResponse({"error": "payload too large"},
+                                status_code=413)
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            return JSONResponse({"error": "not JSON"}, status_code=400)
+        items = payload.get("captures") if isinstance(payload, dict) else None
+        if not isinstance(items, list) or len(items) > 2000:
+            return JSONResponse({"error": "expected 'captures': list "
+                                 "(max 2000)"}, status_code=400)
+        from ..odds.schema import OddsCapture, append_captures, iter_captures
+        odds_path = data_dir / "odds" / "odds.jsonl"
+
+        def _key(c: "OddsCapture") -> tuple:
+            return (c.source, c.book_home, c.book_away, c.market, c.line,
+                    c.capture_kind, c.captured_at.isoformat())
+        seen = set()
+        if odds_path.exists():
+            seen = {_key(c) for c in iter_captures(odds_path)}
+        counts = {"received": len(items), "appended": 0,
+                  "duplicates": 0, "invalid": 0}
+        fresh = []
+        for it in items:
+            try:
+                cap = OddsCapture.model_validate(it)
+            except Exception:
+                counts["invalid"] += 1
+                continue
+            k = _key(cap)
+            if k in seen:
+                counts["duplicates"] += 1
+                continue
+            seen.add(k)
+            fresh.append(cap)
+        counts["appended"] = append_captures(fresh, path=odds_path)
+        return JSONResponse(counts)
+
+    async def _ingest(request: Request, filename: str,
+                      required_key: str) -> JSONResponse:
+        """Shared guard for derived-view uploads from the Mac-side scripts.
+        Derived views only — overwriting them can never touch the ledger or
+        the odds log. Bearer token; disabled entirely when the env var is
+        unset."""
+        denied = _ingest_denied(request)
+        if denied is not None:
+            return denied
         body = await request.body()
         if len(body) > 5_000_000:
             return JSONResponse({"error": "report too large"},
@@ -402,14 +463,27 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
 
     if os.environ.get("VPREDICT_REFRESH", "0") == "1":
         interval = int(os.environ.get("VPREDICT_REFRESH_INTERVAL_S", "21600"))
+        odds_tick = int(os.environ.get("VPREDICT_ODDS_TICK_S", "600"))
 
         def _loop() -> None:                                  # pragma: no cover
             # Subprocess, not in-process: the cycle's memory returns to the
             # OS when the child exits, and an OOM kill (exit 137 / SIGKILL)
             # takes down the child while the API keeps serving — the
             # in-process version died with it (LOG entry 22).
-            cmd = [sys.executable, "-m", "vpredict.serving.refresh"]
+            # Two cadences, one thread: a full cycle every `interval`, a
+            # light odds+markets pass every `odds_tick` in between. The 20
+            # minute close window needs sub-interval granularity or roughly
+            # a third of closes fall between 30-minute cycles entirely
+            # (ASSUMPTIONS §42). Both run as subprocesses for the same
+            # memory-isolation reasons as before.
+            full_cmd = [sys.executable, "-m", "vpredict.serving.refresh"]
+            odds_cmd = full_cmd + ["--odds-only"]
+            next_full = 0.0
             while True:
+                full = time.monotonic() >= next_full
+                cmd = full_cmd if full else odds_cmd
+                if full:
+                    next_full = time.monotonic() + interval
                 t0 = time.monotonic()
                 try:
                     rc = subprocess.run(cmd).returncode
@@ -425,11 +499,12 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                                   rc, dur)
                 except Exception as e:
                     log.error("refresh subprocess failed to run: %s", e)
-                time.sleep(interval)
+                time.sleep(odds_tick)
 
         threading.Thread(target=_loop, daemon=True,
                          name="vpredict-refresh").start()
-        log.info("refresh scheduler enabled (subprocess), every %ss", interval)
+        log.info("refresh scheduler enabled (subprocess), full every %ss, "
+                 "odds tick every %ss", interval, odds_tick)
 
     return app
 

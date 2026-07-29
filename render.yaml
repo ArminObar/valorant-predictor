@@ -32,3 +32,7 @@ services:
         value: "1"
       - key: VPREDICT_REFRESH_INTERVAL_S
         value: "1800"      # 30 minutes (ASSUMPTIONS 41)
+      - key: VPREDICT_ODDS_TICK_S
+        value: "600"       # cloudbet capture + markets build cadence (ASSUMPTIONS 42)
+      - key: CLOUDBET_API_KEY
+        sync: false        # set in the dashboard, never in the repo

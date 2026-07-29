@@ -1,24 +1,16 @@
 #!/usr/bin/env python3
-"""Capture odds for the frozen predictions — runs on the Mac, cron-friendly.
+"""Capture odds for the frozen predictions — cron-friendly.
 
-    python scripts/capture_odds.py --once                 # one pass, all sources
-    python scripts/capture_odds.py --once --sources cloudbet
-    python scripts/capture_odds.py --once --debug         # + pinnacle intercept dump
-    python scripts/capture_odds.py --from-file data/processed/upcoming_predictions.json
+    python scripts/capture_odds.py --once --sources pinnacle --push
+    python scripts/capture_odds.py --once --sources cloudbet        # local dev
+    python scripts/capture_odds.py --push-log                       # one-time migration
 
-Each pass: read the live frozen-prediction set (the public /api/upcoming),
-fetch every source's Valorant fixtures, link them to predictions
-(exact-normalised names, then the alias table, else stored UNLINKED and
-reported), and append captures to the append-only log. Capture kinds:
-
-  freeze  first capture of a (source, match) after its prediction appears
-  close   first capture within ODDS_CLOSE_WINDOW_MIN of start_ts
-
-State is derived from the log itself, so re-runs are idempotent and a cron
-of `--once` every 10 minutes implements the whole §13 timing spec: the
-freeze capture lands on the first pass after the prediction freezes, the
-close capture on the last passes before start. Matches already started are
-skipped and counted (a missed close is reported, never backfilled).
+Implementation lives in vpredict.odds.capture (shared with the server
+refresh cycle, which runs the Cloudbet leg itself — ASSUMPTIONS §42).
+This CLI is the Mac home of the Pinnacle leg: capture locally, then
+--push the new records to the server's validated, deduping odds ingest
+so the server-side markets build sees both books. --push-log pushes the
+entire local log once, seeding the server with capture history.
 """
 from __future__ import annotations
 
@@ -26,149 +18,50 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
 
-from vpredict import config
-from vpredict.odds import cloudbet
-from vpredict.odds.schema import (append_captures, capture_state,
-                                  link_fixture, load_aliases)
-
-log = logging.getLogger("vpredict.capture")
-
-
-def load_predictions(from_file: str | None) -> list[dict]:
-    if from_file:
-        payload = json.loads(open(from_file, encoding="utf-8").read())
-    else:
-        import requests
-        r = requests.get(config.ODDS_UPCOMING_URL, timeout=20)
-        r.raise_for_status()
-        payload = r.json()
-    return payload.get("predictions", [])
-
-
-def decide_kind(match_start: datetime, state_slot: dict,
-                now: datetime) -> str | None:
-    """freeze -> close -> nothing, per (source, match)."""
-    if now >= match_start:
-        return None                                   # started: missed
-    if not state_slot["freeze"]:
-        return "freeze"
-    in_close = now >= match_start - timedelta(
-        minutes=config.ODDS_CLOSE_WINDOW_MIN)
-    if in_close and not state_slot["close"]:
-        return "close"
-    return None
-
-
-def run_once(sources: list[str], from_file: str | None,
-             debug: bool) -> dict:
-    now = datetime.now(timezone.utc)
-    predictions = load_predictions(from_file)
-    by_id = {p["match_id"]: p for p in predictions}
-    aliases = load_aliases()
-    state = capture_state()
-    counters = {"appended": 0, "unlinked": 0, "skipped_started": 0,
-                "already_captured": 0, "source_errors": 0}
-
-    for source in sources:
-        try:
-            if source == "cloudbet":
-                fixtures = cloudbet.fetch_valorant_fixtures(now, "freeze")
-            elif source == "pinnacle":
-                from vpredict.odds import pinnacle
-                dbg = (config.ODDS_DIR / "debug") if debug else None
-                fixtures = pinnacle.fetch_valorant_fixtures(now, "freeze",
-                                                            debug_dir=dbg)
-            else:
-                log.error("unknown source %s", source)
-                continue
-        except Exception as e:
-            log.error("source %s failed: %s", source, e)
-            counters["source_errors"] += 1
-            continue
-
-        to_append = []
-        for cap in fixtures:
-            mid, home_is_t1, method = link_fixture(
-                cap.book_home, cap.book_away, predictions, aliases)
-            cap.match_id, cap.book_home_is_team1 = mid, home_is_t1
-            cap.link_method = method
-            if mid is None:
-                counters["unlinked"] += 1
-                log.info("UNLINKED %s fixture: %s vs %s — add to %s if it "
-                         "belongs to a frozen prediction",
-                         source, cap.book_home, cap.book_away,
-                         config.ODDS_ALIASES_JSON)
-                to_append.append(cap)     # stored anyway, per §13
-                continue
-            start = datetime.fromisoformat(
-                by_id[mid]["start_ts"].replace("Z", "+00:00"))
-            slot = state.setdefault((source, mid, cap.market, cap.line),
-                                    {"freeze": False, "close": False})
-            kind = decide_kind(start, slot, now)
-            if kind is None:
-                key = ("skipped_started" if now >= start
-                       else "already_captured")
-                counters[key] += 1
-                continue
-            cap.capture_kind = kind
-            slot[kind] = True
-            to_append.append(cap)
-        counters["appended"] += append_captures(to_append)
-
-    return {"ts": now.isoformat(), "predictions": len(by_id), **counters}
-
-
-def acquire_capture_lock():
-    """Non-blocking exclusive lock so overlapping cron fires can't race the
-    append-only log (two concurrent passes both derive 'no freeze yet' from
-    the log and would both append one). Returns the held file object, or
-    None when another capture is running. fcntl.flock is per open file
-    description and releases automatically if the process dies — no stale
-    lockfile handling needed. Works on macOS and Linux.
-    """
-    import fcntl
-    config.ODDS_DIR.mkdir(parents=True, exist_ok=True)
-    f = open(config.ODDS_DIR / "capture.lock", "w")
-    try:
-        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return f
-    except BlockingIOError:
-        f.close()
-        return None
+from vpredict.odds.capture import (acquire_capture_lock,  # noqa: F401 (re-exports:
+                                   decide_kind, load_predictions,  # tests and
+                                   push_captures, run_once)        # old cron refs)
+from vpredict.odds.schema import iter_captures
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--once", action="store_true", help="one capture pass")
+    ap.add_argument("--sources", default="cloudbet,pinnacle",
+                    help="comma list: cloudbet,pinnacle")
+    ap.add_argument("--from-file", default=None)
+    ap.add_argument("--debug", action="store_true")
+    ap.add_argument("--push", action="store_true",
+                    help="POST this pass's appended records to the server")
+    ap.add_argument("--push-log", action="store_true",
+                    help="POST the ENTIRE local log (idempotent seed)")
+    args = ap.parse_args()
     logging.basicConfig(level=logging.INFO,
                         format="%(levelname)s %(name)s %(message)s")
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--once", action="store_true", help="one pass (cron this)")
-    ap.add_argument("--sources", default="cloudbet,pinnacle",
-                    help="comma-separated; cloudbet first is the harness")
-    ap.add_argument("--from-file", default=None,
-                    help="read predictions from a local upcoming_predictions"
-                         ".json instead of the live API")
-    ap.add_argument("--debug", action="store_true",
-                    help="dump pinnacle's intercepted responses")
-    args = ap.parse_args()
+
+    if args.push_log:
+        records = list(iter_captures())
+        print(json.dumps(push_captures(records), indent=1))
+        return 0
     if not args.once:
-        print("Nothing to do: pass --once (put it on a 10-minute cron).")
-        return 2
+        print("nothing to do: pass --once (or --push-log)")
+        return 1
     lock = acquire_capture_lock()
     if lock is None:
-        print(json.dumps({"skipped": "another capture holds the lock — "
-                          "overlap is expected on slow passes; exiting"}))
+        print("another capture is running; skipping this fire")
         return 0
     try:
-        out = run_once(
-            [s.strip() for s in args.sources.split(",") if s.strip()],
-            args.from_file, args.debug)
+        report, appended = run_once(
+            [x.strip() for x in args.sources.split(",") if x.strip()],
+            from_file=args.from_file, debug=args.debug)
+        if args.push and appended:
+            report["push"] = push_captures(appended)
+        print(json.dumps(report, indent=1))
+        return 0
     finally:
         lock.close()
-    print(json.dumps(out, indent=1))
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

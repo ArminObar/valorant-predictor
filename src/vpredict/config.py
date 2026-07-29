@@ -183,6 +183,7 @@ CLOUDBET_BASE_URL = "https://sports-api.cloudbet.com/pub/v2/odds"
 # Pinnacle first: sharpest widely-referenced book, the standard CLV yardstick.
 # All captured books are stored; nothing is ever averaged.
 ODDS_BOOK_PRIORITY = ["pinnacle", "cloudbet"]
+VPREDICT_BASE_URL = "https://vpredict.onrender.com"   # push target for the Mac leg
 
 # --------------------------------------------------------------------------- markets & EV (analysis time)
 # Pre-registered BEFORE any graded market-covered pick existed (§13 spec item
