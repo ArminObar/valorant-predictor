@@ -219,3 +219,66 @@ def test_totals_ev_excluded_from_aggregates_and_gate():
     assert rep["summary"]["n_ev_excluded"] == 1
     # Aggregate EV equals the moneyline pick's alone.
     assert rep["summary"]["avg_ev_pct"] == pytest.approx(ml["ev_pct"], abs=0.01)
+
+
+# ----------------------------------------------------- best-line (ASSUMPTIONS §43)
+
+def _cap_src(source, ph, pa, kind="freeze", hours=0, home_is_t1=True):
+    from datetime import timedelta
+    return OddsCapture(
+        captured_at=NOW + timedelta(hours=hours), source=source,
+        capture_kind=kind, market="series_moneyline",
+        book_event_id=f"{source}-ev", book_home="RED", book_away="BLU",
+        price_home=ph, price_away=pa, match_id="m1",
+        book_home_is_team1=home_is_t1, link_method="exact")
+
+
+def _row_m1(p_model=0.60):
+    return {"match_id": "m1", "team1_name": "RED", "team2_name": "BLU",
+            "event": "VCT Masters", "start_ts": NOW.isoformat(),
+            "p_model": p_model, "best_of": 3, "graded": 0,
+            "team1_won": None, "maps_played": None}
+
+
+def test_best_line_takes_the_better_price_and_names_the_book():
+    caps = [_cap_src("cloudbet", 1.95, 1.95),
+            _cap_src("pinnacle", 1.83, 2.01)]
+    p = build_picks([_row_m1(0.60)], caps)[0]
+    # model favours home (RED): best home price is cloudbet's 1.95
+    assert p["selection"] == "RED"
+    assert p["source"] == "cloudbet" and p["price_entry"] == 1.95
+    assert p["n_books"] == 2
+    assert 0.0 < p["shin_consensus"] < 1.0
+
+
+def test_clv_uses_entry_books_own_close_only():
+    caps = [_cap_src("cloudbet", 1.95, 1.95),
+            _cap_src("pinnacle", 1.83, 2.01),
+            _cap_src("pinnacle", 1.70, 2.20, kind="close", hours=5)]
+    p = build_picks([_row_m1(0.60)], caps)[0]
+    assert p["source"] == "cloudbet"
+    assert p["clv_pct"] is None and p["close_captured"] is False
+
+
+def test_price_tie_breaks_by_book_priority():
+    caps = [_cap_src("cloudbet", 1.90, 1.90),
+            _cap_src("pinnacle", 1.90, 1.90)]
+    p = build_picks([_row_m1(0.60)], caps)[0]
+    assert p["source"] == "pinnacle"      # config.ODDS_BOOK_PRIORITY[0]
+
+
+def test_single_book_parity_with_old_headline_behavior():
+    caps = [_cap_src("cloudbet", 1.83, 2.01)]
+    p = build_picks([_row_m1(0.60)], caps)[0]
+    assert p["source"] == "cloudbet" and p["price_entry"] == 1.83
+    assert p["shin_consensus"] == p["shin"]
+    assert p["n_books"] == 1
+
+
+def test_gate_counts_one_pick_per_match_market_with_two_books():
+    caps = [_cap_src("cloudbet", 1.95, 1.95),
+            _cap_src("pinnacle", 1.83, 2.01)]
+    row = _row_m1(0.60) | {"graded": 1, "team1_won": 1}
+    report = build_markets_report([row], caps)
+    assert len(report["picks"]) == 1
+    assert report["gate"]["n_graded"] == 1

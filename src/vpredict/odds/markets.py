@@ -91,32 +91,63 @@ def build_picks(ledger_rows: list[dict],
             grouped.setdefault(
                 (c.match_id, c.market, c.line, c.source), []).append(c)
 
-    # Headline source per (match, market, line): first in the priority list
-    # that priced it. Everything else is still in the log; nothing averaged.
-    headline: dict[tuple, str] = {}
-    for (mid, market, line, source) in grouped:
-        key = (mid, market, line)
-        cur = headline.get(key)
+    # Best line per (match, market, line): the pick's side is chosen on the
+    # best available ENTRY price for that side across every source with a
+    # freeze capture, and the entry book is whichever source offered it
+    # (ties break by ODDS_BOOK_PRIORITY, then name). Pre-registered rules
+    # (ASSUMPTIONS §43): CLV grades against the entry book's own close ONLY;
+    # the validation gate still counts one pick per (match, market, line)
+    # whatever the book count; best-of-books EV is upward biased and ships
+    # with a consensus de-vig beside it. All prices stay in the log;
+    # nothing is averaged into EV.
+    by_key: dict[tuple, dict[str, list[OddsCapture]]] = {}
+    for (mid, market, line, source), caps in grouped.items():
+        by_key.setdefault((mid, market, line), {})[source] = caps
+
+    def _rank(source: str) -> tuple:
         pr = config.ODDS_BOOK_PRIORITY
-        rank = pr.index(source) if source in pr else len(pr)
-        cur_rank = pr.index(cur) if cur in pr else len(pr) if cur else 99
-        if cur is None or rank < cur_rank:
-            headline[key] = source
+        return (pr.index(source) if source in pr else len(pr), source)
 
     picks: list[dict] = []
-    for (mid, market, line), source in sorted(headline.items()):
-        caps = grouped[(mid, market, line, source)]
+    for (mid, market, line), sources in sorted(by_key.items()):
         row = rows_by_id[mid]
-        entry, close = _entry_close(caps)
-        probs = _model_side_probs(row, entry)
-        if probs is None:
+        entries = {src: _entry_close(caps) for src, caps in sources.items()}
+        # Per-source model side-probs (book orientation can differ by book).
+        priced = {}
+        for src, (entry, close) in entries.items():
+            probs = _model_side_probs(row, entry)
+            if probs is not None:
+                priced[src] = (entry, close, probs)
+        if not priced:
             continue
-        p_home, p_away = probs
-        ev_home = p_home * entry.price_home - 1
-        ev_away = p_away * entry.price_away - 1
+        # Best entry price per side across books, EV per side at ITS best.
+        def best_for(side_idx: int):
+            best = None
+            for src in sorted(priced, key=_rank):
+                entry, close, (p_home, p_away) = priced[src]
+                price = entry.price_home if side_idx == 0 else entry.price_away
+                p = p_home if side_idx == 0 else p_away
+                if best is None or price > best[0]:
+                    best = (price, p, src, entry, close)
+            return best
+        b_home, b_away = best_for(0), best_for(1)
+        ev_home = b_home[1] * b_home[0] - 1
+        ev_away = b_away[1] * b_away[0] - 1
         side = "home" if ev_home >= ev_away else "away"
-        p_model = p_home if side == "home" else p_away
-        price = entry.price_home if side == "home" else entry.price_away
+        price, p_model, source, entry, close = (b_home if side == "home"
+                                                else b_away)
+        caps = sources[source]
+        # Consensus fair probability for the chosen side: median Shin de-vig
+        # across every book's ENTRY capture (n=2 today: the midpoint).
+        cons = []
+        for src, (e2, _c2, probs2) in priced.items():
+            dv2 = devig_both([e2.price_home, e2.price_away])
+            i2 = 0 if side == "home" else 1
+            cons.append(dv2["shin"][i2])
+        cons.sort()
+        n = len(cons)
+        shin_consensus = (cons[n // 2] if n % 2
+                          else (cons[n // 2 - 1] + cons[n // 2]) / 2)
         dv = devig_both([entry.price_home, entry.price_away])
         i = 0 if side == "home" else 1
         clv = None
@@ -144,6 +175,8 @@ def build_picks(ledger_rows: list[dict],
             "price_entry": price,
             "implied": round(1 / price, 4),
             "shin": round(dv["shin"][i], 4),
+            "shin_consensus": round(shin_consensus, 4),
+            "n_books": len(priced),
             "multiplicative": round(dv["multiplicative"][i], 4),
             "overround": round(dv["overround"], 4),
             "ev_pct": round((p_model * price - 1) * 100, 2),

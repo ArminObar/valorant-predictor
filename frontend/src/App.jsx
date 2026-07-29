@@ -238,7 +238,7 @@ function MarketPicks({ standalone = false }) {
           <table className="ledger">
             <thead>
               <tr><th>match</th><th>selection</th><th className="num">model</th>
-                <th className="num">implied</th><th className="num">de-vig</th>
+                <th className="num">implied</th><th className="num">de-vig (cons)</th>
                 <th className="num">EV</th><th>result</th></tr>
             </thead>
             <tbody>
@@ -248,6 +248,7 @@ function MarketPicks({ standalone = false }) {
                     <span className="dim"> &middot; {p.market === "maps_total"
                       ? "map total" : "moneyline"} &middot; {p.source}</span></td>
                   <td>{p.selection}
+                    {p.source && <span className="badge dim">{p.source}</span>}
                     {p.extrapolated &&
                       <span className="badge" title={"Outside the range "
                         + "where calibration was checked (15% to 88%). "
@@ -260,7 +261,7 @@ function MarketPicks({ standalone = false }) {
                         + "that is fixed."}>EV excluded</span>}</td>
                   <td className="num">{fmtPct(p.p_model)}</td>
                   <td className="num dim">{fmtPct(p.implied)}</td>
-                  <td className="num dim">{fmtPct(p.shin)}</td>
+                  <td className="num dim">{fmtPct(p.shin_consensus ?? p.shin)}</td>
                   <td className={`num ${p.ev_excluded ? "dim"
                       : p.ev_pct >= 0 ? "ok" : "miss"}`}>
                     {p.ev_excluded ? "excluded"
@@ -276,6 +277,13 @@ function MarketPicks({ standalone = false }) {
             </tbody>
           </table>
           </div>
+          <p className="note">
+            Entry price and EV use the best available book for the pick
+            (labeled). Best-of-books EV is upward biased by construction;
+            the consensus de-vig column is the cross-book fair probability.
+            The validation gate counts one pick per match and market,
+            however many books priced it.
+          </p>
         </>
       )}
     </div>
@@ -839,7 +847,7 @@ function MatchDetail() {
           <table className="ledger">
             <thead>
               <tr><th>market</th><th>selection</th><th className="num">model</th>
-                <th className="num">implied</th><th className="num">de-vig</th>
+                <th className="num">implied</th><th className="num">de-vig (cons)</th>
                 <th className="num">EV</th></tr>
             </thead>
             <tbody>
@@ -848,6 +856,7 @@ function MatchDetail() {
                   <td>{k.market === "maps_total" ? "map total" : "moneyline"}
                     <span className="dim"> &middot; {k.source}</span></td>
                   <td>{k.selection}
+                    {k.source && <span className="badge dim">{k.source}</span>}
                     {k.ev_excluded === "totals_independence_bias" &&
                       <span className="badge" title={"Map totals assume "
                         + "maps are independent. Measured reality disagrees "
@@ -855,7 +864,7 @@ function MatchDetail() {
                         + "that is fixed."}>EV excluded</span>}</td>
                   <td className="num">{fmtPct(k.p_model)}</td>
                   <td className="num dim">{fmtPct(k.implied)}</td>
-                  <td className="num dim">{fmtPct(k.shin)}</td>
+                  <td className="num dim">{fmtPct(k.shin_consensus ?? k.shin)}</td>
                   <td className={`num ${k.ev_excluded ? "dim"
                       : k.ev_pct >= 0 ? "ok" : "miss"}`}>
                     {k.ev_excluded ? "excluded"
@@ -865,6 +874,13 @@ function MatchDetail() {
             </tbody>
           </table>
           </div>
+          <p className="note">
+            Entry price and EV use the best available book for the pick
+            (labeled). Best-of-books EV is upward biased by construction;
+            the consensus de-vig column is the cross-book fair probability.
+            The validation gate counts one pick per match and market,
+            however many books priced it.
+          </p>
         </div>
       )}
       {(hA || hB) && (

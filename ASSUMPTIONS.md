@@ -1625,3 +1625,27 @@ Judgment calls, on record before first server capture:
 - **Seeding.** The server log starts empty; the Mac's full history is
   pushed once through the same deduping ingest (--push-log), so entry
   captures keep their true earliest timestamps and re-runs are no-ops.
+
+## 43. Best-line selection, pre-registered before the first best-line pick grades (2026-07-28 session)
+
+When more than one book holds a freeze capture for a match, the pick's
+side is chosen on each side's best available entry price and EV is
+computed at that price, with the providing book named on the pick. All
+captured prices stay in the append-only log; nothing is averaged into
+EV. Rules fixed now, before any graded pick exists under this policy:
+
+1. **CLV is same-book.** Entry and close come from the entry book only.
+   A missing close at that book means no CLV, even if another book has
+   one; cross-book CLV would compare two different pricing processes.
+2. **The gate counts matches, not book-rows.** n>=100 graded
+   market-covered picks means picks, one per (match, market, line),
+   however many books priced it. More books add volume by covering more
+   matches, never by multiplying rows.
+3. **Best-of-books EV is upward biased and says so.** A max over noisy
+   prices flatters EV, more so as books are added. The UI ships the
+   cross-book consensus Shin de-vig beside every pick (median across
+   entry captures; with two books, the midpoint) and a standing footnote
+   under both market tables. Price ties break by ODDS_BOOK_PRIORITY.
+
+With a single book the pick reduces exactly to the old headline
+behavior, pinned by test.
