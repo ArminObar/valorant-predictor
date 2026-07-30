@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Link, NavLink, Route, Routes,
   useLocation, useNavigate, useParams,
@@ -115,7 +115,9 @@ const DayRow = ({ label, span, today }) => (
 function InfoTip({ tip, label = "about this section" }) {
   const [pinned, setPinned] = useState(false);
   const [hover, setHover] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef(null);
+  const btnRef = useRef(null);
   useEffect(() => {
     if (!pinned) return undefined;
     const away = (e) => {
@@ -130,6 +132,28 @@ function InfoTip({ tip, label = "about this section" }) {
     };
   }, [pinned]);
   const open = pinned || hover;
+  // Viewport-fixed placement: measured from the trigger, clamped to the
+  // viewport, so no ancestor stacking context or clipping box can trap or
+  // cut the pop (LOG entry 48). Safe here because the entrance keyframes
+  // are from-only and leave no lingering ancestor transforms behind.
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const w = Math.min(264, window.innerWidth - 16);
+    const left = Math.max(
+      8, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 8));
+    setPos({ top: r.bottom + 6, left, width: w });
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const shut = () => { setHover(false); setPinned(false); };
+    window.addEventListener("scroll", shut, true);
+    window.addEventListener("resize", shut);
+    return () => {
+      window.removeEventListener("scroll", shut, true);
+      window.removeEventListener("resize", shut);
+    };
+  }, [open]);
   const focusWithin = (e) =>
     setHover(ref.current ? ref.current.contains(e.target) : false);
   const blurAway = (e) => {
@@ -143,9 +167,11 @@ function InfoTip({ tip, label = "about this section" }) {
       onMouseLeave={() => setHover(false)}
       onFocus={focusWithin} onBlur={blurAway}>
       <button type="button" className="i-btn" aria-expanded={open}
-        aria-label={label} onClick={() => setPinned(!pinned)}>i</button>
-      {open && (
-        <span className="infotip-pop" role="note">
+        aria-label={label} ref={btnRef}
+        onClick={() => setPinned(!pinned)}>i</button>
+      {open && pos && (
+        <span className="infotip-pop" role="note"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}>
           {tip}{" "}
           <Link className="linklike" to="/how">full story: how it works</Link>
         </span>
@@ -1178,6 +1204,7 @@ const LAND_LINKS = [
   ["model", "model"],
   ["markets", "market picks"],
   ["backtest", "backtest"],
+  ["how", "how it works"],
 ];
 
 function Landing({ onOpen }) {
@@ -1200,9 +1227,6 @@ function Landing({ onOpen }) {
           </Link>
         ))}
       </nav>
-      <Link className="land-how" to="/how">
-        new here? read how it works &rarr;
-      </Link>
       <HeroNext onOpen={onOpen} />
     </div>
   );

@@ -1362,3 +1362,33 @@ the discrepancy between the reported value and the committed code's
 behavior was itself the diagnostic. The NaN gap was missed because no
 test used non-finite floats, and comparisons that silently return
 False do not announce themselves.
+
+## Entry 48: The Upcoming title tooltip lost the paint-order fight it never had to enter (2026-07-30 session)
+
+**Symptom.** The info tooltip on the Upcoming page title rendered cut
+off, its lower half disappearing behind the first match card. The same
+component on the Model tab displayed cleanly.
+
+**Cause.** The pop was absolutely positioned inside the title's own
+stacking environment. On Model it only ever overlays content inside
+the same panel, so its z-index settles the fight locally. On Upcoming
+it has to escape the page header downward into sibling territory,
+where DOM-later positioned elements (the cards, which carry their own
+positioning for the tug bar) can win the paint order against a
+z-index trapped in the header's context, and the pop's fixed 264px
+width could also run past narrow viewports. Same component, different
+inherited battlefield, exactly the per-instance inheritance suspected.
+
+**Fix.** Class fix, not container archaeology: every pop is now
+viewport-fixed, measured from its trigger with getBoundingClientRect,
+clamped to the viewport with a responsive width, and closed on scroll
+or resize so it can never sit stale. No ancestor stacking context or
+clipping box can trap or cut it anywhere, current pages or future
+ones. Verified safe first: the entrance keyframes are from-only and
+leave no lingering ancestor transforms that would hijack fixed
+positioning. Hover, focus, click-to-pin, Escape, and outside-click
+behavior are unchanged because the pop stays inside its wrapper.
+
+**Why testing missed it.** The node suite never paints; stacking-order
+bugs need a browser, a specific ancestor chain, and a sibling that
+fights back, a combination only the Upcoming page had.

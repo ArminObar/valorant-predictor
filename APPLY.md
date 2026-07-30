@@ -1,4 +1,12 @@
-# APPLY — patch session 2026-07-28/29/30: patches 52–60
+# APPLY — patch session 2026-07-28/29/30: patches 52–61
+
+**Seventh pass added patch 0061** (LOG 48, ASSUMPTIONS §49): tooltips
+become viewport-fixed with clamping and scroll-dismiss, fixing the cut
+off Upcoming title tooltip everywhere rather than per-container; the
+/how page becomes the sixth landing door (06) and the quieter landing
+text link is removed. Display only. Apply after 0060, frontend gates,
+push.
+
 
 **Sixth pass added patch 0060** (ASSUMPTIONS §48): the day separators
 become lolesports-style date banners, weekday and month spelled out,

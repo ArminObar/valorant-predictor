@@ -1728,3 +1728,14 @@ day highlighted in the accent color with a left bar. The pattern is
 generic schedule furniture; nothing is copied from anyone's assets or
 code. Ordering policy, zone rule, and the client-side-only constraint
 from §45 are unchanged.
+
+## 49. Tooltips own the viewport, and the how page gets a real door (2026-07-30 session)
+
+Two small display policies. Tooltip pops are viewport-fixed as a rule,
+never absolutely positioned inside arbitrary containers: placement is
+measured from the trigger, clamped to the screen, and dismissed on
+scroll, which removes the whole class of stacking and clipping fights
+(LOG entry 48). And by owner direction the /how page joins the landing
+navigation as the sixth door with the same treatment as the five data
+sections, superseding §44's quieter secondary link, which is removed
+as redundant; the footer link stays.
