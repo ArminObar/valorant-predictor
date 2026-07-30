@@ -1325,3 +1325,40 @@ math, which is exactly why capture stayed healthy while the build died
 — the discriminator that located the bug. Five regression tests now
 pin both mechanisms, the counter, and that one bad record can never
 block another match's picks.
+
+## Entry 47: The "0058 didn't work" crash was 0058 never running, plus two real gaps found on re-audit (2026-07-30 session)
+
+**Symptom.** After 0058 was believed deployed, the identical build
+failure fired with a new value: "decimal odds must be > 1.0, got
+[0.0, 0.0]". Separately, the day separators from 0057 were not visible
+on the live site.
+
+**Cause.** One root for both: patches 0057 and 0058 never reached
+origin/main. Verified two ways. The remote tip at diagnosis time was
+99a7162 (0056, how-it-works), so no deploy could contain either patch.
+And the committed 0058 code, fed the exact reported value [0.0, 0.0]
+in a sandbox, produced one pick and n_unpriceable=1 with no exception:
+the running service was provably older code, whose strict guard is
+designed to fail the build loudly. The local 34-test pass earlier that
+night proved both patches were applied locally; the push is what never
+happened. Re-audit found two genuine gaps anyway: NaN prices slipped
+through the 0058 comparison (NaN compares False with everything) and
+would have emitted NaN into markets.json rather than crashing, and any
+unforeseen per-group failure would still have killed the whole build.
+
+**Fix.** 0059 hardens the class, not the value: a single _priceable
+predicate (both decimals finite and above 1.0) filters capture records
+before grouping, so entry falls back to the first priceable freeze and
+a source whose records are all placeholders simply never appears;
+unlinked degenerate records neither crash nor count. Every pick group
+runs inside last-resort isolation: an unexpected failure increments
+n_group_errors, logs a full traceback, and the rest of the build
+ships. Both counters travel in markets.json, the refresh log, and the
+Markets note. Deploy verification is now a recorded one-liner instead
+of an assumption.
+
+**Why testing missed it.** Nothing in CI can catch an unpushed push;
+the discrepancy between the reported value and the committed code's
+behavior was itself the diagnostic. The NaN gap was missed because no
+test used non-finite floats, and comparisons that silently return
+False do not announce themselves.

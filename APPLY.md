@@ -1,4 +1,17 @@
-# APPLY — patch session 2026-07-28/29/30: patches 52–58
+# APPLY — patch session 2026-07-28/29/30: patches 52–59
+
+**Fifth pass added patch 0059** (LOG 47, ASSUMPTIONS §47): record-level
+priceability filter (finite and above 1.0 covers 0.0, negatives, NaN,
+inf), entry falls back to the first priceable freeze, per-group
+last-resort isolation with n_group_errors, extended Markets note.
+IMPORTANT: 0057 and 0058 are applied locally but were never pushed;
+origin/main ended at 0056 when this was diagnosed. Run
+`git log --oneline origin/main..HEAD` to see the unpushed commits,
+apply 0059 on top, then one `git push` publishes all three and the
+deploy picks them up together. Verify the deploy afterwards in Render
+Shell: python3 -c "import vpredict.odds.markets as m, inspect;
+print('n_group_errors' in inspect.getsource(m))" should print True.
+
 
 **Fourth pass added patch 0058** (the markets-build outage fix, LOG 46,
 ASSUMPTIONS §46): unpriceable records skip with a visible counter, the

@@ -1698,3 +1698,22 @@ Push semantics: --push sends the trailing ODDS_PUSH_WINDOW_H=24 hours
 of local records every fire, not just the run's appends; idempotent by
 server-side dedupe, so transient push failures stop being permanent
 record loss on the server.
+
+## 47. Priceability is defined once, and unknown failures degrade to counted skips (2026-07-30 session)
+
+A capture record is priceable when both decimal prices are finite and
+above 1.0; the predicate lives in one place and runs before grouping,
+so every consumer sees only real prices and the entry price is the
+first priceable freeze rather than a placeholder. Records that were
+never part of the build (unlinked, or for matches outside the ledger
+join) are filtered without counting, so the counter measures actual
+data loss, not noise. Above that sits a last-resort rule: a pick group
+that fails for any unforeseen reason is skipped with a logged
+traceback and a visible n_group_errors count, because one bad group
+taking down every other match's picks is a worse failure than any
+single bug. Both layers refuse silence: counters ride in markets.json,
+the refresh log line, and the Markets panel note. And one process
+lesson on record: "deployed" is verified with a code marker
+(python3 -c "import vpredict.odds.markets as m, inspect;
+print('n_group_errors' in inspect.getsource(m))"), not assumed from a
+local test run.

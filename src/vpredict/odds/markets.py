@@ -27,12 +27,26 @@ Scope (MODEL_CARD): series moneyline and map totals only.
 from __future__ import annotations
 
 import json
+import logging
+import math
 from datetime import datetime, timezone
 
 from .. import config
 from ..evaluation.tiers import classify_tier
 from .devig import devig_both
 from .schema import OddsCapture
+
+log = logging.getLogger("vpredict.markets")
+
+
+def _priceable(c: OddsCapture) -> bool:
+    """A usable two-sided price: both decimals finite and above 1.0.
+    Everything else is a placeholder or feed glitch, not a price: 0.0
+    (suspended markets), negatives, and NaN or inf, which pass ordinary
+    comparisons unnoticed because NaN compares False with everything
+    (LOG entry 47)."""
+    return (math.isfinite(c.price_home) and math.isfinite(c.price_away)
+            and c.price_home > 1.0 and c.price_away > 1.0)
 
 
 def _entry_close(caps: list[OddsCapture]) -> tuple[OddsCapture, OddsCapture | None]:
@@ -85,14 +99,23 @@ def _grade(row: dict, cap: OddsCapture, side: str) -> bool | None:
 def build_picks(ledger_rows: list[dict],
                 captures: list[OddsCapture],
                 ) -> tuple[list[dict], dict]:
-    """Returns (picks, skipped). `skipped["n_unpriceable"]` counts capture
-    records set aside because a decimal price sat at or below 1.0 — a
-    placeholder or suspended market, not a price. The strict guard stays in
-    devig.py (LOG entry 46); this caller skips and counts, loudly, so one
-    bad record can never take down the whole build again."""
+    """Returns (picks, skipped). skipped["n_unpriceable"] counts capture
+    records set aside by _priceable (placeholder, negative, or non-finite
+    prices; only records that would have joined the build are counted).
+    skipped["n_group_errors"] counts pick groups abandoned by the
+    last-resort isolation below. The strict guard stays in devig.py
+    (LOG entries 46 and 47); this caller skips and counts, loudly, so no
+    single record or group can take down the whole build."""
     rows_by_id = {r["match_id"]: r for r in ledger_rows}
-    grouped: dict[tuple, list[OddsCapture]] = {}
+    skipped = {"n_unpriceable": 0, "n_group_errors": 0}
+    usable: list[OddsCapture] = []
     for c in captures:
+        if _priceable(c):
+            usable.append(c)
+        elif c.match_id and c.match_id in rows_by_id:
+            skipped["n_unpriceable"] += 1     # would have joined the build
+    grouped: dict[tuple, list[OddsCapture]] = {}
+    for c in usable:
         if c.match_id and c.match_id in rows_by_id:
             grouped.setdefault(
                 (c.match_id, c.market, c.line, c.source), []).append(c)
@@ -115,7 +138,6 @@ def build_picks(ledger_rows: list[dict],
         return (pr.index(source) if source in pr else len(pr), source)
 
     picks: list[dict] = []
-    skipped = {"n_unpriceable": 0}
 
     def _group_order(item):
         (gmid, gmarket, gline), _ = item
@@ -125,90 +147,87 @@ def build_picks(ledger_rows: list[dict],
     for (mid, market, line), sources in sorted(by_key.items(),
                                                key=_group_order):
         row = rows_by_id[mid]
-        entries = {src: _entry_close(caps) for src, caps in sources.items()}
-        # Per-source model side-probs (book orientation can differ by book).
-        priced = {}
-        for src, (entry, close) in entries.items():
-            if min(entry.price_home, entry.price_away) <= 1.0:
-                skipped["n_unpriceable"] += 1        # placeholder entry:
-                continue                             # this source sits out
-            if close is not None and min(close.price_home,
-                                         close.price_away) <= 1.0:
-                skipped["n_unpriceable"] += 1        # placeholder close is
-                close = None                         # no close at all
-            probs = _model_side_probs(row, entry)
-            if probs is not None:
-                priced[src] = (entry, close, probs)
-        if not priced:
-            continue
-        # Best entry price per side across books, EV per side at ITS best.
-        def best_for(side_idx: int):
-            best = None
-            for src in sorted(priced, key=_rank):
-                entry, close, (p_home, p_away) = priced[src]
-                price = entry.price_home if side_idx == 0 else entry.price_away
-                p = p_home if side_idx == 0 else p_away
-                if best is None or price > best[0]:
-                    best = (price, p, src, entry, close)
-            return best
-        b_home, b_away = best_for(0), best_for(1)
-        ev_home = b_home[1] * b_home[0] - 1
-        ev_away = b_away[1] * b_away[0] - 1
-        side = "home" if ev_home >= ev_away else "away"
-        price, p_model, source, entry, close = (b_home if side == "home"
-                                                else b_away)
-        caps = sources[source]
-        # Consensus fair probability for the chosen side: median Shin de-vig
-        # across every book's ENTRY capture (n=2 today: the midpoint).
-        cons = []
-        for src, (e2, _c2, probs2) in priced.items():
-            dv2 = devig_both([e2.price_home, e2.price_away])
-            i2 = 0 if side == "home" else 1
-            cons.append(dv2["shin"][i2])
-        cons.sort()
-        n = len(cons)
-        shin_consensus = (cons[n // 2] if n % 2
-                          else (cons[n // 2 - 1] + cons[n // 2]) / 2)
-        dv = devig_both([entry.price_home, entry.price_away])
-        i = 0 if side == "home" else 1
-        clv = None
-        if close is not None:
-            close_price = close.price_home if side == "home" \
-                else close.price_away
-            clv = price / close_price - 1
-        won = _grade(row, entry, side)
-        if market == "series_moneyline":
-            names = (row["team1_name"], row["team2_name"])
-            sel_name = names[0] if (entry.book_home_is_team1 ==
-                                    (side == "home")) else names[1]
-        else:
-            sel_name = (f"{'over' if side == 'home' else 'under'} "
-                        f"{line:g} maps")
-        picks.append({
-            "match_id": mid, "market": market, "line": line,
-            "source": source,
-            "match": f"{row['team1_name']} vs {row['team2_name']}",
-            "event": row.get("event", ""),
-            "tier": classify_tier(row.get("event", "") or ""),
-            "start_ts": row["start_ts"],
-            "selection": sel_name,
-            "p_model": round(p_model, 4),
-            "price_entry": price,
-            "implied": round(1 / price, 4),
-            "shin": round(dv["shin"][i], 4),
-            "shin_consensus": round(shin_consensus, 4),
-            "n_books": len(priced),
-            "multiplicative": round(dv["multiplicative"][i], 4),
-            "overround": round(dv["overround"], 4),
-            "ev_pct": round((p_model * price - 1) * 100, 2),
-            "clv_pct": None if clv is None else round(clv * 100, 2),
-            "extrapolated": not (config.EV_EXTRAPOLATION_LO <= p_model
-                                 <= config.EV_EXTRAPOLATION_HI),
-            "graded": won is not None,
-            "won": won,
-            "entry_captured_at": entry.captured_at.isoformat(),
-            "close_captured": close is not None,
-        })
+        try:
+            entries = {src: _entry_close(caps) for src, caps in sources.items()}
+            # Per-source model side-probs (book orientation can differ by book).
+            priced = {}
+            for src, (entry, close) in entries.items():
+                probs = _model_side_probs(row, entry)
+                if probs is not None:
+                    priced[src] = (entry, close, probs)
+            if not priced:
+                continue
+            # Best entry price per side across books, EV per side at ITS best.
+            def best_for(side_idx: int):
+                best = None
+                for src in sorted(priced, key=_rank):
+                    entry, close, (p_home, p_away) = priced[src]
+                    price = entry.price_home if side_idx == 0 else entry.price_away
+                    p = p_home if side_idx == 0 else p_away
+                    if best is None or price > best[0]:
+                        best = (price, p, src, entry, close)
+                return best
+            b_home, b_away = best_for(0), best_for(1)
+            ev_home = b_home[1] * b_home[0] - 1
+            ev_away = b_away[1] * b_away[0] - 1
+            side = "home" if ev_home >= ev_away else "away"
+            price, p_model, source, entry, close = (b_home if side == "home"
+                                                    else b_away)
+            # Consensus fair probability for the chosen side: median Shin de-vig
+            # across every book's ENTRY capture (n=2 today: the midpoint).
+            cons = []
+            for src, (e2, _c2, probs2) in priced.items():
+                dv2 = devig_both([e2.price_home, e2.price_away])
+                i2 = 0 if side == "home" else 1
+                cons.append(dv2["shin"][i2])
+            cons.sort()
+            n = len(cons)
+            shin_consensus = (cons[n // 2] if n % 2
+                              else (cons[n // 2 - 1] + cons[n // 2]) / 2)
+            dv = devig_both([entry.price_home, entry.price_away])
+            i = 0 if side == "home" else 1
+            clv = None
+            if close is not None:
+                close_price = close.price_home if side == "home" \
+                    else close.price_away
+                clv = price / close_price - 1
+            won = _grade(row, entry, side)
+            if market == "series_moneyline":
+                names = (row["team1_name"], row["team2_name"])
+                sel_name = names[0] if (entry.book_home_is_team1 ==
+                                        (side == "home")) else names[1]
+            else:
+                sel_name = (f"{'over' if side == 'home' else 'under'} "
+                            f"{line:g} maps")
+            picks.append({
+                "match_id": mid, "market": market, "line": line,
+                "source": source,
+                "match": f"{row['team1_name']} vs {row['team2_name']}",
+                "event": row.get("event", ""),
+                "tier": classify_tier(row.get("event", "") or ""),
+                "start_ts": row["start_ts"],
+                "selection": sel_name,
+                "p_model": round(p_model, 4),
+                "price_entry": price,
+                "implied": round(1 / price, 4),
+                "shin": round(dv["shin"][i], 4),
+                "shin_consensus": round(shin_consensus, 4),
+                "n_books": len(priced),
+                "multiplicative": round(dv["multiplicative"][i], 4),
+                "overround": round(dv["overround"], 4),
+                "ev_pct": round((p_model * price - 1) * 100, 2),
+                "clv_pct": None if clv is None else round(clv * 100, 2),
+                "extrapolated": not (config.EV_EXTRAPOLATION_LO <= p_model
+                                     <= config.EV_EXTRAPOLATION_HI),
+                "graded": won is not None,
+                "won": won,
+                "entry_captured_at": entry.captured_at.isoformat(),
+                "close_captured": close is not None,
+            })
+        except Exception:
+            skipped["n_group_errors"] += 1
+            log.exception("pick group (%s, %s, %s) failed; skipped so the "
+                          "rest of the build survives", mid, market, line)
     return picks, skipped
 
 

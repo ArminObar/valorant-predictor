@@ -352,3 +352,69 @@ def test_mixed_totals_lines_sort_without_type_error():
     totals = [p for p in picks if p["market"] == "maps_total"]
     assert len(totals) == 1 and totals[0]["line"] == 2.5
     assert sk["n_unpriceable"] == 0
+
+
+# --------------------------------------- priceability + isolation (LOG entry 47)
+
+def test_zero_negative_and_inf_prices_are_all_skipped():
+    picks, sk = build_picks(
+        [_row_m("m1")],
+        [_cap_m("m1", "pinnacle", 1.83, 2.01),
+         _cap_m("m1", "cloudbet", 0.0, 0.0),
+         _cap_m("m1", "cloudbet", -1.5, 2.0, hours=1),
+         _cap_m("m1", "cloudbet", float("inf"), 2.0, hours=2)])
+    assert len(picks) == 1 and picks[0]["source"] == "pinnacle"
+    assert sk["n_unpriceable"] == 3 and sk["n_group_errors"] == 0
+
+
+def test_nan_prices_are_skipped_not_emitted():
+    picks, sk = build_picks(
+        [_row_m("m1")],
+        [_cap_m("m1", "pinnacle", float("nan"), float("nan"))])
+    assert picks == []
+    assert sk["n_unpriceable"] == 1
+
+
+def test_entry_falls_back_to_first_priceable_freeze():
+    picks, sk = build_picks(
+        [_row_m("m1")],
+        [_cap_m("m1", "pinnacle", 0.0, 0.0),            # placeholder first
+         _cap_m("m1", "pinnacle", 1.83, 2.01, hours=1)])
+    assert len(picks) == 1
+    from datetime import timedelta
+    assert picks[0]["price_entry"] in (1.83, 2.01)
+    assert picks[0]["entry_captured_at"] == (NOW
+                                             + timedelta(hours=1)).isoformat()
+    assert sk["n_unpriceable"] == 1
+
+
+def test_unlinked_degenerate_records_neither_crash_nor_count():
+    from vpredict.odds.schema import OddsCapture as OC
+    stray = OC(captured_at=NOW, source="cloudbet", capture_kind="freeze",
+               book_event_id="x", book_home="Who", book_away="Ever",
+               price_home=0.0, price_away=0.0)
+    picks, sk = build_picks([_row_m("m1")],
+                            [stray, _cap_m("m1", "pinnacle", 1.83, 2.01)])
+    assert len(picks) == 1
+    assert sk["n_unpriceable"] == 0          # never part of the build
+
+
+def test_group_error_is_isolated_counted_and_logged(monkeypatch, caplog):
+    import vpredict.odds.markets as mk
+
+    real = mk._grade
+
+    def boom(row, entry, side):
+        if row["match_id"] == "m2":
+            raise RuntimeError("synthetic group failure")
+        return real(row, entry, side)
+
+    monkeypatch.setattr(mk, "_grade", boom)
+    with caplog.at_level("ERROR", logger="vpredict.markets"):
+        picks, sk = build_picks(
+            [_row_m("m1"), _row_m("m2")],
+            [_cap_m("m1", "pinnacle", 1.83, 2.01),
+             _cap_m("m2", "pinnacle", 1.83, 2.01)])
+    assert [p["match_id"] for p in picks] == ["m1"]
+    assert sk["n_group_errors"] == 1
+    assert "pick group" in caplog.text and "m2" in caplog.text
