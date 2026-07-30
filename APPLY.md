@@ -1,4 +1,11 @@
-# APPLY — patch session 2026-07-28/29/30: patches 52–59
+# APPLY — patch session 2026-07-28/29/30: patches 52–60
+
+**Sixth pass added patch 0060** (ASSUMPTIONS §48): the day separators
+become lolesports-style date banners, weekday and month spelled out,
+today highlighted in teal. Display only. Apply after 0059, frontend
+gates, push. 0057 through 0059 were confirmed on origin/main before
+this patch was cut.
+
 
 **Fifth pass added patch 0059** (LOG 47, ASSUMPTIONS §47): record-level
 priceability filter (finite and above 1.0 covers 0.0, negatives, NaN,

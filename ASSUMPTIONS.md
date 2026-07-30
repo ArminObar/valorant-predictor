@@ -1717,3 +1717,14 @@ lesson on record: "deployed" is verified with a code marker
 (python3 -c "import vpredict.odds.markets as m, inspect;
 print('n_group_errors' in inspect.getsource(m))"), not assumed from a
 local test run.
+
+## 48. Date banners read like a schedule, not a footnote (2026-07-30 session)
+
+The §45 separators shipped as hairline mono labels and were easy to
+scan past. Restyled after owner direction to the schedule-page pattern
+(the lolesports reference): full-width banner bands between days,
+weekday and month spelled out, uppercase display type, and the current
+day highlighted in the accent color with a left bar. The pattern is
+generic schedule furniture; nothing is copied from anyone's assets or
+code. Ordering policy, zone rule, and the client-side-only constraint
+from §45 are unchanged.

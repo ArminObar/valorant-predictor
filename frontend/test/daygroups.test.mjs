@@ -21,8 +21,10 @@ test("groups split at local midnight and label with weekday", () => {
   const gs = groupByDay(rows, { dir: "asc", ...TZ, now: NOW });
   assert.equal(gs.length, 2);
   assert.equal(gs[0].rows[0].match_id, "a");
-  assert.match(gs[0].label, /today \u00b7 Tue, Jul 28/);
-  assert.match(gs[1].label, /tomorrow \u00b7 Wed, Jul 29/);
+  assert.match(gs[0].label, /today \u00b7 Tuesday, July 28/);
+  assert.equal(gs[0].isToday, true);
+  assert.match(gs[1].label, /tomorrow \u00b7 Wednesday, July 29/);
+  assert.equal(gs[1].isToday, false);
 });
 
 test("desc puts the newest day first, order stable within a day", () => {
@@ -35,6 +37,7 @@ test("desc puts the newest day first, order stable within a day", () => {
   assert.deepEqual(gs.map((g) => g.rows.map((r) => r.match_id)),
     [["y", "y2"], ["x"]]);
   assert.match(gs[1].label, /yesterday/);
+  assert.equal(gs[1].isToday, false);
 });
 
 test("missing start times sort to the tail and group as unscheduled", () => {

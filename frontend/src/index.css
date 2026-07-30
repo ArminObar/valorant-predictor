@@ -261,15 +261,19 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 .how .panel p { max-width: 68ch; line-height: 1.65; margin: 0 0 10px; }
 .how .panel p:last-child { margin-bottom: 0; }
 
-/* ---- day separators (chronological structure, display only) ---- */
-.day-sep { display: flex; align-items: center; gap: 12px;
-  margin: 22px 0 10px; color: var(--dim);
-  font: 600 10.5px/1 "IBM Plex Mono", monospace;
-  letter-spacing: .12em; text-transform: uppercase; }
-.day-sep:first-of-type { margin-top: 6px; }
-.day-sep::after { content: ""; flex: 1; height: 1px;
-  background: var(--line2); }
-.day-row td { padding: 10px 8px 6px; background: var(--panel2);
-  color: var(--dim); font: 600 10px/1 "IBM Plex Mono", monospace;
-  letter-spacing: .12em; text-transform: uppercase;
-  border-top: 1px solid var(--line2); }
+/* ---- day banners (chronological structure, lolesports-style) ---- */
+.day-sep { display: flex; align-items: center; margin: 26px 0 12px;
+  padding: 10px 14px; background: var(--panel2);
+  border: 1px solid var(--line2); border-radius: 6px;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 13px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text); }
+.day-sep.today { border-left: 3px solid var(--a); color: var(--a); }
+.day-sep:first-of-type { margin-top: 8px; }
+.day-row td { padding: 12px 14px; background: var(--panel2);
+  color: var(--text);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 12px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; border-top: 1px solid var(--line2); }
+.day-row.today td { color: var(--a);
+  box-shadow: inset 3px 0 0 var(--a); }

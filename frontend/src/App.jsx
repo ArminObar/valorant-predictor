@@ -101,11 +101,15 @@ const TIPS = {
     + "simulation is not a live record.",
 };
 
-const DaySep = ({ label }) => (
-  <div className="day-sep"><span>{label}</span></div>
+const DaySep = ({ label, today }) => (
+  <div className={"day-sep" + (today ? " today" : "")}>
+    <span>{label}</span>
+  </div>
 );
-const DayRow = ({ label, span }) => (
-  <tr className="day-row"><td colSpan={span}>{label}</td></tr>
+const DayRow = ({ label, span, today }) => (
+  <tr className={"day-row" + (today ? " today" : "")}>
+    <td colSpan={span}>{label}</td>
+  </tr>
 );
 
 function InfoTip({ tip, label = "about this section" }) {
@@ -231,7 +235,7 @@ function Upcoming({ onOpen }) {
       </p>
       {groupByDay(data.predictions, { dir: "asc" }).map((g) => (
         <React.Fragment key={g.key}>
-          <DaySep label={g.label} />
+          <DaySep label={g.label} today={g.isToday} />
           {g.rows.map((m) => (
             <UpcomingCard key={m.match_id} m={m} onOpen={onOpen} />
           ))}
@@ -318,7 +322,7 @@ function MarketPicks({ standalone = false }) {
             <tbody>
               {groupByDay(picks, { dir: "desc" }).map((g) => (
                 <React.Fragment key={g.key}>
-                  <DayRow label={g.label} span={7} />
+                  <DayRow label={g.label} span={7} today={g.isToday} />
                   {g.rows.map((p) => (
                 <tr key={`${p.match_id}-${p.market}-${p.line ?? ""}`}>
                   <td>{p.match}
@@ -533,7 +537,7 @@ function Scoreboard({ onOpen }) {
             <tbody>
               {groupByDay(data.graded, { dir: "desc" }).map((g) => (
                 <React.Fragment key={g.key}>
-                  <DayRow label={g.label} span={5} />
+                  <DayRow label={g.label} span={5} today={g.isToday} />
                   {g.rows.map((r) => {
                 const winner = r.team1_won ? r.team1_name : r.team2_name;
                 const ok = (r.p_model >= 0.5) === Boolean(r.team1_won);
@@ -567,7 +571,7 @@ function Scoreboard({ onOpen }) {
           <div className="panel-title">Pending ({data.pending.length})</div>
           {groupByDay(data.pending, { dir: "asc" }).map((g) => (
             <React.Fragment key={g.key}>
-              <DaySep label={g.label} />
+              <DaySep label={g.label} today={g.isToday} />
               {g.rows.map((r) => (
             <div className="pending-row clickable" key={r.match_id}
                  role="button" tabIndex={0}

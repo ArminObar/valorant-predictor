@@ -35,7 +35,7 @@ export function dayLabel(iso, opts = {}) {
   if (!d) return "unscheduled";
   const now = opts.now ? parseUtc(opts.now) : new Date();
   const base = d.toLocaleDateString(opts.locale, {
-    weekday: "short", month: "short", day: "numeric",
+    weekday: "long", month: "long", day: "numeric",
     ...(yearOf(d, opts) !== yearOf(now, opts) ? { year: "numeric" } : {}),
     ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
   });
@@ -68,12 +68,15 @@ export function sortByStart(rows, dir = "asc", get = (r) => r.start_ts) {
 export function groupByDay(rows, opts = {}) {
   const { dir = "asc", get = (r) => r.start_ts, ...fmt } = opts;
   const sorted = sortByStart(rows || [], dir, get);
+  const now = fmt.now ? parseUtc(fmt.now) : new Date();
+  const todayKey = dayKey(now.toISOString(), fmt);
   const groups = [];
   for (const r of sorted) {
     const key = dayKey(get(r), fmt) || "unscheduled";
     const last = groups[groups.length - 1];
     if (last && last.key === key) last.rows.push(r);
-    else groups.push({ key, label: dayLabel(get(r), fmt), rows: [r] });
+    else groups.push({ key, label: dayLabel(get(r), fmt),
+                       isToday: key === todayKey, rows: [r] });
   }
   return groups;
 }
