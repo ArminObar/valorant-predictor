@@ -19,7 +19,7 @@ from pathlib import Path
 from .. import config
 from . import cloudbet
 from .schema import (OddsCapture, append_captures, capture_state,
-                     link_fixture, load_aliases)
+                     iter_captures, link_fixture, load_aliases)
 
 log = logging.getLogger("vpredict.capture")
 
@@ -143,6 +143,24 @@ def acquire_capture_lock(path: Path | None = None):
     except OSError:
         f.close()
         return None
+
+
+def _aware(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def recent_captures(hours: float | None = None,
+                    log_path: Path | None = None,
+                    now: datetime | None = None) -> list[OddsCapture]:
+    """Every local record captured inside the window — the --push payload.
+    Re-sending records the server already holds is free (ingest dedupes),
+    so a push that failed yesterday is healed by today's fire instead of
+    silently losing that run's records forever (LOG entry 46, secondary)."""
+    hours = config.ODDS_PUSH_WINDOW_H if hours is None else hours
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=hours)
+    return [c for c in iter_captures(log_path or config.ODDS_JSONL)
+            if _aware(c.captured_at) >= cutoff]
 
 
 # ------------------------------------------------------------------ push

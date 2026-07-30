@@ -198,3 +198,23 @@ def test_decide_kind_freeze_then_close_then_done():
     slot["close"] = True
     assert decide_kind(start, slot, near) is None
     assert decide_kind(start, slot, start + timedelta(minutes=1)) is None
+
+
+def test_recent_captures_window_and_naive_timestamps(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from vpredict.odds.capture import recent_captures
+    from vpredict.odds.schema import OddsCapture, append_captures
+    now = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
+
+    def c(hours_ago, naive=False):
+        at = now - timedelta(hours=hours_ago)
+        if naive:
+            at = at.replace(tzinfo=None)     # pre-tz-hygiene log rows
+        return OddsCapture(captured_at=at, source="pinnacle",
+                           capture_kind="freeze", book_event_id="e",
+                           book_home="A", book_away="B",
+                           price_home=1.9, price_away=1.9)
+    log = tmp_path / "odds.jsonl"
+    append_captures([c(30), c(2), c(1, naive=True)], path=log)
+    got = recent_captures(hours=24, log_path=log, now=now)
+    assert len(got) == 2                     # 30h-old row aged out

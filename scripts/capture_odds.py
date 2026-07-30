@@ -21,7 +21,8 @@ import sys
 
 from vpredict.odds.capture import (acquire_capture_lock,  # noqa: F401 (re-exports:
                                    decide_kind, load_predictions,  # tests and
-                                   push_captures, run_once)        # old cron refs)
+                                   push_captures, recent_captures,  # old cron
+                                   run_once)                        # refs)
 from vpredict.odds.schema import iter_captures
 
 
@@ -33,7 +34,8 @@ def main() -> int:
     ap.add_argument("--from-file", default=None)
     ap.add_argument("--debug", action="store_true")
     ap.add_argument("--push", action="store_true",
-                    help="POST this pass's appended records to the server")
+                    help="POST the last ODDS_PUSH_WINDOW_H hours of local "
+                         "records (idempotent; heals earlier failed pushes)")
     ap.add_argument("--push-log", action="store_true",
                     help="POST the ENTIRE local log (idempotent seed)")
     args = ap.parse_args()
@@ -55,10 +57,17 @@ def main() -> int:
         report, appended = run_once(
             [x.strip() for x in args.sources.split(",") if x.strip()],
             from_file=args.from_file, debug=args.debug)
-        if args.push and appended:
-            report["push"] = push_captures(appended)
+        rc = 0
+        if args.push:
+            try:
+                # The window, not just this run's appends: a push that
+                # failed last fire is re-sent now and deduped server-side.
+                report["push"] = push_captures(recent_captures())
+            except Exception as e:
+                report["push"] = {"error": str(e)}
+                rc = 1                       # loud in cron mail, capture kept
         print(json.dumps(report, indent=1))
-        return 0
+        return rc
     finally:
         lock.close()
 

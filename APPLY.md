@@ -1,4 +1,14 @@
-# APPLY — patch session 2026-07-28/29: patches 52–57
+# APPLY — patch session 2026-07-28/29/30: patches 52–58
+
+**Fourth pass added patch 0058** (the markets-build outage fix, LOG 46,
+ASSUMPTIONS §46): unpriceable records skip with a visible counter, the
+None-line sort is deterministic, --push sends a 24 h idempotent window.
+Apply after 0057, `python -m pytest` (expect 169), frontend gates,
+push. The build self-heals on the first tick after deploy: check
+markets.json generated_at is fresh within 10 minutes and the Render log
+"markets" line shows picks plus a skipped count. The odds log needs no
+surgery; the poison record stays, counted.
+
 
 **Third pass added patch 0057**: chronological ordering with day
 separators site-wide (Upcoming and Scoreboard pending soonest first,

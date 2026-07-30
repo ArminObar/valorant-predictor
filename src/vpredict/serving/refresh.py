@@ -114,7 +114,8 @@ def _markets_phase(out: dict) -> None:
     tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
     tmp.replace(path)
     out["markets"] = {"picks": len(report.get("picks", [])),
-                      "gate": report.get("gate")}
+                      "gate": report.get("gate"),
+                      "skipped": report.get("skipped")}
 
 
 def refresh_cycle(crawl: bool = True,

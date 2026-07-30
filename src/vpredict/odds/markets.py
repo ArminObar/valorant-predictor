@@ -83,7 +83,13 @@ def _grade(row: dict, cap: OddsCapture, side: str) -> bool | None:
 
 
 def build_picks(ledger_rows: list[dict],
-                captures: list[OddsCapture]) -> list[dict]:
+                captures: list[OddsCapture],
+                ) -> tuple[list[dict], dict]:
+    """Returns (picks, skipped). `skipped["n_unpriceable"]` counts capture
+    records set aside because a decimal price sat at or below 1.0 — a
+    placeholder or suspended market, not a price. The strict guard stays in
+    devig.py (LOG entry 46); this caller skips and counts, loudly, so one
+    bad record can never take down the whole build again."""
     rows_by_id = {r["match_id"]: r for r in ledger_rows}
     grouped: dict[tuple, list[OddsCapture]] = {}
     for c in captures:
@@ -109,12 +115,27 @@ def build_picks(ledger_rows: list[dict],
         return (pr.index(source) if source in pr else len(pr), source)
 
     picks: list[dict] = []
-    for (mid, market, line), sources in sorted(by_key.items()):
+    skipped = {"n_unpriceable": 0}
+
+    def _group_order(item):
+        (gmid, gmarket, gline), _ = item
+        return (gmid, gmarket, gline is not None,
+                0.0 if gline is None else gline)
+
+    for (mid, market, line), sources in sorted(by_key.items(),
+                                               key=_group_order):
         row = rows_by_id[mid]
         entries = {src: _entry_close(caps) for src, caps in sources.items()}
         # Per-source model side-probs (book orientation can differ by book).
         priced = {}
         for src, (entry, close) in entries.items():
+            if min(entry.price_home, entry.price_away) <= 1.0:
+                skipped["n_unpriceable"] += 1        # placeholder entry:
+                continue                             # this source sits out
+            if close is not None and min(close.price_home,
+                                         close.price_away) <= 1.0:
+                skipped["n_unpriceable"] += 1        # placeholder close is
+                close = None                         # no close at all
             probs = _model_side_probs(row, entry)
             if probs is not None:
                 priced[src] = (entry, close, probs)
@@ -188,7 +209,7 @@ def build_picks(ledger_rows: list[dict],
             "entry_captured_at": entry.captured_at.isoformat(),
             "close_captured": close is not None,
         })
-    return picks
+    return picks, skipped
 
 
 def _ev_excluded(p: dict) -> str | None:
@@ -229,7 +250,7 @@ def build_markets_report(ledger_rows: list[dict],
                          captures: list[OddsCapture],
                          now: datetime | None = None,
                          section: str = "LIVE") -> dict:
-    picks = build_picks(ledger_rows, captures)
+    picks, skipped = build_picks(ledger_rows, captures)
     for p in picks:
         p["ev_excluded"] = _ev_excluded(p)
     # The validation gate counts only picks whose EV methodology is the one
@@ -247,6 +268,7 @@ def build_markets_report(ledger_rows: list[dict],
                                           # "BACKTEST" (simulated) — the two
                                           # are separate by design, never
                                           # merged into one number
+        "skipped": skipped,
         "gate": {"n_graded": graded_n,
                  "required": config.EV_MIN_GRADED_PICKS,
                  "ev_validated": graded_n >= config.EV_MIN_GRADED_PICKS},

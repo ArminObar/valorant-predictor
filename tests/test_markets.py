@@ -112,7 +112,7 @@ def test_moneyline_pick_ev_and_clv():
     caps = [_cap(kind="freeze", ph=1.61, pa=2.40),
             _cap(kind="close", ph=1.50, pa=2.60,
                  at=NOW + timedelta(hours=3))]
-    picks = build_picks([row], caps)
+    picks, _ = build_picks([row], caps)
     assert len(picks) == 1
     p = picks[0]
     # EV(home)=0.7*1.61-1=0.127 > EV(away)=0.3*2.40-1 -> pick home=Alpha.
@@ -128,7 +128,7 @@ def test_totals_pick_prices_from_frozen_dist_only():
     dist = {"2": 0.52, "3": 0.48}
     row = _row(dist=dist, maps_played=3)
     cap = _cap(market="maps_total", line=2.5, ph=2.10, pa=1.74)
-    picks = build_picks([row], [cap])
+    picks, _ = build_picks([row], [cap])
     assert len(picks) == 1
     p = picks[0]
     # P(over 2.5)=0.48 -> EV(over)=0.48*2.10-1=0.008 > EV(under)=-0.095.
@@ -137,12 +137,12 @@ def test_totals_pick_prices_from_frozen_dist_only():
     assert p["won"] is True                         # 3 maps played
     # A row frozen BEFORE p_maps_dist existed cannot be priced — the frozen
     # record rules, so the market is skipped rather than recomputed.
-    assert build_picks([_row(dist=None)], [cap]) == []
+    assert build_picks([_row(dist=None)], [cap])[0] == []
 
 
 def test_extrapolated_pick_labeled_and_excluded_from_aggregates():
     row = _row(p_model=0.95, team1_won=1)           # outside [0.15, 0.88]
-    picks = build_picks([row], [_cap(ph=1.05, pa=9.0)])
+    picks, _ = build_picks([row], [_cap(ph=1.05, pa=9.0)])
     assert picks[0]["extrapolated"] is True
     rep = build_markets_report([row], [_cap(ph=1.05, pa=9.0)], now=NOW)
     assert rep["summary"]["n_extrapolated"] == 1
@@ -166,7 +166,7 @@ def test_book_priority_prefers_pinnacle_for_headline():
                      book_home="Alpha", book_away="Beta",
                      price_home=1.65, price_away=2.35, match_id="m1",
                      book_home_is_team1=True)
-    picks = build_picks([row], [cb, pn])
+    picks, _ = build_picks([row], [cb, pn])
     assert len(picks) == 1 and picks[0]["source"] == "pinnacle"
 
 
@@ -243,7 +243,7 @@ def _row_m1(p_model=0.60):
 def test_best_line_takes_the_better_price_and_names_the_book():
     caps = [_cap_src("cloudbet", 1.95, 1.95),
             _cap_src("pinnacle", 1.83, 2.01)]
-    p = build_picks([_row_m1(0.60)], caps)[0]
+    p = build_picks([_row_m1(0.60)], caps)[0][0]
     # model favours home (RED): best home price is cloudbet's 1.95
     assert p["selection"] == "RED"
     assert p["source"] == "cloudbet" and p["price_entry"] == 1.95
@@ -255,7 +255,7 @@ def test_clv_uses_entry_books_own_close_only():
     caps = [_cap_src("cloudbet", 1.95, 1.95),
             _cap_src("pinnacle", 1.83, 2.01),
             _cap_src("pinnacle", 1.70, 2.20, kind="close", hours=5)]
-    p = build_picks([_row_m1(0.60)], caps)[0]
+    p = build_picks([_row_m1(0.60)], caps)[0][0]
     assert p["source"] == "cloudbet"
     assert p["clv_pct"] is None and p["close_captured"] is False
 
@@ -263,13 +263,13 @@ def test_clv_uses_entry_books_own_close_only():
 def test_price_tie_breaks_by_book_priority():
     caps = [_cap_src("cloudbet", 1.90, 1.90),
             _cap_src("pinnacle", 1.90, 1.90)]
-    p = build_picks([_row_m1(0.60)], caps)[0]
+    p = build_picks([_row_m1(0.60)], caps)[0][0]
     assert p["source"] == "pinnacle"      # config.ODDS_BOOK_PRIORITY[0]
 
 
 def test_single_book_parity_with_old_headline_behavior():
     caps = [_cap_src("cloudbet", 1.83, 2.01)]
-    p = build_picks([_row_m1(0.60)], caps)[0]
+    p = build_picks([_row_m1(0.60)], caps)[0][0]
     assert p["source"] == "cloudbet" and p["price_entry"] == 1.83
     assert p["shin_consensus"] == p["shin"]
     assert p["n_books"] == 1
@@ -282,3 +282,73 @@ def test_gate_counts_one_pick_per_match_market_with_two_books():
     report = build_markets_report([row], caps)
     assert len(report["picks"]) == 1
     assert report["gate"]["n_graded"] == 1
+
+
+# ------------------------------------------- unpriceable records (LOG entry 46)
+
+def _row_m(mid, p_model=0.60):
+    return {"match_id": mid, "team1_name": "RED", "team2_name": "BLU",
+            "event": "VCT Masters", "start_ts": NOW.isoformat(),
+            "p_model": p_model, "best_of": 3, "graded": 0,
+            "team1_won": None, "maps_played": None}
+
+
+def _cap_m(mid, source, ph, pa, market="series_moneyline", line=None,
+           kind="freeze", hours=0):
+    from datetime import timedelta
+    return OddsCapture(
+        captured_at=NOW + timedelta(hours=hours), source=source,
+        capture_kind=kind, market=market, line=line,
+        book_event_id=f"{source}-{mid}", book_home="RED", book_away="BLU",
+        price_home=ph, price_away=pa, match_id=mid,
+        book_home_is_team1=True, link_method="exact")
+
+
+def test_degenerate_price_skips_that_book_not_the_build():
+    picks, sk = build_picks([_row_m("m1")],
+                            [_cap_m("m1", "pinnacle", 1.83, 2.01),
+                             _cap_m("m1", "cloudbet", 1.0, 13.0)])
+    assert len(picks) == 1
+    assert picks[0]["source"] == "pinnacle"
+    assert picks[0]["n_books"] == 1          # the bad book never priced it
+    assert sk["n_unpriceable"] == 1
+
+
+def test_degenerate_close_becomes_no_close():
+    picks, sk = build_picks(
+        [_row_m("m1")],
+        [_cap_m("m1", "pinnacle", 1.83, 2.01),
+         _cap_m("m1", "pinnacle", 1.0, 9.0, kind="close", hours=5)])
+    assert picks[0]["close_captured"] is False
+    assert picks[0]["clv_pct"] is None
+    assert sk["n_unpriceable"] == 1
+
+
+def test_all_sources_unpriceable_drops_group_with_counter():
+    picks, sk = build_picks([_row_m("m1")],
+                            [_cap_m("m1", "cloudbet", 1.0, 13.0)])
+    assert picks == []
+    assert sk["n_unpriceable"] == 1
+
+
+def test_one_bad_record_cannot_block_other_matches():
+    picks, sk = build_picks(
+        [_row_m("m1"), _row_m("m2")],
+        [_cap_m("m1", "pinnacle", 1.83, 2.01),
+         _cap_m("m2", "cloudbet", 1.0, 13.0)])
+    assert [p["match_id"] for p in picks] == ["m1"]
+    assert sk["n_unpriceable"] == 1
+
+
+def test_mixed_totals_lines_sort_without_type_error():
+    import json as _json
+    row = _row_m("m1") | {"p_maps_dist": _json.dumps({"2": 0.55, "3": 0.45})}
+    picks, sk = build_picks(
+        [row],
+        [_cap_m("m1", "pinnacle", 1.9, 1.9, "maps_total", 2.5),
+         _cap_m("m1", "pinnacle", 1.9, 1.9, "maps_total", None)])
+    # The lined group prices; the lineless one cannot (no line, by design)
+    # and must neither crash the sort nor block the lined pick.
+    totals = [p for p in picks if p["market"] == "maps_total"]
+    assert len(totals) == 1 and totals[0]["line"] == 2.5
+    assert sk["n_unpriceable"] == 0

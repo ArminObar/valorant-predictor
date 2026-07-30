@@ -1680,3 +1680,21 @@ entirely client-side: the API payloads and their order are untouched,
 per the instruction that nothing underneath changes. Aggregate panels
 (Backtest tiers, the model's test-window panel) and fixed-size widgets
 (recent form) have no open time axis and are deliberately excluded.
+
+## 46. Skip-and-count beats crash and beats silence (2026-07-30 session)
+
+Policy set while fixing entry 46: analysis primitives stay strict
+(devig raises on prices at or below 1.0; that is a correctness
+property), and the pipeline caller is the layer that decides what a bad
+record means. Decisions: an unpriceable entry removes that source from
+that pick; an unpriceable close is treated as no close (a placeholder
+is not a closing price, and grading CLV against it would be fiction); a
+group with no priceable source drops. Every one of these increments
+"skipped.n_unpriceable" in markets.json, the refresh log, and a
+visible Markets note when nonzero, because silently narrowing the data
+is exactly what this project does not do. The odds log itself is never
+edited: append-only is the rule, the poison record stays in the record.
+Push semantics: --push sends the trailing ODDS_PUSH_WINDOW_H=24 hours
+of local records every fire, not just the run's appends; idempotent by
+server-side dedupe, so transient push failures stop being permanent
+record loss on the server.

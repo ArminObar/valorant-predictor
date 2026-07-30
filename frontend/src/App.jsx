@@ -277,6 +277,14 @@ function MarketPicks({ standalone = false }) {
           grade ({gate.n_graded} so far).
         </p>
       )}
+      {(data.skipped?.n_unpriceable ?? 0) > 0 && (
+        <p className="note">
+          {data.skipped.n_unpriceable} captured price
+          {data.skipped.n_unpriceable === 1 ? "" : "s"} skipped as
+          unpriceable (placeholder odds at or below 1.00). Skips are
+          counted, never hidden.
+        </p>
+      )}
       {picks.length === 0 ? (
         <p className="empty">
           No market-covered picks yet. Prices are captured every 10 minutes.

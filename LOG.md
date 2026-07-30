@@ -1282,3 +1282,46 @@ documented on the endpoint it borrowed.
 **Why testing missed it.** The board has never exceeded 100 pending
 rows; nothing exercised the truncation branch. Caught by reading the
 join's inputs during the server-side move, not by a failure.
+
+## Entry 46: One placeholder price took down the markets build for a day (2026-07-30 session)
+
+**Symptom.** markets.json frozen at 2026-07-29T19:30:30 while both odds
+sources kept capturing (44 cloudbet, 719 pinnacle rows, fresh
+timestamps). Matches with real captures never appeared or updated on
+the Markets tab.
+
+**Cause.** Two data-dependent crashes in build_picks, both introduced
+by patch 0055 and both reproduced in a sandbox before fixing. First:
+the consensus column runs devig on EVERY priced source's entry, and
+devig's implied() deliberately raises on any decimal price at or below
+1.0 (a placeholder or suspended market). Before 0055 only the single
+headline entry was ever de-vigged, so a degenerate pair on a
+non-headline book had no path into the strict guard; after 0055, one
+such record anywhere killed the entire build, every tick. Second,
+independent: pick groups sorted by raw (match, market, line) tuples,
+and a lineless totals row alongside a lined one crashes tuple
+comparison with None < float. Timeline pinned it: the 0055 commit
+landed 19:21:40Z, the first in-cycle build succeeded at 19:30:30Z, and
+the first record of the newly live streams (cloudbet server captures
+plus the 719-row seed) poisoned every build after.
+
+**Fix.** The pipeline is now total over bad records: an unpriceable
+entry sidelines that source, an unpriceable close becomes no close, a
+fully unpriceable group drops, and every skip increments a counter
+carried in markets.json ("skipped"), the refresh log line, and a
+Markets-panel note when nonzero. The strict ValueError stays in
+devig.py where analysis code should be loud; the caller decides.
+Group ordering uses a None-safe key. Secondary fix in the same round:
+--push now re-sends the last ODDS_PUSH_WINDOW_H hours instead of only
+that run's appends, so a failed push self-heals next fire (server
+ingest dedupes), and a push failure prints into the report and exits
+nonzero instead of dying before the report.
+
+**Why testing missed it.** Every fabricated test price was sane, so the
+strict guard never fired in CI; the old headline-only path meant two
+years of Mac builds never fed it a non-headline pair either; and the
+capture pass shares the strict log parser but never runs the pick
+math, which is exactly why capture stayed healthy while the build died
+— the discriminator that located the bug. Five regression tests now
+pin both mechanisms, the counter, and that one bad record can never
+block another match's picks.

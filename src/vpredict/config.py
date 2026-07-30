@@ -184,6 +184,10 @@ CLOUDBET_BASE_URL = "https://sports-api.cloudbet.com/pub/v2/odds"
 # All captured books are stored; nothing is ever averaged.
 ODDS_BOOK_PRIORITY = ["pinnacle", "cloudbet"]
 VPREDICT_BASE_URL = "https://vpredict.onrender.com"   # push target for the Mac leg
+# --push re-sends every local record inside this window (not just this run's
+# appends): a failed push self-heals on the next fire because the server
+# ingest dedupes by full record identity (ASSUMPTIONS §46).
+ODDS_PUSH_WINDOW_H = 24
 
 # --------------------------------------------------------------------------- markets & EV (analysis time)
 # Pre-registered BEFORE any graded market-covered pick existed (§13 spec item
