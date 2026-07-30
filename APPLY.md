@@ -1,4 +1,11 @@
-# APPLY — patch session 2026-07-28: patches 52–56
+# APPLY — patch session 2026-07-28/29: patches 52–57
+
+**Third pass added patch 0057**: chronological ordering with day
+separators site-wide (Upcoming and Scoreboard pending soonest first,
+Scoreboard graded and Markets newest first, day boundaries in the
+viewer's timezone). Display only, sorted client-side; apply after 0056,
+rerun the frontend gates, push. No server steps.
+
 
 **Second pass added patch 0056**: the /how explainer page (linked from
 the homepage and footer) and short hover tooltips on all five section

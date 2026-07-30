@@ -260,3 +260,16 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 .land-how:hover { color: var(--a); }
 .how .panel p { max-width: 68ch; line-height: 1.65; margin: 0 0 10px; }
 .how .panel p:last-child { margin-bottom: 0; }
+
+/* ---- day separators (chronological structure, display only) ---- */
+.day-sep { display: flex; align-items: center; gap: 12px;
+  margin: 22px 0 10px; color: var(--dim);
+  font: 600 10.5px/1 "IBM Plex Mono", monospace;
+  letter-spacing: .12em; text-transform: uppercase; }
+.day-sep:first-of-type { margin-top: 6px; }
+.day-sep::after { content: ""; flex: 1; height: 1px;
+  background: var(--line2); }
+.day-row td { padding: 10px 8px 6px; background: var(--panel2);
+  color: var(--dim); font: 600 10px/1 "IBM Plex Mono", monospace;
+  letter-spacing: .12em; text-transform: uppercase;
+  border-top: 1px solid var(--line2); }

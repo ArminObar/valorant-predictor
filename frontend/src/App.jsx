@@ -6,6 +6,7 @@ import {
 import { fmtTime } from "./time.js";
 import { buildRatingChart } from "./chart.js";
 import { summarizeBacktestTiers } from "./backtestSummary.js";
+import { groupByDay } from "./daygroups.js";
 import { metricLead, liveStanding } from "./compare.js";
 import { readTheme, storeTheme, resolveMode, applyTheme } from "./theme.js";
 
@@ -99,6 +100,13 @@ const TIPS = {
     + "production schedule. Kept apart from the live scoreboard because a "
     + "simulation is not a live record.",
 };
+
+const DaySep = ({ label }) => (
+  <div className="day-sep"><span>{label}</span></div>
+);
+const DayRow = ({ label, span }) => (
+  <tr className="day-row"><td colSpan={span}>{label}</td></tr>
+);
 
 function InfoTip({ tip, label = "about this section" }) {
   const [pinned, setPinned] = useState(false);
@@ -221,8 +229,13 @@ function Upcoming({ onOpen }) {
         Locked at least five minutes before start. Frozen after.
         Model {data.model_version}, generated {fmtTime(data.generated_at)}.
       </p>
-      {data.predictions.map((m) => (
-        <UpcomingCard key={m.match_id} m={m} onOpen={onOpen} />
+      {groupByDay(data.predictions, { dir: "asc" }).map((g) => (
+        <React.Fragment key={g.key}>
+          <DaySep label={g.label} />
+          {g.rows.map((m) => (
+            <UpcomingCard key={m.match_id} m={m} onOpen={onOpen} />
+          ))}
+        </React.Fragment>
       ))}
     </>
   );
@@ -287,7 +300,10 @@ function MarketPicks({ standalone = false }) {
                 <th className="num">EV</th><th>result</th></tr>
             </thead>
             <tbody>
-              {picks.map((p) => (
+              {groupByDay(picks, { dir: "desc" }).map((g) => (
+                <React.Fragment key={g.key}>
+                  <DayRow label={g.label} span={7} />
+                  {g.rows.map((p) => (
                 <tr key={`${p.match_id}-${p.market}-${p.line ?? ""}`}>
                   <td>{p.match}
                     <span className="dim"> &middot; {p.market === "maps_total"
@@ -318,6 +334,8 @@ function MarketPicks({ standalone = false }) {
                         {p.clv_pct}%</span>}
                   </td>
                 </tr>
+              ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -497,7 +515,10 @@ function Scoreboard({ onOpen }) {
                 <th className="num">elo</th><th>result</th></tr>
             </thead>
             <tbody>
-              {data.graded.map((r) => {
+              {groupByDay(data.graded, { dir: "desc" }).map((g) => (
+                <React.Fragment key={g.key}>
+                  <DayRow label={g.label} span={5} />
+                  {g.rows.map((r) => {
                 const winner = r.team1_won ? r.team1_name : r.team2_name;
                 const ok = (r.p_model >= 0.5) === Boolean(r.team1_won);
                 return (
@@ -518,6 +539,8 @@ function Scoreboard({ onOpen }) {
                   </tr>
                 );
               })}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
           </div>
@@ -526,13 +549,18 @@ function Scoreboard({ onOpen }) {
       {data.pending.length > 0 && (
         <div className="panel">
           <div className="panel-title">Pending ({data.pending.length})</div>
-          {data.pending.map((r) => (
+          {groupByDay(data.pending, { dir: "asc" }).map((g) => (
+            <React.Fragment key={g.key}>
+              <DaySep label={g.label} />
+              {g.rows.map((r) => (
             <div className="pending-row clickable" key={r.match_id}
                  role="button" tabIndex={0}
                  onClick={() => onOpen(r.match_id)}>
               <span>{r.team1_name} <span className="dim">vs</span> {r.team2_name}</span>
               <span className="dim">{fmtTime(r.start_ts)} &middot; model {fmtPct(r.p_model)}</span>
             </div>
+              ))}
+            </React.Fragment>
           ))}
         </div>
       )}

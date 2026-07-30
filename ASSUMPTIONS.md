@@ -1666,3 +1666,17 @@ were rewritten into the page. The footer keeps the standing "not
 betting advice" line and gains the /how link, which also gives the
 honest backtest framing a permanent home that no homepage redesign can
 strip by accident.
+
+## 45. Chronological structure is a display policy, decided once (2026-07-29 session)
+
+All match lists now sort by scheduled start with day separators, grouped
+at the VIEWER'S local midnights, the same zone rule as every rendered
+time (LOG entry 29). Direction is by list kind, not one global sign:
+schedules read soonest first (Upcoming, Scoreboard pending), records
+read newest first (Scoreboard graded, Markets). On Markets, descending
+start time naturally floats not-yet-started picks above the graded
+record, since their start times are the newest in the table. Sorting is
+entirely client-side: the API payloads and their order are untouched,
+per the instruction that nothing underneath changes. Aggregate panels
+(Backtest tiers, the model's test-window panel) and fixed-size widgets
+(recent form) have no open time axis and are deliberately excluded.
