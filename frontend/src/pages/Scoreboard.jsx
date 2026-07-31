@@ -1,11 +1,13 @@
 import React from "react";
 import { useApi, fmtPct } from "../lib/useApi.js";
+import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
+import { Metric } from "../components/bits.jsx";
+import { BacktestSummary } from "../components/BacktestSummary.jsx";
 import { fmtTime } from "../time.js";
 import { groupByDay } from "../daygroups.js";
 import { DaySep, DayRow } from "../components/daybits.jsx";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
 import { MarketPicks } from "./MarketPicks.jsx";
-import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 
 export function Scoreboard({ onOpen }) {
   const { data, err } = useApi("/api/scoreboard");
@@ -14,6 +16,16 @@ export function Scoreboard({ onOpen }) {
   if (!data) return <p className="empty">Loading&hellip;</p>;
   const s = data.summary;
   return (
+    <div className="page">
+      <Masthead eyebrow="the running record" tip={MASTHEAD_TIPS.scoreboard}
+        title="Scoreboard"
+        stats={[
+          ...((s2.model_accuracy ?? s2.model?.accuracy) != null
+            ? [{ value: fmtPct(s2.model_accuracy ?? s2.model.accuracy),
+                 label: "correct picks" }] : []),
+          { value: String((data.graded || []).length), label: "graded",
+            tone: "ink" },
+        ]} />
     <>
       <div className="panel">
         <TitleWithInfo
@@ -110,5 +122,6 @@ export function Scoreboard({ onOpen }) {
       <MarketPicks />
       <BacktestSummary />
     </>
+    </div>
   );
 }

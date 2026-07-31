@@ -38,3 +38,8 @@ export function initTheme(doc, storage) {
   applyTheme(doc, theme);
   return theme;
 }
+
+export function themeStorage() {
+  try { return window.localStorage; } catch (e) { return null; }
+}
+

@@ -1,7 +1,9 @@
 import React from "react";
 import { useApi, fmtPct } from "../lib/useApi.js";
-import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
-import { summarizeBacktestTiers } from "../backtestSummary.js";
+import { fmtTime } from "../time.js";
+import { Lead } from "../components/bits.jsx";
+import { metricLead } from "../compare.js";
+import { LiveStandingClause } from "../components/BacktestSummary.jsx";
 import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 
 export function Backtest() {

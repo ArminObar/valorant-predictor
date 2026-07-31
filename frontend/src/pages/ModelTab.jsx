@@ -1,7 +1,10 @@
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { useApi, fmtPct } from "../lib/useApi.js";
+import { Link } from "react-router-dom";
+import { fmtTime } from "../time.js";
+import { Metric, Lead } from "../components/bits.jsx";
+import { metricLead } from "../compare.js";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
-import { buildRatingChart } from "../chart.js";
 import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 
 export function RecentResults() {

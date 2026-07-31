@@ -1,6 +1,5 @@
 import React from "react";
 import { useApi, fmtPct } from "../lib/useApi.js";
-import { fmtTime } from "../time.js";
 import { groupByDay } from "../daygroups.js";
 import { DayRow } from "../components/daybits.jsx";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
@@ -22,9 +21,16 @@ export function MarketPicks({ standalone = false }) {
   const s = data.summary;
   const picks = data.picks || [];
   return (
-    <div className="panel">
-      <TitleWithInfo title="Market picks: model vs real odds"
-        info={TIPS.markets} />
+    <div className={standalone ? "page" : "panel"}>
+      {standalone ? (
+        <Masthead eyebrow="model against the books"
+          tip={MASTHEAD_TIPS.markets} title="Markets"
+          stats={[evStat,
+            { value: String(picks.length), label: "picks", tone: "ink" }]} />
+      ) : (
+        <TitleWithInfo title="Market picks: model vs real odds"
+          info={TIPS.markets} />
+      )}
       <p className="note">Locked model probability vs the captured price. Not betting advice.</p>
       {!gate.ev_validated && (
         <p className="warn">

@@ -1392,3 +1392,43 @@ behavior are unchanged because the pop stays inside its wrapper.
 **Why testing missed it.** The node suite never paints; stacking-order
 bugs need a browser, a specific ancestor chain, and a sibling that
 fights back, a combination only the Upcoming page had.
+
+## Entry 49: The split that passed every gate and shipped dead pages (2026-07-31 session)
+
+**Symptom.** With the v2 series applied, the app was runtime-dead: a
+blank crash at every route ("App is not defined"), ThemeToggle
+crashing on missing imports, and, once those were hand-fixed, four
+pages still referencing helpers that no longer existed anywhere.
+pytest, npm test, and the vite build were green throughout.
+
+**Cause.** Two editing patterns compounding. The 0062 splitter
+extracted only an explicit list of names, stranding fourteen shared
+helpers (Tile, TugBar, Metric, Lead, FormDots, RatingChart,
+BacktestSummary, LiveStandingClause, themeStorage, ScrollToTop,
+SiteHeader, fmt4, mono, fmtEta) inside App.jsx while the pages that
+used them moved out; the App shell itself was mis-extracted into
+NotFound.jsx and then deleted as a duplicate. Later patches edited
+files with silent no-op string replaces, so the 0064 nav and footer
+and the 0067/0068 Scoreboard, MatchDetail, and Markets mastheads
+(including the gated EV stat) simply never landed, with no error.
+An eslint sweep of the pristine series counted 43 undefined-reference
+errors across 6 files.
+
+**Fix.** Helpers restored into components/bits.jsx, RatingChart.jsx,
+and BacktestSummary.jsx with metricLead and liveStanding routed to
+their true home in compare.js and themeStorage exported from
+theme.js; the real v2 shell written (six-tab nav, all routes, derived
+footer); the three missing mastheads wired against the actual markup;
+every import corrected and dead imports stripped. Two standing gates
+added as npm run audit: a zero-error eslint no-undef/no-redeclare
+sweep and a jsdom render harness that mounts every route with effects
+running, mocked payloads, and console-error capture. All 8 routes now
+render clean with six tabs each.
+
+**Why testing missed it.** By construction. The node suite tests pure
+modules and never imports a page; bundlers do not scope-check free
+identifiers, so "App is not defined" builds fine and dies at runtime;
+and a str.replace that finds no match reports nothing. Every gate we
+ran was blind to this class. The new audit gate exists because only
+an actual render can see it, and scripted edits now assert their
+match counts so a no-op edit fails loudly instead of vanishing.

@@ -1781,3 +1781,17 @@ access, the corrected Markets tooltip line, the gated EV masthead, the
 full explainer retained under the four spec cards, and the transcoded
 hero (webm 2.9 MB, mp4 3.1 MB, poster 30 KB against the 15.6 MB
 original, which stays out of the repo).
+
+## 52. The audit gate: only a render can prove a render (2026-07-31 session)
+
+Policy after LOG entry 49. Every frontend change passes npm run audit
+before commit: an eslint sweep where no-undef and no-redeclare are
+zero-tolerance, and a jsdom render harness that client-mounts every
+route with effects executing, canned API payloads shaped like the real
+ones, and console-error capture that fails the run. Build success and
+unit tests are necessary, never sufficient, for UI changes. Scripted
+edits assert their replacement counts so silent no-ops cannot erase a
+feature again, and the first command after any git am is git log
+--oneline -1 to confirm the patch actually landed on the branch being
+inspected. The harness dependencies (eslint, jsdom, esbuild) are
+devDependencies only; nothing ships to production.

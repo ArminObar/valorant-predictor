@@ -1,7 +1,9 @@
 import React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useApi, fmtPct } from "../lib/useApi.js";
 import { fmtTime } from "../time.js";
+import { Tile, TugBar, FormDots } from "../components/bits.jsx";
+import { RatingChart } from "../components/RatingChart.jsx";
 import { Masthead } from "../components/Masthead.jsx";
 
 export function MatchDetail() {
@@ -31,10 +33,20 @@ export function MatchDetail() {
   const pred = data.prediction;
   return (
     <>
+      <Masthead eyebrow={src.event || "match"}
+        title={<>
+          {src.team1_name} <span className="mh-vs">vs</span> {src.team2_name}
+        </>}
+        stats={[{
+          value: `${(src.p_model >= 0.5 ? src.team1_name : src.team2_name)
+            .slice(0, 3).toUpperCase()} ${fmtPct(
+              src.p_model >= 0.5 ? src.p_model : 1 - src.p_model)}`,
+          label: src.frozen_at
+            ? `locked ${fmtTime(src.frozen_at)}` : "locked call",
+        }]} />
       <div className="panel">
         <button className="back" onClick={onBack}>&larr; back</button>
         <div className="card-top">
-          <span className="event">{src.event}</span>
           <span className="when">{fmtTime(src.start_ts)} &middot; Bo{src.best_of}</span>
         </div>
         <div className="teams big">

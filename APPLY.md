@@ -40,3 +40,24 @@ Results for the last three days, countdown chips ticking; Markets
 masthead reads "graded, ev unvalidated" until the gate passes; every
 integrity affordance from the preserve list is visible in the new
 skin.
+
+## Patch 0070 (audit repair, applies on the ten-patch tip)
+
+Your two uncommitted hand fixes are superseded by this patch: stash
+them first, and after the gates pass, drop the stash rather than pop
+it, because popping would re-impose the hand versions over the
+repaired files.
+
+```bash
+cd ~/Downloads/valorant-predictor
+git stash                      # hand fixes out of the way
+git am patches/0070-*.patch
+git log --oneline -1           # confirm the 0070 subject before anything else
+python -m pytest               # expect 174
+cd frontend && rm -rf node_modules && npm ci   # devDependencies changed
+npm test                       # expect 38
+npm run audit                  # expect 0 lint errors, all routes clean
+npm run build && cd ..
+git push
+git stash drop                 # hand fixes now redundant
+```

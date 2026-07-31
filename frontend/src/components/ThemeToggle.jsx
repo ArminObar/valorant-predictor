@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { applyTheme, readTheme, storeTheme } from "../theme.js";
+import React, { useEffect, useState } from "react";
+import { applyTheme, readTheme, resolveMode, storeTheme, themeStorage } from "../theme.js";
 
 export function ThemeToggle() {
   const [theme, setTheme] = useState(() => readTheme(themeStorage()));
