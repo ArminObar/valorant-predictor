@@ -1,9 +1,51 @@
 import React from "react";
+import { Link } from "react-router-dom";
+import { Masthead } from "../components/Masthead.jsx";
 
 export function HowItWorks() {
   return (
     <div className="how">
-      <div className="page-head"><h1>How it works</h1></div>
+      <Masthead eyebrow="from raw matches to a locked number"
+        title="How it works" />
+      <div className="how-cards">
+        <div className="how-card">
+          <span className="how-num mono">01</span>
+          <div>
+            <h3>Collect</h3>
+            <p>Every completed pro match is scraped from vlr.gg,
+              politely and once, into an append-only store.</p>
+          </div>
+        </div>
+        <div className="how-card">
+          <span className="how-num mono">02</span>
+          <div>
+            <h3>Rate</h3>
+            <p>Teams carry rolling ratings and map form computed only
+              from matches that finished before the one being rated.</p>
+          </div>
+        </div>
+        <div className="how-card">
+          <span className="how-num mono">03</span>
+          <div>
+            <h3>Predict</h3>
+            <p>A calibrated model turns the difference between two
+              teams into a win probability for every map and series.
+              The details live on the <Link className="linklike"
+              to="/model">model page</Link>.</p>
+          </div>
+        </div>
+        <div className="how-card">
+          <span className="how-num mono">04</span>
+          <div>
+            <h3>Lock and grade</h3>
+            <p>The first call freezes at least five minutes before
+              start and never changes; results grade it on the{" "}
+              <Link className="linklike" to="/scoreboard">
+              scoreboard</Link>.</p>
+          </div>
+        </div>
+      </div>
+      <h2 className="day-head">The full story</h2>
       <div className="panel">
         <div className="panel-title">The idea</div>
         <p>

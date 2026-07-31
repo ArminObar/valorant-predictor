@@ -231,7 +231,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
   font-size: 12.5px; font-weight: 400; line-height: 1.55;
   letter-spacing: 0; text-transform: none; text-align: left;
   z-index: 1000; box-shadow: 0 10px 26px rgba(0, 0, 0, .28); }
-.page-head h1 .infotip { margin-left: 10px; }
 .how .panel p { max-width: 68ch; line-height: 1.65; margin: 0 0 10px; }
 .how .panel p:last-child { margin-bottom: 0; }
 
@@ -434,3 +433,15 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 .elo-grid { display: grid;
   grid-template-columns: minmax(64px, 84px) minmax(40px, 1fr) 64px
     minmax(70px, 92px); gap: 8px; align-items: center; }
+/* ---- v2 how cards ---- */
+.how-cards { display: grid; gap: 10px; margin: 4px 0 8px; }
+.how-card { display: grid; grid-template-columns: 64px 1fr;
+  align-items: baseline; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px 20px; }
+.how-num { color: var(--a); font-size: 12px; letter-spacing: .18em; }
+.how-card h3 { font-family: "Space Grotesk", sans-serif;
+  font-weight: 600; font-size: 17px; margin: 0 0 4px; }
+.how-card p { color: var(--dim); font-size: 13px; margin: 0;
+  line-height: 1.55; }
+:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }

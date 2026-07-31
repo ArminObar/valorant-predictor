@@ -1762,3 +1762,22 @@ spec's short-month capitalized form, a deliberate daygroups test
 update. Patch 0062 is a pure mechanical module split with zero visual
 change so the seven restyle diffs stay reviewable; parity is proven by
 the untouched test suite and build.
+
+## 51. v2 parity audit at series close (2026-07-31 session)
+
+Checked against the prototype at the end of patch 0069, on record:
+every masthead stat is derived or absent (locked picks, live accuracy,
+correct picks, graded, bundle version, test accuracy, picks, avg EV
+behind the gate, simulated calls and retrains when the payload carries
+them); the preserved integrity affordances all render in the new skin
+(gate warning, skipped counters, book pills, consensus de-vig, CLV,
+low-history chip, amber simulated framing, the not-betting-advice
+lines on Home and the footer); scores use colons and the tree carries
+zero em or en dashes; reduced motion disables every animation and
+swaps the hero to its poster; the retired door, banner, and quiet-link
+styles are deleted. Known accepted deviations, all pre-approved in
+§50: real routing, viewport-fixed tooltips with tap and keyboard
+access, the corrected Markets tooltip line, the gated EV masthead, the
+full explainer retained under the four spec cards, and the transcoded
+hero (webm 2.9 MB, mp4 3.1 MB, poster 30 KB against the 15.6 MB
+original, which stays out of the repo).
