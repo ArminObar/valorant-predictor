@@ -2,6 +2,7 @@ import React from "react";
 import { useApi, fmtPct } from "../lib/useApi.js";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
 import { summarizeBacktestTiers } from "../backtestSummary.js";
+import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 
 export function Backtest() {
   const { data, err } = useApi("/api/backtest");
@@ -17,12 +18,16 @@ export function Backtest() {
   const tiers = Object.entries(data.per_tier || {});
   return (
     <div className="panel">
-      <TitleWithInfo title="Backtest: the system replayed over two years"
-        badge={<span className="badge" title={"Computed after the fact from "
-          + "stored data. You can't verify it the way you can the live "
-          + "scoreboard, which is why the two are kept apart."}>
-          simulated</span>}
-        info={TIPS.backtest} />
+      <Masthead eyebrow="simulated \u00b7 kept apart from the live record"
+        warn tip={MASTHEAD_TIPS.backtest} title="Backtest"
+        stats={[
+          ...(data.n_predictions
+            ? [{ value: data.n_predictions.toLocaleString(),
+                 label: "simulated calls", tone: "ink" }] : []),
+          ...(data.n_retrains
+            ? [{ value: String(data.n_retrains), label: "retrains",
+                 tone: "ink" }] : []),
+        ]} />
       <p className="note">
         Two years replayed, worst stretch included. {w.n_predictions} simulated
         predictions, {w.n_retrains} retrains,

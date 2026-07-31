@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { useApi, fmtPct } from "../lib/useApi.js";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
 import { buildRatingChart } from "../chart.js";
+import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 
 export function RecentResults() {
   const { data, err } = useApi("/api/results");
@@ -113,6 +114,11 @@ export function RecentResults() {
 
 
 export function ModelTab() {
+  const mvq = useApi("/api/model");
+  const rq = useApi("/api/results");
+  const mv = mvq.data && mvq.data.version;
+  const tacc = rq.data && rq.data.series && rq.data.series.model
+    && rq.data.series.model.accuracy;
   const { data, err } = useApi("/api/model");
   if (err) return <p className="empty">API unreachable.</p>;
   if (!data) return <p className="empty">Loading&hellip;</p>;
@@ -129,7 +135,14 @@ export function ModelTab() {
   ];
   return (
     <>
-    <RecentResults />
+    <Masthead eyebrow="the serving bundle" tip={MASTHEAD_TIPS.model}
+        title="Model"
+        stats={[
+          ...(mv ? [{ value: mv, label: "serving bundle", tone: "ink" }] : []),
+          ...(tacc != null
+            ? [{ value: fmtPct(tacc), label: "test accuracy" }] : []),
+        ]} />
+      <RecentResults />
     <div className="panel">
       <TitleWithInfo title="Model details (live bundle)" info={TIPS.model} />
       {data.synthetic_data && (

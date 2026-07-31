@@ -4,6 +4,7 @@ import { fmtTime } from "../time.js";
 import { groupByDay } from "../daygroups.js";
 import { DayRow } from "../components/daybits.jsx";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
+import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 
 export function MarketPicks({ standalone = false }) {
   const { data, err } = useApi("/api/markets");
@@ -12,6 +13,12 @@ export function MarketPicks({ standalone = false }) {
   if (!data) return standalone
     ? <p className="empty">Loading&hellip;</p> : null;
   const gate = data.gate || {};
+  const evStat = gate.ev_validated
+    ? { value: (data.summary && data.summary.avg_ev_pct != null)
+        ? `${data.summary.avg_ev_pct >= 0 ? "+" : ""}${data.summary.avg_ev_pct.toFixed(1)}%`
+        : "n/a", label: "avg ev" }
+    : { value: `${gate.n_graded ?? 0}/${gate.required ?? "?"}`,
+        label: "graded \u00b7 ev unvalidated", tone: "ink" };
   const s = data.summary;
   const picks = data.picks || [];
   return (
