@@ -5,7 +5,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fmtTime, parseUtc } from "../src/time.js";
+import { fmtCountdown, fmtTime, parseUtc } from "../src/time.js";
 
 // The live-site bug case: RRQ vs ZETA, true start 2026-07-24 08:00 UTC.
 const RRQ_ZETA_UTC = "2026-07-24T08:00:00+00:00";
@@ -46,4 +46,14 @@ test("a naive ISO string is treated as UTC, never viewer-local", () => {
 test("missing timestamps render as a dash, not 'Invalid Date'", () => {
   assert.equal(fmtTime(null), "n/a");
   assert.equal(fmtTime("not-a-date"), "n/a");
+});
+
+
+test("fmtCountdown ladders through starting, minutes, hours, days", () => {
+  const now = Date.parse("2026-07-31T12:00:00+00:00");
+  assert.equal(fmtCountdown("2026-07-31T12:03:00+00:00", now), "starting");
+  assert.equal(fmtCountdown("2026-07-31T12:42:00+00:00", now), "in 42m");
+  assert.equal(fmtCountdown("2026-07-31T14:05:00+00:00", now), "in 2h 05m");
+  assert.equal(fmtCountdown("2026-08-02T15:00:00+00:00", now), "in 2d 3h");
+  assert.equal(fmtCountdown("2026-07-31T11:00:00+00:00", now), null);
 });

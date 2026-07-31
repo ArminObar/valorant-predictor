@@ -361,3 +361,64 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
   *, *::before, *::after { animation: none !important;
     transition: none !important; }
 }
+
+/* ---- v2 schedule cards ---- */
+.sched-card { display: flex; flex-wrap: wrap; align-items: center;
+  gap: 14px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 20px 24px; margin-bottom: 10px; }
+.sched-card:hover { background: var(--panel2); }
+.sched-status { order: 1; display: flex; flex-direction: column;
+  gap: 5px; min-width: 74px; }
+.sched-time { font-family: "Space Grotesk", sans-serif; font-weight: 600;
+  font-size: 15px; font-variant-numeric: tabular-nums; }
+.sched-chip { align-self: flex-start; font-family: "IBM Plex Mono",
+  monospace; font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .1em; background: var(--chip); border-radius: 4px;
+  padding: 2px 7px; color: var(--dim); }
+.sched-chip.soon { background: color-mix(in srgb, var(--a) 12%,
+  transparent); color: var(--a); }
+.sched-chip.live { background: color-mix(in srgb, var(--b) 14%,
+  transparent); color: var(--b); animation: vpPulse 1.6s ease infinite; }
+.sched-pred { order: 2; margin-left: auto; display: flex;
+  flex-direction: column; align-items: flex-end; gap: 7px; }
+.sched-pill { font-family: "Space Grotesk", sans-serif; font-weight: 700;
+  font-size: 13px; border-radius: 6px; padding: 4px 12px; }
+.sched-pill.teal { color: var(--a);
+  background: color-mix(in srgb, var(--a) 13%, transparent); }
+.sched-pill.ember { color: var(--b);
+  background: color-mix(in srgb, var(--b) 13%, transparent); }
+.sched-bar { width: 120px; height: 4px; border-radius: 2px;
+  background: color-mix(in srgb, var(--b) 50%, transparent);
+  overflow: hidden; display: block; }
+.sched-bar span { display: block; height: 100%; background: var(--a); }
+.sched-teams { order: 3; flex: 1 1 420px;
+  min-width: min(100%, 240px); }
+.sched-row { display: flex; align-items: center; gap: 10px;
+  justify-content: center; }
+.sched-name { font-family: "Space Grotesk", sans-serif; font-weight: 600;
+  font-size: 16.5px; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sched-name.left { text-align: right; }
+.sched-name.right { text-align: left; }
+.sched-name.left.fav { color: var(--a); }
+.sched-name.right.fav { color: var(--b); }
+.sched-name.lost { color: var(--dim); }
+.sched-tile { width: 36px; height: 36px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: "Space Grotesk", sans-serif; font-weight: 700;
+  font-size: 11px; flex: none; }
+.sched-tile.left { color: var(--a);
+  background: color-mix(in srgb, var(--a) 16%, transparent); }
+.sched-tile.right { color: var(--b);
+  background: color-mix(in srgb, var(--b) 16%, transparent); }
+.sched-vs { width: 34px; height: 24px; display: inline-flex;
+  align-items: center; justify-content: center; background: var(--chip);
+  border-radius: 4px; font-family: "IBM Plex Mono", monospace;
+  font-size: 10px; color: var(--dim); flex: none; }
+.sched-score { font-weight: 700; font-size: 15px;
+  font-variant-numeric: tabular-nums; flex: none; }
+.sched-event { text-align: center; margin-top: 7px; font-size: 9.5px;
+  text-transform: uppercase; letter-spacing: .12em; color: var(--dim); }
+.sched-lowhist { margin-left: 8px; border: 1px solid
+  color-mix(in srgb, var(--warn) 55%, transparent); color: var(--warn);
+  border-radius: 4px; padding: 1px 6px; cursor: help; }

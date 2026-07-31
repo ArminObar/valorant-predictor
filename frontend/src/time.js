@@ -30,3 +30,16 @@ export function fmtTime(iso, opts = {}) {
     ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
   });
 }
+
+export function fmtCountdown(iso, nowMs = Date.now()) {
+  const d = parseUtc(iso);
+  if (!d) return null;
+  const s = Math.floor((d.getTime() - nowMs) / 1000);
+  if (s <= 0) return null;
+  if (s <= 5 * 60) return "starting";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `in ${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `in ${h}h ${String(m % 60).padStart(2, "0")}m`;
+  return `in ${Math.floor(h / 24)}d ${h % 24}h`;
+}
