@@ -1739,3 +1739,26 @@ scroll, which removes the whole class of stacking and clipping fights
 navigation as the sixth door with the same treatment as the five data
 sections, superseding §44's quieter secondary link, which is removed
 as redundant; the footer link stays.
+
+## 50. The v2 redesign series, decisions pre-registered before the first restyle patch (2026-07-31 session)
+
+Owner-approved calls for patches 0062-0069, on record before the work:
+real routing stays and the spec's screens map onto existing URLs;
+tooltips keep the viewport-fixed mechanics and tap plus keyboard access
+under the spec's visual skin; the spec's Markets tooltip sentence is
+corrected because picks list regardless of EV sign; the Markets
+masthead EV stat shows gate status while unvalidated; the How page
+takes the spec's four cards on top and keeps the full explainer below;
+theme flips to light-by-default under the new vpredict-theme-v2 key
+with Home fixed dark; the hero video ships transcoded (webm plus mp4
+fallback plus poster) rather than the 15.6 MB original, with
+reduced-motion and Save-Data falling back to the poster; the landing
+doors and the footer how link retire because the six-tab nav and the
+hero link cover discovery; every prototype number is a placeholder by
+the spec's own fidelity note and every stat wires to derived strings.
+Schedule folds in graded results from the last three viewer-local
+days, newest first, below the upcoming groups; day labels move to the
+spec's short-month capitalized form, a deliberate daygroups test
+update. Patch 0062 is a pure mechanical module split with zero visual
+change so the seven restyle diffs stay reviewable; parity is proven by
+the untouched test suite and build.
