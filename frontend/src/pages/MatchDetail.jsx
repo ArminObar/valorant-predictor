@@ -2,6 +2,7 @@ import React from "react";
 import { useParams, Link } from "react-router-dom";
 import { useApi, fmtPct } from "../lib/useApi.js";
 import { fmtTime } from "../time.js";
+import { Masthead } from "../components/Masthead.jsx";
 
 export function MatchDetail() {
   const { id } = useParams();

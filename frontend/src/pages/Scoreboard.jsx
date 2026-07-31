@@ -5,10 +5,12 @@ import { groupByDay } from "../daygroups.js";
 import { DaySep, DayRow } from "../components/daybits.jsx";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
 import { MarketPicks } from "./MarketPicks.jsx";
+import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 
 export function Scoreboard({ onOpen }) {
   const { data, err } = useApi("/api/scoreboard");
   if (err) return <p className="empty">API unreachable.</p>;
+  const s2 = (data && data.summary) || {};
   if (!data) return <p className="empty">Loading&hellip;</p>;
   const s = data.summary;
   return (
