@@ -79,7 +79,7 @@ export function Landing() {
   }, [still]);
 
   return (
-    <div className="home">
+    <main className="home">
       <div className="home-media" ref={wrapRef} aria-hidden="true">
         {still ? (
           <div className="home-poster" />
@@ -104,8 +104,7 @@ export function Landing() {
         <h1 className="home-wordmark rise" style={{ "--d": ".35s" }}>
           <span className="home-v">v</span>predict
         </h1>
-        <div className="home-bar rise" style={{ "--d": ".75s" }}
-          aria-hidden="true">
+        <div className="home-bar" aria-hidden="true">
           <span className="home-bar-a" /><span className="home-bar-b" />
         </div>
         <p className="home-slogan rise" style={{ "--d": ".9s" }}>
@@ -129,6 +128,6 @@ export function Landing() {
         data vlr.gg &middot; not affiliated with riot games &middot; not
         betting advice
       </p>
-    </div>
+    </main>
   );
 }

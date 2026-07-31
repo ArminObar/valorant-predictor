@@ -1795,3 +1795,63 @@ feature again, and the first command after any git am is git log
 --oneline -1 to confirm the patch actually landed on the branch being
 inspected. The harness dependencies (eslint, jsdom, esbuild) are
 devDependencies only; nothing ships to production.
+
+## 53. Visual fidelity repair after the owner's prototype re-check (2026-07-31 session)
+
+The owner compared the live site against the v2 design zip after the
+crash-fix series and found it drifted. The audit behind this section
+confirmed three real gaps, all corrected in patch 0071; the reasoning
+for each call follows.
+
+**The interior palette was never actually swapped.** Patches 0062-0069
+restyled every component onto the token blocks left behind by the
+earlier rft.gg-flavored pass; the ivory-paper light and warm-charcoal
+dark defined in the handoff (and present verbatim in the prototype
+HTML) never landed. §51 recorded a parity audit, but token values were
+not on its checklist, so the claim was true of structure and strings
+and silently false of color. The blocks now carry the spec palettes
+exactly. The `prefers-color-scheme` block and the redundant
+`data-vpt="light"` block are deleted: `theme.js` stamps the attribute
+before first render, light is the spec default, so the raw default and
+the stored default are now the same thing. `color-scheme` follows the
+active tokens so form controls and scrollbars match.
+
+**Home leaves the interior shell.** The spec's landing is a
+full-viewport dark world with no interior chrome; the implementation
+had mounted it inside `main.wrap`, which boxed the hero to ~1072px on
+a light page under a light topbar. App.jsx now splits at the route
+level: `/` renders Landing alone, every other route renders inside a
+`Shell` layout route (topbar, column, footer). This supersedes §50's
+"six-tab nav covers discovery" rationale *for the home surface only*:
+home discovery is the two CTAs, the how link, and the next-up strip,
+exactly as the prototype has it; interiors keep all six tabs. The
+topbar brand also gains the spec's 18px wordmark next to a 20px mark
+(it had shipped mark-only).
+
+**Smaller spec alignments, one patch, all from the prototype's own
+inline values:** columns 1000px (schedule) / 1040px (others) with
+`clamp(14px,4vw,40px)` gutters, footer realigned to the same column
+math; content panels `var(--line2)` at 10px radius with clickable
+cards keeping `var(--line)` (both radii per prototype); clickable
+hover reduced to the spec's panel2 background only; accent tints to
+the token sheet (pills 13%, chips 12%, tug track 50%); masthead joins
+the .35s page rise; tooltip card takes the spec skin (Plex Sans,
+`width: min(280px,74vw)`, `var(--line)` border, the soft ivory
+shadow) while keeping §50's viewport-fixed mechanics; info button to
+the 15px circle; theme toggle to the 999px pill with the prototype's
+5x12 padding; the home divider bar gets its 2px radius and scaleX
+draw-in. The bar drops its `rise` class deliberately: rise and vpBar
+both animate `transform`, CSS animations do not compose per property,
+and the prototype gives the bar only the draw.
+
+**The hero ships at a stated quality floor, not just a size ceiling.**
+§50 approved a transcode with no target; the result (720p at under
+1 Mbps, a 30 KB poster) is what the owner saw. New floor, recorded
+here and in APPLY: 1080p from the design original, x264 CRF 20 capped
+at 4M maxrate for the mp4, VP9 CRF 32 for the webm, poster extracted
+at `-q:v 3` (~JPEG 85). The 15.6 MB original still stays out of git
+(§51); the owner regenerates the three public/ assets locally from
+the design zip and commits them alongside the patch. Roughly 20 MB of
+repo binaries is the accepted cost of the hero looking like the
+design on a retina display; the poster remains mandatory as the
+reduced-motion, Save-Data, and pre-play fallback.

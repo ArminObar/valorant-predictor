@@ -1432,3 +1432,41 @@ and a str.replace that finds no match reports nothing. Every gate we
 ran was blind to this class. The new audit gate exists because only
 an actual render can see it, and scripted edits now assert their
 match counts so a no-op edit fails loudly instead of vanishing.
+
+## Entry 50: The restyle that repainted every component except the paint (2026-07-31 session)
+
+**Symptom.** After the v2 series and the audit repair, the owner put
+the live site next to the design prototype: interiors rendered as a
+cool slate-and-white stats site instead of ivory paper, the landing
+hero sat boxed inside the interior shell under a light topbar, and
+the hero background looked visibly soft.
+
+**Cause.** Three independent misses. (1) Patches 0062-0069 built the
+v2 components on top of the pre-v2 rft.gg token blocks; the palette
+swap itself was never made, so every var() resolved to the old
+world's colors. (2) Landing was mounted inside the shared shell's
+`main.wrap`, constraining the "full-viewport" home to a ~1072px card
+with chrome above and below. (3) The §50 hero transcode fixed a size
+ceiling and no quality floor; the encode landed at 720p under 1 Mbps
+with a 30 KB q~60 poster, upscaled ~1.8x on retina. Playback itself
+was never broken: markup and autoplay handling were correct, so the
+degraded look was the assets, not a poster fallback.
+
+**Fix.** Patch 0071: spec ivory/warm-charcoal token blocks with light
+default, route-level layout split putting Home outside the shell,
+topbar wordmark, column widths and gutters, card border/radius split,
+tint percentages, masthead rise, tooltip and toggle skin, bar
+draw-in. Plus an APPLY runbook step regenerating the three hero
+assets from the design original at the new stated floor (ASSUMPTIONS
+§53).
+
+**Why testing missed it.** Every gate proves renders, not
+appearance. eslint, node --test, the jsdom render audit, and the
+vite build all pass identically under either palette, either
+composition, and any bitrate; token values and layout framing are
+invisible to them by construction. §51's parity audit checked
+structure, derived strings, and glyph rules, and assumed color rode
+along with "the new skin"; nothing in any gate has ever compared a
+pixel against the prototype. The owner's side-by-side was the first
+visual diff the project ran, which is also why it is now explicitly
+requested at the close of any restyle series.
