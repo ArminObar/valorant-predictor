@@ -257,19 +257,52 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 .how .panel p { max-width: 68ch; line-height: 1.65; margin: 0 0 10px; }
 .how .panel p:last-child { margin-bottom: 0; }
 
-/* ---- day banners (chronological structure, lolesports-style) ---- */
-.day-sep { display: flex; align-items: center; margin: 26px 0 12px;
-  padding: 10px 14px; background: var(--panel2);
-  border: 1px solid var(--line2); border-radius: 6px;
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 13px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--text); }
-.day-sep.today { border-left: 3px solid var(--a); color: var(--a); }
-.day-sep:first-of-type { margin-top: 8px; }
-.day-row td { padding: 12px 14px; background: var(--panel2);
-  color: var(--text);
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 12px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; border-top: 1px solid var(--line2); }
-.day-row.today td { color: var(--a);
-  box-shadow: inset 3px 0 0 var(--a); }
+/* ---- v2 day headings ---- */
+.day-head { font-family: "Space Grotesk", sans-serif; font-weight: 600;
+  font-size: 21px; margin: 26px 0 10px; padding-top: 4px;
+  letter-spacing: -.01em; }
+.day-head:first-of-type { margin-top: 10px; }
+.day-row td { padding: 18px 8px 6px; background: transparent;
+  color: var(--text); font-family: "Space Grotesk", sans-serif;
+  font-weight: 600; font-size: 17px; border-top: 0; }
+
+/* ---- v2 interior shell ---- */
+.topbar { position: sticky; top: 0; z-index: 60; height: 64px;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: 0 clamp(14px, 3vw, 28px); }
+.topbar .brand { display: flex; align-items: center; gap: 8px;
+  margin-right: 14px; text-decoration: none; color: var(--text); }
+.tabrow { display: flex; overflow-x: auto; scrollbar-width: none;
+  align-self: stretch; }
+.tabrow::-webkit-scrollbar { display: none; }
+.tab { display: flex; align-items: center; height: 64px;
+  padding: 0 13px; white-space: nowrap; text-decoration: none;
+  color: var(--dim); font-family: "Space Grotesk", sans-serif;
+  font-weight: 600; font-size: 11.5px; letter-spacing: .14em;
+  text-transform: uppercase; border-bottom: 2px solid transparent; }
+.tab.active, .tab[aria-current] { color: var(--text);
+  border-bottom-color: var(--a); }
+.theme-pill { margin-left: auto; }
+/* ---- v2 masthead ---- */
+.masthead { padding: 26px 2px 24px; border-bottom: 1px solid var(--line);
+  margin-bottom: 14px; }
+.mh-eyebrow-row { display: flex; align-items: center; gap: 6px; }
+.mh-eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  text-transform: uppercase; letter-spacing: .18em; color: var(--a); }
+.mh-eyebrow.warn { color: var(--warn); }
+.mh-main { display: flex; align-items: flex-end; gap: 26px;
+  flex-wrap: wrap; }
+.mh-title { font-family: "Space Grotesk", sans-serif; font-weight: 600;
+  font-size: clamp(32px, 6.5vw, 46px); letter-spacing: -.02em;
+  margin: 6px 0 0; flex: 1 1 auto; }
+.mh-stats { display: flex; gap: 26px; }
+.mh-stat { display: flex; flex-direction: column; gap: 2px;
+  border-left: 1px solid var(--line); padding-left: 22px; }
+.mh-val { font-family: "Space Grotesk", sans-serif; font-weight: 600;
+  font-size: 24px; color: var(--a); }
+.mh-val.ink { color: var(--text); }
+.mh-label { font-family: "IBM Plex Mono", monospace; font-size: 9.5px;
+  text-transform: uppercase; letter-spacing: .14em; color: var(--dim); }
+.mh-sub { color: var(--dim); font-size: 13px; margin: 10px 0 0; }
+.i-btn { cursor: help; }

@@ -35,17 +35,17 @@ export function dayLabel(iso, opts = {}) {
   if (!d) return "unscheduled";
   const now = opts.now ? parseUtc(opts.now) : new Date();
   const base = d.toLocaleDateString(opts.locale, {
-    weekday: "long", month: "long", day: "numeric",
+    weekday: "long", month: "short", day: "numeric",
     ...(yearOf(d, opts) !== yearOf(now, opts) ? { year: "numeric" } : {}),
     ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
   });
   const k = dayKey(iso, opts);
   const DAY = 24 * 3600 * 1000;
-  const rel = k === dayKey(now.toISOString(), opts) ? "today"
+  const rel = k === dayKey(now.toISOString(), opts) ? "Today"
     : k === dayKey(new Date(now.getTime() + DAY).toISOString(), opts)
-      ? "tomorrow"
+      ? "Tomorrow"
       : k === dayKey(new Date(now.getTime() - DAY).toISOString(), opts)
-        ? "yesterday" : null;
+        ? "Yesterday" : null;
   return rel ? `${rel} \u00b7 ${base}` : base;
 }
 
