@@ -1,16 +1,16 @@
 /* Theme persistence and application, kept free of React and the DOM so
    node --test can exercise the whole contract with fakes. The storage
    argument may be null or a throwing object (Safari private windows);
-   every path degrades to "system" without throwing. */
+   every path degrades to "light" without throwing (v2: light is the default). */
 
-export const THEME_KEY = "vpredict-theme";
+export const THEME_KEY = "vpredict-theme-v2";
 
 export function readTheme(storage) {
   try {
     const v = storage.getItem(THEME_KEY);
-    return v === "light" || v === "dark" ? v : "system";
+    return v === "light" || v === "dark" ? v : "light";
   } catch (e) {
-    return "system";
+    return "light";
   }
 }
 
@@ -24,12 +24,11 @@ export function storeTheme(storage, theme) {
 }
 
 export function resolveMode(theme, systemLight) {
-  return theme === "system" ? (systemLight ? "light" : "dark") : theme;
+  return theme === "system" ? ("light") : theme;
 }
 
 export function applyTheme(doc, theme) {
-  if (theme === "system") doc.body.removeAttribute("data-vpt");
-  else doc.body.setAttribute("data-vpt", theme);
+  doc.body.setAttribute("data-vpt", theme === "dark" ? "dark" : "light");
 }
 
 /* Called from main.jsx before the first render so a stored choice paints

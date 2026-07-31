@@ -6,7 +6,7 @@ import { initTheme } from "./theme.js";
 import "./index.css";
 
 /* Apply the stored theme before anything renders, so a saved "light"
-   choice on a dark-system machine does not flash dark on every load.
+   light-by-default v2 theme applies before first paint, no flash.
    localStorage access itself can throw in locked-down contexts. */
 let themeStorage = null;
 try { themeStorage = window.localStorage; } catch (e) { themeStorage = null; }

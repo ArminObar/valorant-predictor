@@ -14,7 +14,7 @@ export function ThemeToggle() {
   };
   return (
     <button className="theme-btn" onClick={toggle} title="switch theme">
-      <span className={`theme-dot ${mode}`} />{theme === "system" ? "auto" : theme}
+      <span className={`theme-dot ${mode}`} />{theme === "dark" ? "light" : "dark"}
     </button>
   );
 }
