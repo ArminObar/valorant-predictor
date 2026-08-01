@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useApi, fmtPct } from "../lib/useApi.js";
+import { useApi, favored } from "../lib/useApi.js";
 import { fmtTime } from "../time.js";
 
 /* v2 Home: its own fixed dark world, unaffected by the theme toggle
@@ -23,8 +23,7 @@ function NextUp() {
   const { data } = useApi("/api/upcoming");
   const m = data && data.predictions && data.predictions[0];
   if (!m) return null;
-  const fav = m.p_model >= 0.5 ? m.team1_name : m.team2_name;
-  const pct = m.p_model >= 0.5 ? m.p_model : 1 - m.p_model;
+  const fav = favored(m.p_model, m.team1_name, m.team2_name);
   return (
     <button type="button" className="home-next rise" style={{ "--d": "1.45s" }}
       onClick={() => nav(`/match/${m.match_id}`)}>
@@ -34,7 +33,7 @@ function NextUp() {
         {m.team1_name} vs {m.team2_name}
       </span>
       <span className="mono dim2">{fmtTime(m.start_ts)}</span>
-      <span className="home-next-pct">{fmtPct(pct)} {fav}</span>
+      <span className="home-next-pct">{fav.pct} {fav.name}</span>
     </button>
   );
 }

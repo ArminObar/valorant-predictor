@@ -205,11 +205,17 @@ class Ledger:
         return filled
 
     # ---------------------------------------------------------------- reads
-    def rows(self, graded: bool | None = None, limit: int = 300) -> list[dict]:
+    def rows(self, graded: bool | None = None, limit: int = 300,
+             ascending: bool = False) -> list[dict]:
+        """Ordering decides who survives the LIMIT, so it must match the
+        list's purpose: graded lists want the newest results (DESC, the
+        default), a pending list wants the matches about to start (ASC).
+        The audit found the pending endpoint using DESC, which silently
+        dropped exactly the soonest matches once pending passed the cap."""
         q = "SELECT * FROM predictions"
         if graded is not None:
             q += f" WHERE graded = {1 if graded else 0}"
-        q += " ORDER BY start_ts DESC LIMIT ?"
+        q += f" ORDER BY start_ts {'ASC' if ascending else 'DESC'} LIMIT ?"
         return [dict(r) for r in self._con.execute(q, (limit,))]
 
     def summary(self) -> dict:

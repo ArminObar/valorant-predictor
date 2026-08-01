@@ -1526,3 +1526,89 @@ existed, none of which could see the thing being fixed. The audit
 suite now contains one gate that renders pixels for exactly this
 class, with exact per-route icon counts so selector rot cannot
 green-wash it.
+
+## Entry 52: The fixture asserted the world we wished for (2026-08-01 session)
+
+**Symptom.** The Schedule masthead's "live accuracy" stat has never
+rendered in production, for anyone, since the v2 split. Nothing errored;
+the stat was simply absent, gated behind a null.
+
+**Cause.** `Upcoming.jsx` read `summary.model_accuracy` — a key the API
+has never emitted (`ledger.summary()` returns `model.accuracy`).
+`Scoreboard.jsx` carried a `model_accuracy ?? model.accuracy` fallback
+chain from the same schema migration; Upcoming kept only the dead
+pre-migration key. The render audit passed throughout because its canned
+scoreboard payload contained `model_accuracy: 0.6875` — a field invented
+by the fixture, never produced by any serializer. The gate rendered the
+wished-for world and called it clean.
+
+**Fix.** Patch 0073. One schema everywhere: `summary.model.accuracy`,
+legacy fallback removed from Scoreboard too. The phantom key is deleted
+from `scripts-audit/payloads.mjs`, and the `/api/match/m1` fixture is
+corrected to the real serializer shape at the same time — it had been
+flat fields the page never reads, so every prior render audit of the
+match route exercised only the "No record for this match" fallback. With
+the real shape, the match page's actual panels render under audit.
+
+**Why testing missed it.** Fixture drift is invisible to every gate that
+consumes only fixtures. The render audit proves components survive a
+payload; it cannot prove the payload resembles production. The seed
+snapshot run through the real API is what caught it — the audit script
+asked the real `summary` whether the key exists.
+
+## Entry 53: ORDER BY DESC chose exactly the wrong survivors (2026-08-01 session)
+
+**Symptom.** Latent in production, demonstrated on the seed snapshot:
+with 103 pending predictions, the three matches nearest to starting were
+absent from the Scoreboard's pending panel while showing normally on the
+Schedule. Past 100 pending, the pending list silently loses the matches
+about to play — the only pending rows anyone cares about.
+
+**Cause.** `Ledger.rows()` orders `start_ts DESC` unconditionally — the
+right order for graded lists (newest results first) and exactly the
+wrong order for a LIMIT-capped pending list, where DESC keeps the far
+future and cuts the soonest. The Scoreboard masthead's "graded" count
+came from `len()` of the capped graded list, so at >300 graded the same
+page would have shown two different totals.
+
+**Fix.** Patch 0073. `rows()` gains an `ascending` option; the pending
+endpoint serves soonest-first at cap 500, so any forced cut drops the
+far future. Every displayed count now sources from the uncapped
+`summary` (masthead graded count, pending panel title), with a "showing
+the N soonest" note if the cap is ever reached. Regression: 505 pending
+rows against the cap must yield the 500 soonest, soonest first, with the
+five cut rows being exactly the furthest out.
+
+**Why testing missed it.** No test ever created more rows than a cap,
+and the UI's counts were computed from the same capped lists they
+described — the numbers agreed with each other while both were wrong.
+The audit caught it only because the seed snapshot happened to hold 103
+pending rows against a cap of 100.
+
+## Entry 54: Copy that described a different pipeline (2026-08-01 session)
+
+**Symptom.** Four display statements were each subtly false or
+unanchored: the Schedule claimed "Model X" over picks frozen under other
+versions; the pending row said "model 37.7%" naming no team; the Markets
+note said flagged picks sit outside "these averages" though win rate
+includes them; and two different numbers on the Markets page were both
+labeled "graded."
+
+**Cause.** Copy written positionally or before semantics settled. The
+predictions header version describes the bundle that last wrote the
+file, not the frozen rows under it; win rate is computed over all graded
+picks while only EV/CLV exclude flagged ones; the gate counts EV-clean
+picks only.
+
+**Fix.** Patch 0073. Schedule: "Serving bundle X; each pick keeps the
+version it froze under," and the match page shows each pick's own frozen
+`model_version` on the locked line. Pending rows show the favored team
+through the shared helper — the identical string the Schedule card
+shows. Markets: "Win rate covers every graded pick; the EV and CLV
+averages exclude flagged picks," and the gate count is labeled EV-clean
+with a note that it can trail the graded total.
+
+**Why testing missed it.** Prose accuracy is not machine-checkable; the
+render gate paints wrong sentences as happily as right ones. The only
+defense is the audit habit: read every number's label against the code
+that computes it.

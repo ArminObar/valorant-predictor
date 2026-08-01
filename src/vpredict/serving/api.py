@@ -170,7 +170,13 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         try:
             return {"summary": led.summary(),
                     "graded": led.rows(graded=True, limit=300),
-                    "pending": led.rows(graded=False, limit=100)}
+                    # Soonest-first, generous cap: if a cut must ever happen
+                    # it drops the far future, never the next match to play
+                    # (the old DESC/100 pair dropped exactly the soonest —
+                    # LOG entry 53). Counts always come from summary, which
+                    # is uncapped, never from len() of these lists.
+                    "pending": led.rows(graded=False, limit=500,
+                                        ascending=True)}
         finally:
             led.close()
 

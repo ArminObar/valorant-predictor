@@ -1,6 +1,6 @@
 import React from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { useApi, fmtPct } from "../lib/useApi.js";
+import { useApi, fmtPct, fmtPctOpp, favored, fmtSigned } from "../lib/useApi.js";
 import { fmtTime } from "../time.js";
 import { Tile, TugBar, FormDots } from "../components/bits.jsx";
 import { RatingChart } from "../components/RatingChart.jsx";
@@ -37,13 +37,14 @@ export function MatchDetail() {
         title={<>
           {src.team1_name} <span className="mh-vs">vs</span> {src.team2_name}
         </>}
-        stats={[{
-          value: `${(src.p_model >= 0.5 ? src.team1_name : src.team2_name)
-            .slice(0, 3).toUpperCase()} ${fmtPct(
-              src.p_model >= 0.5 ? src.p_model : 1 - src.p_model)}`,
+        stats={[(() => {
+          const fav = favored(src.p_model, src.team1_name, src.team2_name);
+          return {
+          value: `${fav.name.slice(0, 3).toUpperCase()} ${fav.pct}`,
           label: src.frozen_at
             ? `locked ${fmtTime(src.frozen_at)}` : "locked call",
-        }]} />
+          };
+        })()]} />
       <div className="panel">
         <button className="back" onClick={onBack}>&larr; back</button>
         <div className="card-top">
@@ -61,13 +62,16 @@ export function MatchDetail() {
           <span className="num a">{fmtPct(p)}</span>
           <span className="mid">
             locked {data.ledger ? fmtTime(data.ledger.made_at) : "pre-match"}
+            {data.ledger && data.ledger.model_version && (
+              <span className="dim"> &middot; model {data.ledger.model_version}</span>
+            )}
             {" "}&middot; Elo {fmtPct(src.p_elo)}
             {Boolean(src.low_history) && (
               <span className="badge" title={"Almost no history when this "
                 + "locked. Kept in the record, not scored."}>low history</span>
             )}
           </span>
-          <span className="num b">{fmtPct(1 - p)}</span>
+          <span className="num b">{fmtPctOpp(p)}</span>
         </div>
         {placeholder && (
           <p className="warn" style={{ margin: "12px 0 0" }}>
@@ -172,7 +176,7 @@ export function MatchDetail() {
                   <td className={`num ${k.ev_excluded ? "dim"
                       : k.ev_pct >= 0 ? "ok" : "miss"}`}>
                     {k.ev_excluded ? "excluded"
-                      : `${k.ev_pct > 0 ? "+" : ""}${k.ev_pct}%`}</td>
+                      : fmtSigned(k.ev_pct)}</td>
                 </tr>
               ))}
             </tbody>

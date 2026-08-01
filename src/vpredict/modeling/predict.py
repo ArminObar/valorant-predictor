@@ -195,6 +195,28 @@ def predict_upcoming(bundle: dict, history, upcoming: list[Match],
             for um in upcoming]
 
 
+def _names_for_row(row: dict, um: Match) -> tuple[str, str, str]:
+    """Current listing names mapped onto the FROZEN row's team order by key.
+
+    The published payload shows the listing's names (reschedules and resolved
+    TBDs must display) beside the ledger's probability, which is oriented to
+    the ledger's team1. Pairing them positionally assumes the listing never
+    swaps display order after the freeze — an assumption nothing enforced.
+    Matching by key removes the assumption: a swapped listing swaps the
+    names, an unmatchable listing (renamed key) falls back to the frozen
+    names, and the probability's orientation can never be miscaptioned.
+    Returns (team1_name, team2_name, status) with status in
+    {"aligned", "swapped", "unmatched"}."""
+    k1, k2 = str(row["team1"]), str(row["team2"])
+    u1, u2 = str(um.key_team("team1")), str(um.key_team("team2"))
+    if (u1, u2) == (k1, k2):
+        return um.team1_name, um.team2_name, "aligned"
+    if (u1, u2) == (k2, k1):
+        return um.team2_name, um.team1_name, "swapped"
+    return (row.get("team1_name") or um.team1_name,
+            row.get("team2_name") or um.team2_name, "unmatched")
+
+
 def run_predictions(bundle: dict, history, upcoming: list[Match],
                     ledger, now: datetime | None = None,
                     json_path=None) -> dict:
@@ -216,7 +238,8 @@ def run_predictions(bundle: dict, history, upcoming: list[Match],
     playable = [um for um in upcoming
                 if um.key_team("team1") != um.key_team("team2")]
     counters = {"inserted": 0, "frozen": 0, "too_late": 0,
-                "skipped_placeholder": len(upcoming) - len(playable)}
+                "skipped_placeholder": len(upcoming) - len(playable),
+                "names_swapped": 0, "names_unmatched": 0}
 
     frozen_rows = {str(r["match_id"]): r
                    for r in ledger.rows(graded=None, limit=100000)}
@@ -288,14 +311,21 @@ def run_predictions(bundle: dict, history, upcoming: list[Match],
                 maps_dist = json.loads(maps_dist)
             except ValueError:
                 maps_dist = None
+        # Schedule and naming come from the CURRENT listing: reschedules
+        # and resolved TBDs must display, and are metadata (§15) — but the
+        # names are mapped onto the frozen row's team order by key (§55),
+        # never trusted positionally.
+        n1, n2, align = _names_for_row(row, um)
+        if align != "aligned":
+            counters[f"names_{align}"] += 1
+            log.warning("match %s: listing team order %s vs frozen row",
+                        um.match_id, align)
         published.append({
-            # Schedule and naming come from the CURRENT listing: reschedules
-            # and resolved TBDs must display, and are metadata (§15).
             "match_id": um.match_id,
             "start_ts": um.start_ts.isoformat(),
             "event": um.event, "series": um.series, "best_of": um.best_of,
             "team1": row["team1"], "team2": row["team2"],
-            "team1_name": um.team1_name, "team2_name": um.team2_name,
+            "team1_name": n1, "team2_name": n2,
             # The call itself comes from the LEDGER, verbatim.
             "p_model": row["p_model"], "p_elo": row["p_elo"],
             "low_history": bool(row["low_history"]),

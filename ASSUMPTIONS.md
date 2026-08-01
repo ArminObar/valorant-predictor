@@ -1910,3 +1910,70 @@ under audit.
 report is a display-semantics call (the scoreboard's unlabeled
 team1-oriented column) and waits for the owner's confirmation against
 the live payloads before anything changes.
+
+## 55. The display-consistency sweep: one formatting home, key-matched names, and what deliberately did not change (patch 0073)
+
+**One home for percentage strings.** `frontend/src/lib/prob.js` now owns
+every probability/percent string the UI shows; `useApi.js` re-exports so
+import paths survive. The complement is computed as the server computes
+it — `round(1 − p, 4)`, the exact number markets.json ships for the
+opposite side — so a client-side flip and a server-side flip can never
+render the same side differently. The trade was explicit: at 1 dp a
+handful of 4-dp probabilities (432 of 9,999; e.g. 0.1545 → 15.4% /
+84.5%) display sides summing to 99.9% or 100.1%. Side-identity across
+surfaces and sum-to-100 cannot both hold; side-identity is the one
+worth holding, because a same-side disagreement reads as data drift and
+a 99.9 sum reads as rounding. The artifact is documented in the module,
+pinned by a test, and affected 0 of the 104 snapshot rows. EV/CLV
+strings go through one signed formatter at the server's own 2-dp
+rounding, so a masthead and a detail line can never show one stat two
+ways. The favored-team rule (team1 iff p ≥ 0.5) is the same comparison
+`ledger.summary()` scores accuracy with, shared, not re-derived per page.
+
+**Names mapped by key, never by position.** The published payload shows
+the current listing's names beside the ledger's frozen probability,
+which is oriented to the ledger's team1. Nothing enforced that the
+listing's display order still matched the frozen row's. `_names_for_row`
+removes the assumption: aligned listings pass through, swapped listings
+swap the names with a warning and a counter, unmatchable listings fall
+back to the frozen names. No swapped instance has ever been observed
+(104/104 aligned in the snapshot); this is prevention, priced at a dict
+comparison per published match.
+
+**Owner-confirmed display calls** (closing §54's "not touched" item):
+the Scoreboard pending row now shows the favored view through the shared
+helper — the same string the Schedule card shows for the same match. The
+graded table deliberately stays team1-oriented: it is the ledger-faithful
+record, and the result column plus the ✓/✗ mark disambiguate it. The
+asymmetry is intentional: pending rows are schedule-like, graded rows are
+record-like.
+
+**/api/model was checked for a stale cache and none exists.** The
+request was to force the model summary to read the live bundle, not a
+cached one. The chain (`_bundle_meta` → `load_bundle` → `joblib.load`)
+reads disk on every request and always has; there was nothing to fix,
+and per the project's first rule that finding is recorded rather than a
+fix invented. The behavior is pinned by
+`test_model_endpoint_reflects_bundle_swap_without_restart`, which swaps
+the bundle mid-process and asserts the very next request reflects it —
+the test that would have caught the bug had it existed, and the test
+that prevents one from being introduced.
+
+**The Model tab's test metrics stay pinned to evaluate.py's artifact by
+design.** They were not wired to the live bundle: those numbers exist
+only because a specific evaluation run produced them, and displaying
+test metrics no evaluation produced would fabricate results. The
+Schedule masthead instead says "Serving bundle X; each pick keeps the
+version it froze under," and the match page shows each pick's own frozen
+version, so bundle provenance is honest without inventing numbers.
+
+**Caps and counts.** Pending serves soonest-first at 500 (if a cut must
+ever happen it drops the far future, never the next match to play);
+graded stays newest-first at 300. Every displayed count comes from the
+uncapped `summary`, never from `len()` of a capped list, and the pending
+panel says "showing the N soonest" if the cap is ever reached.
+
+**BUNDLE_BEHAVIOR_REV is not bumped.** Nothing here changes features,
+training, calibration, probabilities, or the frozen record; publish-time
+name mapping is metadata. A deploy of this patch must not trigger a
+retrain, and does not.

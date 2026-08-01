@@ -14,7 +14,7 @@ export function useApi(path) {
   return { data, err };
 }
 
-/* Brand mark: the teal/ember split probability bar. */
+/* Formatting lives in lib/prob.js (the one home for percentage strings);
+   re-exported here so existing import paths keep working. */
 
-
-export const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
+export { fmtPct, fmtPctOpp, flipProb, favored, fmtSigned } from "./prob.js";

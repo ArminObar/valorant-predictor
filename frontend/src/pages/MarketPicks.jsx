@@ -1,5 +1,5 @@
 import React from "react";
-import { useApi, fmtPct } from "../lib/useApi.js";
+import { useApi, fmtPct, fmtSigned } from "../lib/useApi.js";
 import { groupByDay } from "../daygroups.js";
 import { DayRow } from "../components/daybits.jsx";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
@@ -14,10 +14,10 @@ export function MarketPicks({ standalone = false }) {
   const gate = data.gate || {};
   const evStat = gate.ev_validated
     ? { value: (data.summary && data.summary.avg_ev_pct != null)
-        ? `${data.summary.avg_ev_pct >= 0 ? "+" : ""}${data.summary.avg_ev_pct.toFixed(1)}%`
+        ? fmtSigned(data.summary.avg_ev_pct)
         : "n/a", label: "avg ev" }
     : { value: `${gate.n_graded ?? 0}/${gate.required ?? "?"}`,
-        label: "graded \u00b7 ev unvalidated", tone: "ink" };
+        label: "ev-clean graded \u00b7 unvalidated", tone: "ink" };
   const s = data.summary;
   const picks = data.picks || [];
   return (
@@ -34,8 +34,9 @@ export function MarketPicks({ standalone = false }) {
       <p className="note">Locked model probability vs the captured price. Not betting advice.</p>
       {!gate.ev_validated && (
         <p className="warn">
-          EV stays unvalidated until {gate.required} market-covered picks
-          grade ({gate.n_graded} so far).
+          EV stays unvalidated until {gate.required} EV-clean picks grade
+          ({gate.n_graded} so far; flagged picks don't count toward the
+          gate, so this can trail the graded total below).
         </p>
       )}
       {((data.skipped?.n_unpriceable ?? 0) > 0
@@ -63,10 +64,11 @@ export function MarketPicks({ standalone = false }) {
           {s && s.n_graded > 0 && (
             <p className="note">
               {s.n_graded} graded &middot; win rate {fmtPct(s.win_rate)}
-              {s.avg_ev_pct != null && <> &middot; avg EV {s.avg_ev_pct}%</>}
-              {s.avg_clv_pct != null && <> &middot; avg CLV {s.avg_clv_pct}% &middot;
+              {s.avg_ev_pct != null && <> &middot; avg EV {fmtSigned(s.avg_ev_pct)}</>}
+              {s.avg_clv_pct != null && <> &middot; avg CLV {fmtSigned(s.avg_clv_pct)} &middot;
                 beat close {fmtPct(s.beat_close_rate)}</>}
-              . Flagged picks sit outside these averages.
+              . Win rate covers every graded pick; the EV and CLV averages
+              exclude flagged picks.
             </p>
           )}
           <div className="table-scroll">
@@ -103,12 +105,12 @@ export function MarketPicks({ standalone = false }) {
                   <td className={`num ${p.ev_excluded ? "dim"
                       : p.ev_pct >= 0 ? "ok" : "miss"}`}>
                     {p.ev_excluded ? "excluded"
-                      : `${p.ev_pct > 0 ? "+" : ""}${p.ev_pct}%`}</td>
+                      : fmtSigned(p.ev_pct)}</td>
                   <td className={p.graded ? (p.won ? "ok" : "miss") : "dim"}>
                     {p.graded ? (p.won ? "won \u2713" : "lost \u2717") : "pending"}
                     {p.graded && p.clv_pct != null &&
-                      <span className="dim"> &middot; CLV {p.clv_pct > 0 ? "+" : ""}
-                        {p.clv_pct}%</span>}
+                      <span className="dim"> &middot; CLV{" "}
+                        {fmtSigned(p.clv_pct)}</span>}
                   </td>
                 </tr>
               ))}

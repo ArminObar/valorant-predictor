@@ -1,5 +1,5 @@
 import React from "react";
-import { useApi, fmtPct } from "../lib/useApi.js";
+import { useApi, fmtPct, favored } from "../lib/useApi.js";
 import { Masthead, MASTHEAD_TIPS } from "../components/Masthead.jsx";
 import { Metric } from "../components/bits.jsx";
 import { BacktestSummary } from "../components/BacktestSummary.jsx";
@@ -20,11 +20,11 @@ export function Scoreboard({ onOpen }) {
       <Masthead eyebrow="the running record" tip={MASTHEAD_TIPS.scoreboard}
         title="Scoreboard"
         stats={[
-          ...((s2.model_accuracy ?? s2.model?.accuracy) != null
-            ? [{ value: fmtPct(s2.model_accuracy ?? s2.model.accuracy),
+          ...(s2.model?.accuracy != null
+            ? [{ value: fmtPct(s2.model.accuracy),
                  label: "correct picks" }] : []),
-          { value: String((data.graded || []).length), label: "graded",
-            tone: "ink" },
+          { value: String(s2.n_graded ?? (data.graded || []).length),
+            label: "graded", tone: "ink" },
         ]} />
     <>
       <div className="panel">
@@ -103,18 +103,27 @@ export function Scoreboard({ onOpen }) {
       )}
       {data.pending.length > 0 && (
         <div className="panel">
-          <div className="panel-title">Pending ({data.pending.length})</div>
+          <div className="panel-title">Pending ({s.n_pending})</div>
+          {data.pending.length < s.n_pending && (
+            <p className="note">
+              Showing the {data.pending.length} soonest.
+            </p>
+          )}
           {groupByDay(data.pending, { dir: "asc" }).map((g) => (
             <React.Fragment key={g.key}>
               <DaySep label={g.label} today={g.isToday} />
-              {g.rows.map((r) => (
+              {g.rows.map((r) => {
+                const fav = favored(r.p_model, r.team1_name, r.team2_name);
+                return (
             <div className="pending-row clickable" key={r.match_id}
                  role="button" tabIndex={0}
                  onClick={() => onOpen(r.match_id)}>
               <span>{r.team1_name} <span className="dim">vs</span> {r.team2_name}</span>
-              <span className="dim">{fmtTime(r.start_ts)} &middot; model {fmtPct(r.p_model)}</span>
+              <span className="dim">{fmtTime(r.start_ts)} &middot; model{" "}
+                {fav.name} {fav.pct}</span>
             </div>
-              ))}
+                );
+              })}
             </React.Fragment>
           ))}
         </div>

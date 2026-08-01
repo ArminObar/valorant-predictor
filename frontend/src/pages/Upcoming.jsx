@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useApi, fmtPct } from "../lib/useApi.js";
+import { useApi, fmtPct, favored } from "../lib/useApi.js";
 import { fmtCountdown, fmtTime } from "../time.js";
 import { scheduleGroups } from "../scheduleGroups.js";
 import { DaySep } from "../components/daybits.jsx";
@@ -47,9 +47,8 @@ function StatusCol({ m, now }) {
 }
 
 function Card({ m, now, onOpen }) {
-  const favLeft = m.p_model >= 0.5;
-  const pct = favLeft ? m.p_model : 1 - m.p_model;
-  const favName = favLeft ? m.team1_name : m.team2_name;
+  const fav = favored(m.p_model, m.team1_name, m.team2_name);
+  const favLeft = fav.team1;
   const won = m.result ? m.team1_won === 1 : null;
   const pickRight = m.result
     ? (favLeft ? m.team1_won === 1 : m.team1_won === 0) : null;
@@ -62,7 +61,7 @@ function Card({ m, now, onOpen }) {
         <span className={"sched-pill " + (favLeft ? "teal" : "ember")}>
           {m.result != null && pickRight != null
             && (pickRight ? "\u2713 " : "\u2717 ")}
-          {tri(favName)} {fmtPct(pct)}
+          {tri(fav.name)} {fav.pct}
         </span>
         {!m.result && (
           <span className="sched-bar" aria-hidden="true">
@@ -122,7 +121,8 @@ export function Upcoming({ onOpen }) {
     ...r, result: true,
     maps_won_1: r.maps_won_1 ?? r.score1, maps_won_2: r.maps_won_2 ?? r.score2,
   }));
-  const acc = sb.data && sb.data.summary && sb.data.summary.model_accuracy;
+  const acc = sb.data && sb.data.summary && sb.data.summary.model
+    && sb.data.summary.model.accuracy;
   const groups = scheduleGroups(preds, graded, {});
 
   return (
@@ -130,7 +130,10 @@ export function Upcoming({ onOpen }) {
       <Masthead eyebrow="locked before start" tip={MASTHEAD_TIPS.schedule}
         title="Schedule"
         sub={`Locked at least five minutes before start, frozen after.`
-          + (data.model_version ? ` Model ${data.model_version}.` : "")}
+          + (data.model_version
+            ? ` Serving bundle ${data.model_version}; each pick keeps the`
+              + " version it froze under."
+            : "")}
         stats={[
           { value: String(preds.length), label: "locked picks" },
           ...(acc != null
