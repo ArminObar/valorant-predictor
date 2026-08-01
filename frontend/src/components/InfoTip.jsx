@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 
 export const TIPS = {
@@ -23,11 +24,14 @@ export function InfoTip({ tip, label = "about this section" }) {
   const [pos, setPos] = useState(null);
   const ref = useRef(null);
   const btnRef = useRef(null);
+  const popRef = useRef(null);
+  // The pop is portaled, so "inside the tooltip" spans two DOM subtrees.
+  const within = (n) =>
+    Boolean(n && ((ref.current && ref.current.contains(n))
+      || (popRef.current && popRef.current.contains(n))));
   useEffect(() => {
     if (!pinned) return undefined;
-    const away = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setPinned(false);
-    };
+    const away = (e) => { if (!within(e.target)) setPinned(false); };
     const esc = (e) => { if (e.key === "Escape") setPinned(false); };
     document.addEventListener("pointerdown", away);
     document.addEventListener("keydown", esc);
@@ -37,14 +41,19 @@ export function InfoTip({ tip, label = "about this section" }) {
     };
   }, [pinned]);
   const open = pinned || hover;
-  // Viewport-fixed placement: measured from the trigger, clamped to the
-  // viewport, so no ancestor stacking context or clipping box can trap or
-  // cut the pop (LOG entry 48). Safe here because the entrance keyframes
-  // are from-only and leave no lingering ancestor transforms behind.
+  // Viewport-fixed placement measured from the trigger, clamped to the
+  // viewport — and rendered through a portal to document.body. Inside the
+  // page tree, any ancestor with a filled transform animation is a
+  // containing block for position:fixed (fill-mode holds an IDENTITY
+  // MATRIX after from-only keyframes, not `none`), which re-based these
+  // coordinates onto the masthead/panel and displaced or buried every
+  // pop (LOG entries 48 and 51). document.body never carries transforms,
+  // filters, or animations, so the coordinates below always mean the
+  // viewport. Guarded by `npm run audit:tips`.
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return;
     const r = btnRef.current.getBoundingClientRect();
-    const w = Math.min(264, window.innerWidth - 16);
+    const w = Math.min(280, Math.floor(window.innerWidth * 0.74));
     const left = Math.max(
       8, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 8));
     setPos({ top: r.bottom + 6, left, width: w });
@@ -59,12 +68,9 @@ export function InfoTip({ tip, label = "about this section" }) {
       window.removeEventListener("resize", shut);
     };
   }, [open]);
-  const focusWithin = (e) =>
-    setHover(ref.current ? ref.current.contains(e.target) : false);
+  const focusWithin = (e) => setHover(within(e.target));
   const blurAway = (e) => {
-    if (ref.current && !ref.current.contains(e.relatedTarget)) {
-      setHover(false); setPinned(false);
-    }
+    if (!within(e.relatedTarget)) { setHover(false); setPinned(false); }
   };
   return (
     <span className="infotip" ref={ref}
@@ -74,13 +80,16 @@ export function InfoTip({ tip, label = "about this section" }) {
       <button type="button" className="i-btn" aria-expanded={open}
         aria-label={label} ref={btnRef}
         onClick={() => setPinned(!pinned)}>i</button>
-      {open && pos && (
-        <span className="infotip-pop" role="note"
+      {open && pos && createPortal(
+        <span className="infotip-pop" role="note" ref={popRef}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          onFocus={focusWithin} onBlur={blurAway}
           style={{ top: pos.top, left: pos.left, width: pos.width }}>
           {tip}{" "}
           <Link className="linklike" to="/how">full story: how it works</Link>
-        </span>
-      )}
+        </span>,
+        document.body)}
     </span>
   );
 }

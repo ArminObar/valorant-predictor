@@ -1855,3 +1855,58 @@ the design zip and commits them alongside the patch. Roughly 20 MB of
 repo binaries is the accepted cost of the hero looking like the
 design on a retina display; the poster remains mandatory as the
 reduced-motion, Save-Data, and pre-play fallback.
+
+## 54. Tooltip repair: portal, fill-mode semantics, and a gate that can see (patch 0072)
+
+**Both belts, on purpose.** The containing-block capture (LOG entry
+51) had two sufficient fixes and the patch ships both. The fill-mode
+correction (`both` → `backwards` on from-only keyframes) removes the
+current landmine everywhere — including paint-order consequences for
+things that are not tooltips — and costs one word per rule. The portal
+makes the tooltip structurally immune to the whole class: any FUTURE
+ancestor transform, filter, backdrop-filter, or filled animation would
+silently re-arm the trap for an in-tree fixed pop, and this bug has
+now shipped twice past every gate. `document.body` carries none of
+those and never will here. Event handling widens accordingly: "inside
+the tooltip" spans two DOM subtrees, so focus-within, blur-away, and
+pointer-away all consult both the trigger wrapper and the portaled
+pop, keeping §50's tap and keyboard access intact.
+
+**Which animations keep `both`.** `backwards` is correct only where
+the implicit end state equals the natural state (vpRise, vpBar).
+`homeZoom` holds scale 1.04 and `homeCover` holds opacity 0 after
+finishing; they keep `both` deliberately. This distinction is now the
+rule for any future keyframe: fill forward only when the end state
+differs from base, and never on an ancestor of fixed-position UI.
+
+**Pop width source.** 0071 added a CSS `width: min(280px, 74vw)` that
+the JS-measured inline width silently overrode at 264px. The JS is the
+single source now and computes the spec value (280 / 74vw); the CSS
+line is gone. One number, one owner.
+
+**The tip-geometry gate.** `npm run audit:tips` builds the real App
+(HashRouter, shared canned payloads) into a static page and drives it
+with actual Chrome via puppeteer-core: hover every icon, assert
+anchored within 3px, `position: fixed`, painted topmost at its own
+center (elementFromPoint), and on screen. Browser resolution is the
+installed Chrome (`channel: "chrome"`), overridable with CHROME_PATH /
+CHROME_ARGS / CHROME_HEADLESS for CI-like environments; a machine with
+neither fails loudly rather than skipping, because a gate that can
+quietly skip is the audit theater §52 exists to prevent. Icon counts
+are exact per route (1/3/2/1/1), so a selector rename or a dropped
+tip cannot pass as "zero pops probed". puppeteer-core joins
+devDependencies (~small, never ships, never launches in production);
+the demonstration run against the pre-fix tree is recorded in LOG 51.
+
+**Shared payloads.** The canned API payloads moved to
+`scripts-audit/payloads.mjs`, imported by both audits. The backtest
+payload now carries `window`/`per_tier`, which revealed the old render
+audit had only ever exercised the "backtest has not been run" branch;
+both audits now render the full table. Scoreboard and markets payloads
+gained pending rows and one pick so every tooltip instance exists
+under audit.
+
+**Not touched.** The Scoreboard/Markets number question from the same
+report is a display-semantics call (the scoreboard's unlabeled
+team1-oriented column) and waits for the owner's confirmation against
+the live payloads before anything changes.

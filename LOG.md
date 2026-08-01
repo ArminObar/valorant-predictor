@@ -1470,3 +1470,59 @@ along with "the new skin"; nothing in any gate has ever compared a
 pixel against the prototype. The owner's side-by-side was the first
 visual diff the project ran, which is also why it is now explicitly
 requested at the close of any restyle series.
+
+## Entry 51: fill-mode kept an identity matrix, and every tooltip obeyed the wrong origin (2026-07-31 session)
+
+**Symptom.** Two reported behaviors on the info icons: on some pages
+hovering produced nothing at all; on others (Schedule was the visible
+example) the pop appeared far below and to the right of its icon,
+overlapping unrelated content.
+
+**Cause.** One mechanism, verified in a real browser rather than
+inferred: `vpRise` ran with `animation-fill-mode: both`, and a filled
+from-only animation leaves the transform ANIMATED at its implicit end
+value — computed style shows `matrix(1,0,0,1,0,0)`, an identity
+matrix, not `none`. Any non-none transform makes the element a
+containing block for `position: fixed` descendants and a stacking
+context. So every `.masthead` (animated since patch 0071) and every
+`.panel`/`.card` (animated since the v2 series) captured its tooltip:
+the pop's viewport coordinates were re-based onto the ancestor's
+origin. Measured displacement equaled that origin exactly — +64px down
+(topbar) and +240/260px right (column edge) for masthead pops, each
+panel's own offset for panel pops, +83/+261 for Backtest's
+masthead-inside-panel. The "nothing shows" pages were the same bug
+with a worse landing: sibling panels are stacking contexts too, so
+later ones painted over the pop despite z-index 1000 (elementFromPoint
+returned the covering panel), and the Scoreboard's lowest tip landed
+at y=1701, past the viewport entirely. Setting `animation: none` on
+the ancestors snapped every measured delta to 0.0 in the same session.
+The placement JS from entry 48 was correct throughout; its comment
+("from-only keyframes leave no lingering ancestor transforms behind")
+was the false premise. Panel-title tips have therefore been broken
+since the v2 restyle landed; the five per-page masthead tips broke in
+0071 when the masthead joined the page-rise animation.
+
+**Fix.** Patch 0072, three parts. (1) The pop renders through a React
+portal to `document.body`, which never carries transforms, filters, or
+animations, so no ancestor effect can ever capture or bury it again;
+focus, blur, and pointer-away checks now span both DOM subtrees so
+keyboard and tap access survive the move. (2) `vpRise`/`vpBar` users
+switch `both` → `backwards`: their keyframes are from-only, so the end
+state equals the natural state and `backwards` is visually identical
+while releasing the transform at animation end — dissolving the
+containing block and the permanent stacking contexts at the source
+(`homeZoom`/`homeCover` keep `both`; their end states differ from
+base). (3) A tip-geometry audit (`npm run audit:tips`) drives real
+Chrome against the built page and asserts every pop anchors within
+3px, paints on top, and stays on screen. Run against the pre-fix tree
+it fails 12 ways with the exact displacements above; on the fixed tree
+all 8 pops pass.
+
+**Why testing missed it.** Twice, the same way: jsdom has no layout,
+so containing blocks, paint order, and coordinates are invisible to
+the render audit by construction — it passed identically on broken and
+fixed code. Entry 48's fix was verified with the only gates that
+existed, none of which could see the thing being fixed. The audit
+suite now contains one gate that renders pixels for exactly this
+class, with exact per-route icon counts so selector rot cannot
+green-wash it.
