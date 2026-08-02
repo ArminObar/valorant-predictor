@@ -1612,3 +1612,35 @@ with a note that it can trail the graded total.
 render gate paints wrong sentences as happily as right ones. The only
 defense is the audit habit: read every number's label against the code
 that computes it.
+
+## Entry 55: Book listing order is not a side (2026-08-01 session)
+
+**Symptom.** Reported from the live site: a team's displayed "de-vig
+(cons)" probability sitting far below both the book's own price and Elo
+for the same team. Reproduced through the real builder: with Cloudbet
+listing Alpha-Bravo and Pinnacle listing Bravo-Alpha (model 0.62 on
+Alpha), the pick came out Bravo@2.55 with consensus 0.4919 against
+Bravo's own-book 0.3796 — and Alpha, the true best option at -0.8% EV,
+was never evaluated at all.
+
+**Cause.** `best_for()` compared `price_home` across books by the books'
+own home/away labels, and `shin_consensus` indexed each book's de-vig by
+that same global label. Whenever two books list the same match in
+opposite order, "home" is two different teams: the per-side best-price
+menu collapses onto one team (structurally the underdog, whose price is
+higher), and the consensus becomes a favourite/underdog mix — the
+displayed number that matched no book and no baseline.
+
+**Fix.** Patch 0074. Sides are canonical everywhere: side 0 is
+team1/OVER, side 1 is team2/UNDER, and every capture — entry, close, and
+each consensus contribution — maps through its own
+`book_home_is_team1`. Selection, EV, CLV, grading, and naming all
+operate on canonical sides; a close capture whose orientation is
+unlinked yields no CLV rather than a guessed one. Four regression
+fixtures with disagreeing orientations, including a book that flips its
+listing between entry and close.
+
+**Why testing missed it.** Every multi-book fixture in the suite listed
+both books in the same order, so the by-label comparison was
+coincidentally canonical everywhere tests looked. Books disagree on
+listing order routinely in the wild; the suite never did.

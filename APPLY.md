@@ -1,47 +1,50 @@
-# APPLY — patch 0073: display-consistency sweep (audit fixes)
+# APPLY — patch 0074: canonical market sides + explicit pick labeling
 
-One patch, six audited findings fixed plus one guard. LOG entries 52-54,
-ASSUMPTIONS §55. No dependency changes, no model-behavior changes,
-BUNDLE_BEHAVIOR_REV deliberately not bumped (no retrain on deploy).
+One patch, the two approved fixes from the markets investigation.
+LOG entry 55, ASSUMPTIONS §56. No dependency changes, no model-behavior
+changes, BUNDLE_BEHAVIOR_REV deliberately not bumped (no retrain on
+deploy). markets.json rebuilds on the first 10-minute odds tick after
+the deploy, so allow one tick before judging the live numbers.
 
-What it fixes: the pending list dropping the soonest matches past its
-cap (soonest-first at 500, counts always from the uncapped summary);
-the Schedule masthead's dead "live accuracy" key (plus the audit
-fixture drift that green-washed it, and the match-page fixture that had
-only ever exercised the fallback branch); the Markets win-rate/graded
-labels; the Schedule's version attribution (serving bundle vs per-pick
-frozen versions, now shown on the match page); the unattributed pending
-probability (favored view, same string as the Schedule card); and a
-key-matched name mapping so a listing that reorders teams can never
-caption a frozen probability with the wrong name. All percentage
-strings now come from one module, `frontend/src/lib/prob.js`.
+Fix 1 — the orientation scramble (the real bug from item 2): when two
+books listed the same match in opposite home/away order, the per-side
+best-price comparison collapsed onto one team (the other never entered
+the menu) and the consensus de-vig mixed a favourite's number with an
+underdog's — the displayed value that matched no book and no baseline.
+Sides are now canonical (team1/OVER vs team2/UNDER) and every capture —
+entry, close, every consensus contribution — maps through its own
+linked orientation. Selection, EV, CLV, grading, and naming all follow.
+Four new regression fixtures with disagreeing orientations.
 
-Checked, not changed: /api/model already reads the bundle from disk on
-every request — no cache exists; the behavior is pinned by a new
-regression test that swaps the bundle mid-process. The Model tab's test
-metrics stay pinned to evaluate.py's artifact on purpose.
+Fix 2 — pick labeling (item 1, owner-approved semantics): max-EV
+selection stays, including negative-EV picks. The pick side now wears a
+distinct badge, the column is named "pick", a note above the table
+states every number in a row belongs to the badged side, and any row
+where the model leans the other way says so inline with the complement
+probability. Applied on /markets, the Scoreboard embed, and the match
+page's market table.
 
 ## Base
 
-Applies on top of origin/main at adfc3d2 (patch 0072, tooltip repair).
+Applies on top of origin/main at 86e7397 (patch 0073).
 
 ## Apply
 
 ```bash
 cd ~/Downloads/valorant-predictor
-ls ~/Downloads/0073-*.patch || ls patches/applied/0073*.patch
-git am ~/Downloads/0073-*.patch
+ls ~/Downloads/0074-*.patch || ls patches/applied/0074*.patch
+git am ~/Downloads/0074-*.patch
 git log --oneline -1
 ```
 
-The last line must show the 0073 subject (display-consistency sweep).
-If `git am` fails partway: `git am --abort`, confirm
-`git status --porcelain` is clean, retry.
+The last line must show the 0074 subject (canonical market sides). If
+`git am` fails partway: `git am --abort`, confirm `git status
+--porcelain` is clean, retry.
 
 ## Gates — no dependency change, warm tree is fine
 
 ```bash
-python3 -m pytest            # expect 177 passed
+python3 -m pytest            # expect 181 passed
 cd frontend
 npm test                     # expect pass 44
 npm run build
@@ -50,8 +53,27 @@ npm run audit                # lint 0 errors; RENDER AUDIT: all routes clean;
 cd ..
 ```
 
-The tip-geometry stage needs your installed Chrome; it ran everywhere
-else in the build environment and must complete here before shipping.
+## BEFORE snapshot — run this against live BEFORE pushing
+
+Capture the current picks so the after-state has something honest to be
+compared with:
+
+```bash
+python3 - <<'PYEOF' | tee /tmp/markets-before.txt
+import json, urllib.request
+d = json.load(urllib.request.urlopen(
+    "https://vpredict.onrender.com/api/markets"))
+for p in d["picks"]:
+    print(f"{p['match_id']} {p['match']} | pick {p['selection']} "
+          f"@{p['price_entry']} {p['source']} | model {p['p_model']} "
+          f"| shin {p['shin']} cons {p['shin_consensus']} "
+          f"| ev {p['ev_pct']}")
+    if p["n_books"] > 1 and abs(p["shin"] - p["shin_consensus"]) >= 0.05:
+        print("  ^ SCRAMBLE SUSPECT (mixed-side consensus)")
+    if p["ev_pct"] < 0:
+        print("  ^ negative-EV pick (expected; now labeled in the UI)")
+PYEOF
+```
 
 ## Ship
 
@@ -59,57 +81,40 @@ else in the build environment and must complete here before shipping.
 git push
 ```
 
-## Verify against live production after deploy
-
-The audit's cross-endpoint check, now asserting the fixed behaviors.
-Run it once Render finishes deploying:
+## AFTER verification — once deployed AND one odds tick has run
 
 ```bash
-python3 - <<'PYEOF'
+python3 - <<'PYEOF' | tee /tmp/markets-after.txt
 import json, urllib.request
-g = lambda p: json.load(urllib.request.urlopen(
-    "https://vpredict.onrender.com/api/" + p))
-up = g("upcoming"); sb = g("scoreboard"); mk = g("markets")
-preds = up["predictions"]
-rows = {str(r["match_id"]): r for r in sb["pending"] + sb["graded"]}
+d = json.load(urllib.request.urlopen(
+    "https://vpredict.onrender.com/api/markets"))
 bad = 0
-for p in preds:
-    mid = str(p["match_id"]); md = g("match/" + mid)
-    for src in (md.get("ledger"), md.get("prediction"), rows.get(mid)):
-        if src and (src["p_model"] != p["p_model"]
-                    or src["p_elo"] != p["p_elo"]):
-            bad += 1; print("VALUE MISMATCH", mid)
-    if mid not in rows:
-        bad += 1; print("MISSING FROM SCOREBOARD", mid)   # truncation fix
-for k in mk.get("picks", []):
-    r = rows.get(str(k["match_id"]))
-    if r and round(k["p_model"], 4) not in (round(r["p_model"], 4),
-                                            round(1 - r["p_model"], 4)):
-        bad += 1; print("MARKET MISMATCH", k["match_id"])
-s = sb["summary"]
-if s["n_pending"] != len(sb["pending"]) and len(sb["pending"]) != 500:
-    bad += 1; print("PENDING COUNT/LIST MISMATCH",
-                    s["n_pending"], len(sb["pending"]))
-print("serving bundle:", g("model").get("version"),
-      "| predictions header:", up.get("model_version"),
-      "| per-row versions:", sorted({p["model_version"] for p in preds}))
-print("checked", len(preds), "matches +", len(mk.get("picks", [])),
-      "picks:", bad, "problems")
+for p in d["picks"]:
+    print(f"{p['match_id']} {p['match']} | pick {p['selection']} "
+          f"@{p['price_entry']} {p['source']} | model {p['p_model']} "
+          f"| shin {p['shin']} cons {p['shin_consensus']} "
+          f"| ev {p['ev_pct']}")
+    if p["n_books"] > 1 and abs(p["shin"] - p["shin_consensus"]) >= 0.05:
+        bad += 1; print("  ^ STILL SCRAMBLED — should not happen")
+print(bad, "problems")
 PYEOF
+diff /tmp/markets-before.txt /tmp/markets-after.txt
 ```
 
-Expect `0 problems`. The version line is informational: header and
-per-row versions may legitimately differ after a retrain; the site now
-says so instead of implying otherwise.
+Expect `0 problems`. In the diff, expect: every SCRAMBLE SUSPECT line
+gone, with those matches' consensus now within a couple of points of
+their own-book shin; some of those selections legitimately flipping to
+the previously shut-out team (usually the favourite); negative-EV picks
+still present — that is the recorded semantics — now badged and
+annotated in the UI. Entry prices and CLV on unaffected picks should
+not move.
 
 ## What to check on the live site after deploy
 
-- Schedule masthead shows two stats: locked picks AND live accuracy
-  (the second has never rendered before this patch).
-- Schedule subtitle reads "Serving bundle …; each pick keeps the
-  version it froze under."
-- A pending row on the Scoreboard names the favored team next to its
-  percentage, matching the Schedule card for the same match.
-- A match page's locked line shows "· model <version>" for the pick.
-- Markets: the gate line says "EV-clean picks," and the summary line
-  says win rate covers every graded pick.
+- Markets table: the pick name sits in a highlighted badge, the column
+  header reads "pick", and the note above the table explains that every
+  number in a row belongs to the badged side.
+- Any underdog pick (model below 50%) carries "model favours the other
+  side X%" inline — the dual-team ambiguity this patch was approved to
+  remove.
+- Same treatment on the match page's Market comparison table.

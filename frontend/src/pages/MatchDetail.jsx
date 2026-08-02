@@ -154,7 +154,7 @@ export function MatchDetail() {
           <div className="table-scroll">
           <table className="ledger">
             <thead>
-              <tr><th>market</th><th>selection</th><th className="num">model</th>
+              <tr><th>market</th><th>pick</th><th className="num">model</th>
                 <th className="num">implied</th><th className="num">de-vig (cons)</th>
                 <th className="num">EV</th></tr>
             </thead>
@@ -163,8 +163,11 @@ export function MatchDetail() {
                 <tr key={`${k.market}-${k.line ?? ""}`}>
                   <td>{k.market === "maps_total" ? "map total" : "moneyline"}
                     <span className="dim"> &middot; {k.source}</span></td>
-                  <td>{k.selection}
+                  <td><span className="badge pick">{k.selection}</span>
                     {k.source && <span className="badge dim">{k.source}</span>}
+                    {k.p_model < 0.5 &&
+                      <span className="dim"> &middot; model favours the
+                        {" "}other side {fmtPctOpp(k.p_model)}</span>}
                     {k.ev_excluded === "totals_independence_bias" &&
                       <span className="badge" title={"Map totals assume "
                         + "maps are independent. Measured reality disagrees "

@@ -1,5 +1,5 @@
 import React from "react";
-import { useApi, fmtPct, fmtSigned } from "../lib/useApi.js";
+import { useApi, fmtPct, fmtPctOpp, fmtSigned } from "../lib/useApi.js";
 import { groupByDay } from "../daygroups.js";
 import { DayRow } from "../components/daybits.jsx";
 import { TitleWithInfo, TIPS } from "../components/InfoTip.jsx";
@@ -71,10 +71,15 @@ export function MarketPicks({ standalone = false }) {
               exclude flagged picks.
             </p>
           )}
+          <p className="note">
+            The highlighted side is the pick: the higher-EV side at its
+            best entry price. Every number in a row belongs to that side.
+            When the model itself leans the other way, the row says so.
+          </p>
           <div className="table-scroll">
           <table className="ledger">
             <thead>
-              <tr><th>match</th><th>selection</th><th className="num">model</th>
+              <tr><th>match</th><th>pick</th><th className="num">model</th>
                 <th className="num">implied</th><th className="num">de-vig (cons)</th>
                 <th className="num">EV</th><th>result</th></tr>
             </thead>
@@ -87,8 +92,11 @@ export function MarketPicks({ standalone = false }) {
                   <td>{p.match}
                     <span className="dim"> &middot; {p.market === "maps_total"
                       ? "map total" : "moneyline"} &middot; {p.source}</span></td>
-                  <td>{p.selection}
+                  <td><span className="badge pick">{p.selection}</span>
                     {p.source && <span className="badge dim">{p.source}</span>}
+                    {p.p_model < 0.5 &&
+                      <span className="dim"> &middot; model favours the
+                        {" "}other side {fmtPctOpp(p.p_model)}</span>}
                     {p.extrapolated &&
                       <span className="badge" title={"Outside the range "
                         + "where calibration was checked (15% to 88%). "

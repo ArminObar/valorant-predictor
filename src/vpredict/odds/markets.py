@@ -7,9 +7,12 @@ newer model, so the model-vs-market comparison can never be revised
 favourably after the fact.
 
 Definitions, recorded in ASSUMPTIONS §15:
-  pick        per (match, market, line), on the headline source (first of
-              config.ODDS_BOOK_PRIORITY that priced it): the side with the
-              higher EV at the ENTRY (freeze) capture's raw price.
+  pick        per (match, market, line): the side with the higher EV, each
+              side priced at its best ENTRY (freeze) price across books
+              (§43). Sides are CANONICAL — team1/OVER vs team2/UNDER —
+              never the books' own listing order (LOG entry 55). A pick
+              can carry negative EV; the display labels the pick-vs-model
+              relationship instead of hiding the row (owner call, §56).
   EV          model_prob x decimal_odds - 1, at the raw entry price. The
               de-vigged probabilities (Shin primary, multiplicative
               sensitivity) are stored beside it for fair-value comparison,
@@ -61,14 +64,16 @@ def _entry_close(caps: list[OddsCapture]) -> tuple[OddsCapture, OddsCapture | No
 
 
 def _model_side_probs(row: dict, cap: OddsCapture) -> tuple[float, float] | None:
-    """(p_home, p_away) in BOOK orientation for this market, from the FROZEN
-    ledger row. None when the frozen record can't price the market (e.g. a
-    totals capture for a row frozen before p_maps_dist existed)."""
+    """(p_side0, p_side1) in CANONICAL orientation — side 0 is team1 for
+    moneylines and OVER for totals, whatever the book's listing order.
+    None when the frozen record can't price the market (a totals capture
+    for a row frozen before p_maps_dist existed, or a moneyline capture
+    whose orientation was never linked)."""
     if cap.market == "series_moneyline":
-        p1 = float(row["p_model"])
         if cap.book_home_is_team1 is None:
             return None
-        return (p1, 1 - p1) if cap.book_home_is_team1 else (1 - p1, p1)
+        p1 = float(row["p_model"])
+        return (p1, 1 - p1)
     if cap.market == "maps_total":
         raw = row.get("p_maps_dist")
         if not raw or cap.line is None:
@@ -79,20 +84,20 @@ def _model_side_probs(row: dict, cap: OddsCapture) -> tuple[float, float] | None
     return None
 
 
-def _grade(row: dict, cap: OddsCapture, side: str) -> bool | None:
-    """Did the pick's side win? None while ungraded / ungradeable."""
+def _grade(row: dict, market: str, line: float | None, s: int) -> bool | None:
+    """Did CANONICAL side s (0 = team1 / OVER, 1 = team2 / UNDER) win?
+    None while ungraded / ungradeable."""
     if not row.get("graded"):
         return None
-    if cap.market == "series_moneyline":
+    if market == "series_moneyline":
         team1_won = bool(row["team1_won"])
-        home_won = team1_won if cap.book_home_is_team1 else not team1_won
-        return home_won if side == "home" else not home_won
-    if cap.market == "maps_total":
+        return team1_won if s == 0 else not team1_won
+    if market == "maps_total":
         played = row.get("maps_played")
-        if played is None or cap.line is None:
+        if played is None or line is None:
             return None
-        over_won = played > cap.line
-        return over_won if side == "home" else not over_won
+        over_won = played > line
+        return over_won if s == 0 else not over_won
     return None
 
 
@@ -157,47 +162,76 @@ def build_picks(ledger_rows: list[dict],
                     priced[src] = (entry, close, probs)
             if not priced:
                 continue
-            # Best entry price per side across books, EV per side at ITS best.
-            def best_for(side_idx: int):
+
+            def _bidx(cap2: OddsCapture, cs: int) -> int | None:
+                """Index into (price_home, price_away) for CANONICAL side cs
+                (0 = team1 / OVER, 1 = team2 / UNDER). Totals are canonical
+                by capture convention (home = OVER at every book); moneyline
+                maps through the capture's own linked orientation. None when
+                a moneyline capture's orientation is unlinked."""
+                if cap2.market != "series_moneyline":
+                    return cs
+                if cap2.book_home_is_team1 is None:
+                    return None
+                return cs if cap2.book_home_is_team1 else 1 - cs
+
+            def _price_of(cap2: OddsCapture, cs: int) -> float | None:
+                j = _bidx(cap2, cs)
+                if j is None:
+                    return None
+                return cap2.price_home if j == 0 else cap2.price_away
+
+            # Best entry price per CANONICAL side across books, EV per side
+            # at its best price. Comparing by the books' own home/away
+            # labels scrambled sides whenever two books listed the same
+            # match in opposite order: one team could leave the menu
+            # entirely and the consensus mixed sides (LOG entry 55).
+            def best_for(cs: int):
                 best = None
                 for src in sorted(priced, key=_rank):
-                    entry, close, (p_home, p_away) = priced[src]
-                    price = entry.price_home if side_idx == 0 else entry.price_away
-                    p = p_home if side_idx == 0 else p_away
+                    entry, close, probs = priced[src]
+                    price = _price_of(entry, cs)
+                    if price is None:
+                        continue
                     if best is None or price > best[0]:
-                        best = (price, p, src, entry, close)
+                        best = (price, probs[cs], src, entry, close)
                 return best
-            b_home, b_away = best_for(0), best_for(1)
-            ev_home = b_home[1] * b_home[0] - 1
-            ev_away = b_away[1] * b_away[0] - 1
-            side = "home" if ev_home >= ev_away else "away"
-            price, p_model, source, entry, close = (b_home if side == "home"
-                                                    else b_away)
-            # Consensus fair probability for the chosen side: median Shin de-vig
-            # across every book's ENTRY capture (n=2 today: the midpoint).
+            b0, b1 = best_for(0), best_for(1)
+            ev0 = b0[1] * b0[0] - 1
+            ev1 = b1[1] * b1[0] - 1
+            s = 0 if ev0 >= ev1 else 1
+            price, p_model, source, entry, close = b0 if s == 0 else b1
+            # Consensus fair probability for the chosen side: median Shin
+            # de-vig across every book's ENTRY capture (n=2 today: the
+            # midpoint), each book indexed through its OWN orientation so
+            # every contribution is the same team's number.
             cons = []
-            for src, (e2, _c2, probs2) in priced.items():
+            for src, (e2, _c2, _p2) in priced.items():
+                j2 = _bidx(e2, s)
+                if j2 is None:
+                    continue
                 dv2 = devig_both([e2.price_home, e2.price_away])
-                i2 = 0 if side == "home" else 1
-                cons.append(dv2["shin"][i2])
+                cons.append(dv2["shin"][j2])
             cons.sort()
             n = len(cons)
             shin_consensus = (cons[n // 2] if n % 2
                               else (cons[n // 2 - 1] + cons[n // 2]) / 2)
             dv = devig_both([entry.price_home, entry.price_away])
-            i = 0 if side == "home" else 1
+            i = _bidx(entry, s)
             clv = None
             if close is not None:
-                close_price = close.price_home if side == "home" \
-                    else close.price_away
-                clv = price / close_price - 1
-            won = _grade(row, entry, side)
+                # The close capture maps through its OWN orientation: a book
+                # that flips its listing between entry and close still
+                # grades the same team's price.
+                close_price = _price_of(close, s)
+                if close_price is not None:
+                    clv = price / close_price - 1
+            won = _grade(row, market, line, s)
             if market == "series_moneyline":
-                names = (row["team1_name"], row["team2_name"])
-                sel_name = names[0] if (entry.book_home_is_team1 ==
-                                        (side == "home")) else names[1]
+                sel_name = (row["team1_name"] if s == 0
+                            else row["team2_name"])
             else:
-                sel_name = (f"{'over' if side == 'home' else 'under'} "
+                sel_name = (f"{'over' if s == 0 else 'under'} "
                             f"{line:g} maps")
             picks.append({
                 "match_id": mid, "market": market, "line": line,

@@ -1977,3 +1977,32 @@ panel says "showing the N soonest" if the cap is ever reached.
 training, calibration, probabilities, or the frozen record; publish-time
 name mapping is metadata. A deploy of this patch must not trigger a
 retrain, and does not.
+
+## 56. Canonical market sides, and negative-EV picks stay by owner decision (patch 0074)
+
+**Sides are canonical, never listing order.** The market build's unit of
+orientation is team1/OVER versus team2/UNDER; a book's home/away is a
+per-capture encoding mapped through that capture's own linked
+`book_home_is_team1` at every use — best-line comparison, EV, the
+consensus de-vig (each book contributes the same team's number), CLV
+(the close capture maps through its own flag, so a book flipping its
+listing between entry and close still grades the same team), grading,
+and the selection name. The prior by-label comparison was only correct
+while every book happened to agree on listing order (LOG entry 55).
+
+**Max-EV selection is retained; a pick can carry negative EV.** The
+investigation's proposed EV > 0 floor was reviewed and declined by the
+owner: showing the higher-EV side even when both sides are negative is
+the intended semantics for a model-vs-market comparison panel. The
+approved remedy is presentational and shipped here: the pick side wears
+a distinct badge, the column is named "pick", a note above the table
+states that every number in a row belongs to the badged side, and any
+row where the model itself leans the other way says so inline with the
+complement probability. §15's definition stands with this section as
+its clarification; the module docstring now also reflects §43's
+best-line selection rather than the pre-best-line headline-source
+wording.
+
+**Unlinked orientations degrade, never guess.** A moneyline capture
+whose orientation was never linked cannot join pricing (unchanged), and
+an unlinked close yields no CLV. Absent numbers over invented ones.

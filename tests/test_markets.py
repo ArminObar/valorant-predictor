@@ -404,10 +404,12 @@ def test_group_error_is_isolated_counted_and_logged(monkeypatch, caplog):
 
     real = mk._grade
 
-    def boom(row, entry, side):
+    def boom(row, *a, **k):
+        # signature-agnostic passthrough: the test injects a failure, it
+        # must not care about _grade's arity
         if row["match_id"] == "m2":
             raise RuntimeError("synthetic group failure")
-        return real(row, entry, side)
+        return real(row, *a, **k)
 
     monkeypatch.setattr(mk, "_grade", boom)
     with caplog.at_level("ERROR", logger="vpredict.markets"):
@@ -418,3 +420,60 @@ def test_group_error_is_isolated_counted_and_logged(monkeypatch, caplog):
     assert [p["match_id"] for p in picks] == ["m1"]
     assert sk["n_group_errors"] == 1
     assert "pick group" in caplog.text and "m2" in caplog.text
+
+
+# ------------------------------------ canonical sides (LOG entry 55)
+# Every fixture above lists both books in the same home/away order, which is
+# exactly why the orientation scramble survived: comparing sides by book
+# label only breaks when books disagree. These fixtures disagree.
+
+def test_opposite_book_orientations_select_the_true_best_side():
+    # Cloudbet lists RED-BLU, Pinnacle lists BLU-RED. Under by-label
+    # comparison RED never entered the menu and the pick came out
+    # BLU@2.55 (EV -3.1%); the true best of the four options is
+    # RED@1.60 at -0.8%.
+    caps = [_cap_src("cloudbet", 1.60, 2.40, home_is_t1=True),
+            _cap_src("pinnacle", 2.55, 1.58, home_is_t1=False)]
+    p = build_picks([_row_m1(0.62)], caps)[0][0]
+    assert p["selection"] == "RED"
+    assert p["source"] == "cloudbet" and p["price_entry"] == 1.60
+    assert p["ev_pct"] == pytest.approx(-0.8, abs=0.01)
+    assert p["n_books"] == 2
+    # Negative-EV picks still ship: max-EV selection is the recorded
+    # semantics (owner call, ASSUMPTIONS §56); the display labels it.
+
+
+def test_opposite_book_orientations_consensus_is_same_team_only():
+    # Each book's shin contribution is indexed through that book's OWN
+    # orientation, so the consensus is a median of the SAME team's fair
+    # probabilities (~0.604 and ~0.620 here), never a favourite/underdog
+    # mix (which displayed ~0.492 for a ~0.38 side).
+    caps = [_cap_src("cloudbet", 1.60, 2.40, home_is_t1=True),
+            _cap_src("pinnacle", 2.55, 1.58, home_is_t1=False)]
+    p = build_picks([_row_m1(0.62)], caps)[0][0]
+    assert 0.60 < p["shin_consensus"] < 0.63
+    assert abs(p["shin_consensus"] - p["shin"]) < 0.02
+
+
+def test_flipped_single_book_names_prices_and_grades_correctly():
+    # One book listing BLU first: prices, selection name, implied and the
+    # grade must all follow the linked orientation, not the listing order.
+    row = _row(p_model=0.62)                       # Alpha won, graded
+    cap = _cap(ph=2.55, pa=1.58, home_is_t1=False)  # home=Beta@2.55
+    p = build_picks([row], [cap])[0][0]
+    assert p["selection"] == "Alpha"
+    assert p["price_entry"] == 1.58
+    assert p["implied"] == pytest.approx(1 / 1.58, abs=1e-4)
+    assert p["won"] is True
+
+
+def test_close_capture_maps_through_its_own_orientation_for_clv():
+    # A book that flips its listing between entry and close still grades
+    # the same team's price: entry RED@1.60 (home), close lists BLU first
+    # so RED's close price sits in price_away.
+    caps = [_cap_src("cloudbet", 1.60, 2.40, home_is_t1=True),
+            _cap_src("cloudbet", 2.20, 1.55, kind="close", hours=3,
+                     home_is_t1=False)]
+    p = build_picks([_row_m1(0.62)], caps)[0][0]
+    assert p["selection"] == "RED" and p["close_captured"] is True
+    assert p["clv_pct"] == pytest.approx((1.60 / 1.55 - 1) * 100, abs=0.01)
