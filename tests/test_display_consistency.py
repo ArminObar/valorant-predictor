@@ -84,12 +84,12 @@ def test_published_names_follow_frozen_key_order():
            "team1_name": "Frozen One", "team2_name": "Frozen Two"}
     # listing agrees with the frozen order
     assert _names_for_row(row, _Listing("111", "222", "New One", "New Two")) \
-        == ("New One", "New Two", "aligned")
+        == ("New One", "New Two", "111", "222", "aligned")
     # listing swapped display order after the freeze: names swap with it,
     # so the frozen team1 probability still captions the frozen team1
     assert _names_for_row(row, _Listing("222", "111", "New Two", "New One")) \
-        == ("New One", "New Two", "swapped")
-    # listing keys no longer match the frozen row at all: keep the frozen
-    # names rather than guess an orientation
+        == ("New One", "New Two", "111", "222", "swapped")
+    # REAL listing keys that no longer match the frozen row: keep the
+    # frozen names rather than guess an orientation
     assert _names_for_row(row, _Listing("333", "444", "X", "Y")) \
-        == ("Frozen One", "Frozen Two", "unmatched")
+        == ("Frozen One", "Frozen Two", "111", "222", "unmatched")

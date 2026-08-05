@@ -151,6 +151,7 @@ export function ModelTab() {
       {data.synthetic_data && (
         <p className="warn">This model was trained on made-up demo data.</p>
       )}
+      <div className="table-scroll">
       <table className="kv">
         <tbody>
           {rows.map(([k, v]) => (
@@ -158,6 +159,7 @@ export function ModelTab() {
           ))}
         </tbody>
       </table>
+      </div>
       <p className="note" style={{ margin: "12px 0 0" }}>
         Predicts one map at a time from vlr.gg history, using only matches
         finished before the predicted match started. Per-map probabilities

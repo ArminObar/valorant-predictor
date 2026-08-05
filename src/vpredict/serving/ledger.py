@@ -155,6 +155,41 @@ class Ledger:
         self._con.commit()
         return graded
 
+    def resolve_placeholder_names(self, match_id, team1, team2,
+                                  team1_name: str, team2_name: str) -> bool:
+        """Adopt resolved identities for placeholder sides of a FROZEN row.
+
+        Metadata only (§57): a side whose stored key is a placeholder
+        ("tbd") takes the resolved key and display name; the call itself —
+        probabilities, pick, versions, timestamps, grading — is never
+        touched, and a real stored key is never overwritten. A placeholder
+        is also never written over anything: resolution only ever moves a
+        side from placeholder to real. Returns True when a row changed."""
+        row = self._con.execute(
+            "SELECT team1, team2 FROM predictions WHERE match_id = ?",
+            (str(match_id),)).fetchone()
+        if row is None:
+            return False
+
+        def _ph(k) -> bool:
+            return str(k).strip().lower() in config.PLACEHOLDER_TEAM_KEYS
+
+        sets, args = [], []
+        if _ph(row["team1"]) and not _ph(team1):
+            sets += ["team1 = ?", "team1_name = ?"]
+            args += [str(team1), team1_name]
+        if _ph(row["team2"]) and not _ph(team2):
+            sets += ["team2 = ?", "team2_name = ?"]
+            args += [str(team2), team2_name]
+        if not sets:
+            return False
+        args.append(str(match_id))
+        with self._con:
+            self._con.execute(
+                f"UPDATE predictions SET {', '.join(sets)} WHERE match_id = ?",
+                args)
+        return True
+
     def backfill_names(self, matches: Iterable[Match]) -> int:
         """One-time sweep for rows graded before grade() learned to backfill
         placeholder names. Same stream discipline as backfill_maps_played."""

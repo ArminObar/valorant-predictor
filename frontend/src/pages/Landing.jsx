@@ -54,12 +54,31 @@ export function Landing() {
     const v = videoRef.current;
     const play = () => { if (v && v.paused) v.play().catch(() => {}); };
     const vis = () => { if (!document.hidden) play(); };
+    // A policy-refused autoplay (iOS Low Power Mode paints the native
+    // glyph; nothing autoplays through it, by spec) recovers on the FIRST
+    // touch anywhere, so nobody has to hunt the tiny glyph itself.
+    const firstTouch = () => {
+      play();
+      document.removeEventListener("pointerdown", firstTouch);
+    };
     if (v) { v.muted = true; v.defaultMuted = true; v.volume = 0; play(); }
-    if (v) v.addEventListener("pause", play);
+    if (v) {
+      v.addEventListener("pause", play);
+      // The mount-time play() can race media readiness; retry when the
+      // element actually has frames.
+      v.addEventListener("loadeddata", play);
+      v.addEventListener("canplay", play);
+    }
     document.addEventListener("visibilitychange", vis);
+    document.addEventListener("pointerdown", firstTouch);
     return () => {
-      if (v) v.removeEventListener("pause", play);
+      if (v) {
+        v.removeEventListener("pause", play);
+        v.removeEventListener("loadeddata", play);
+        v.removeEventListener("canplay", play);
+      }
       document.removeEventListener("visibilitychange", vis);
+      document.removeEventListener("pointerdown", firstTouch);
     };
   }, [still]);
 
@@ -84,7 +103,7 @@ export function Landing() {
           <div className="home-poster" />
         ) : (
           <video ref={videoRef} className="home-video"
-            autoPlay muted loop playsInline
+            autoPlay muted loop playsInline preload="auto"
             poster="/hero-poster.jpg">
             <source src="/hero.webm" type="video/webm" />
             <source src="/hero.mp4" type="video/mp4" />

@@ -36,6 +36,10 @@ USER_AGENT = (
 )
 MIN_REQUEST_INTERVAL_S = 1.1   # >= 1s between requests, hard floor enforced in code
 UPCOMING_CACHE_TTL_S = 15 * 60  # listing pages for upcoming matches go stale fast
+# Keys a listing uses for unresolved bracket slots. A frozen row carrying
+# one of these is awaiting resolution; the key is NOT a team identity, so
+# name mapping treats it as adoptable, never as a mismatch (§57).
+PLACEHOLDER_TEAM_KEYS = {"tbd", "tba"}
 CRAWL_FLUSH_MATCHES = 250       # persist parsed matches to the store this often
 
 # --------------------------------------------------------------------------- leakage guard

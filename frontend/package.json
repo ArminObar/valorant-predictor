@@ -10,8 +10,9 @@
     "test": "node --test",
     "audit:lint": "eslint -c eslint.config.audit.mjs src",
     "audit:render": "esbuild scripts-audit/render-entry.jsx --bundle --format=esm --platform=node --jsx=automatic --alias:chart.js=./scripts-audit/chartStub.mjs --outfile=scripts-audit/render-bundle.mjs --log-level=error && node scripts-audit/render-audit.mjs",
-    "audit": "npm run audit:lint && npm run audit:render && npm run audit:tips",
-    "audit:tips": "esbuild scripts-audit/tip-entry.jsx --bundle --format=iife --platform=browser --jsx=automatic --alias:chart.js=./scripts-audit/chartStub.mjs --outfile=scripts-audit/tip-bundle.js --log-level=error && node scripts-audit/tip-audit.mjs"
+    "audit": "npm run audit:lint && npm run audit:render && npm run audit:tips && npm run audit:mobile",
+    "audit:tips": "esbuild scripts-audit/tip-entry.jsx --bundle --format=iife --platform=browser --jsx=automatic --alias:chart.js=./scripts-audit/chartStub.mjs --outfile=scripts-audit/tip-bundle.js --log-level=error && node scripts-audit/tip-audit.mjs",
+    "audit:mobile": "esbuild scripts-audit/tip-entry.jsx --bundle --format=iife --platform=browser --jsx=automatic --alias:chart.js=./scripts-audit/chartStub.mjs --outfile=scripts-audit/tip-bundle.js --log-level=error && node scripts-audit/mobile-audit.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

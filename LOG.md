@@ -1644,3 +1644,93 @@ listing between entry and close.
 both books in the same order, so the by-label comparison was
 coincidentally canonical everywhere tests looked. Books disagree on
 listing order routinely in the wild; the suite never did.
+
+## Entry 56: Every gate ran at desktop width (2026-08-01 session)
+
+**Symptom.** Mobile had never been specifically verified. A code-level
+pass found: ModelTab's kv details table was the one table on the site
+without a .table-scroll wrapper (its value column carries unbroken
+version strings — guaranteed sideways overflow on a phone); the info-tip
+buttons are 15px squares and the pending rows ~30px tall, both below
+touch guidance and both primary tap paths; the masthead stat row had no
+flex-wrap; wrapped 64px tab rows made the sticky header eat a third of a
+phone viewport; and the footer's 50vw full-bleed can add scrollbar-width
+sideways scroll.
+
+**Cause.** Nothing structural — the foundation (viewport meta, clamp()
+typography, a 720px media query, scroll-wrapped tables, a width-clamped
+portal tooltip) was sound. The gaps were the accumulation of details no
+gate ever looked at: pytest, npm test, the render audit, and the tip
+audit all run layout-free or at 1440px.
+
+**Fix.** Patch 0075. The kv table gets the wrapper; the tip buttons keep
+their 15px visual and gain a ~41px hit area via ::after; pending rows
+and tabs get touch-sized heights in the mobile media block; mh-stats
+wraps; the root clips stray horizontal overflow. And the class gets a
+permanent gate: `npm run audit:mobile` drives real Chrome at 390x844
+with touch across all 8 routes, hard-failing on horizontal overflow and
+PROBING effective tap areas via elementFromPoint — so pseudo-element hit
+extensions count, and a regression in any of this fails the build.
+
+**Why testing missed it.** The same lesson as entries 48-51 one axis
+over: gates only defend the viewport they run at.
+
+## Entry 57: The autoplay block was the OS, not the markup (2026-08-01 session)
+
+**Symptom.** The homepage hero sometimes paints a native play glyph on
+mobile instead of autoplaying.
+
+**Cause.** Not the usual suspects: the element already carried autoPlay,
+muted, loop, playsInline and a belt-and-braces effect (muted +
+defaultMuted + volume=0 + play().catch + retries on pause and
+visibility), and ffprobe shows both files are single-stream video-only —
+no audio track exists to trip a policy. What remains is the OS refusing
+autoplay outright (iOS Low Power Mode, some data-saver modes), which no
+markup overrides, by spec — plus one real gap: the mount-time play() can
+race media readiness, and nothing retried when frames arrived.
+
+**Fix.** Patch 0075. Retry on loadeddata/canplay (closes the race),
+preload="auto", and a self-removing document-level pointerdown listener:
+when the OS did refuse, the first touch anywhere starts the video, so
+nobody has to hit the tiny native glyph. Honest limit, recorded: in Low
+Power Mode the hero cannot autoplay — for any site — until the user
+touches something.
+
+**Why testing missed it.** Desktop Chrome's autoplay policy is satisfied
+by muted alone; the refusing policies live on phones and in OS
+power/data modes no gate emulates.
+
+## Entry 58: A placeholder key is not an identity (2026-08-01 session)
+
+**Symptom.** Matches showing "TBD vs TBD" or "X vs TBD" on the site
+while vlr and the sportsbooks already show both real names. Production
+snapshot: 8 of 104 ledger rows TBD-involved — five both-TBD rows (one
+graded with names still TBD, predating the grade-time backfill) and two
+half-resolved freezes (715115, 715116).
+
+**Cause.** Three cooperating mechanisms — the scraper is NOT one of them
+(the upcoming crawl refetches every match page on a 15-minute TTL, so
+the store resolves within minutes). (i) The placeholder guard only
+skipped equal-key slots, so "X vs TBD" froze real calls against a
+placeholder team. (ii) Ledger names only healed at grade time, so every
+ledger-fed surface showed frozen TBD until the match completed. (iii)
+Entry 52-55's key-matched naming treated resolution as a mismatch:
+frozen ('15072','tbd') against resolved listing ('15072','9999') is
+neither aligned nor swapped, so "unmatched" fell back to the frozen TBD
+names on the Schedule too — a regression this session's own patch 0073
+introduced while fixing the swap risk.
+
+**Fix.** Patch 0075. Placeholder keys (config.PLACEHOLDER_TEAM_KEYS) are
+adoptable, never identities: _names_for_row resolves a placeholder side
+from the listing, anchored on the real key; the ledger heals at
+RESOLUTION time via resolve_placeholder_names (keys and names only — the
+frozen call is untouched, verified on the two real snapshot rows); the
+guard now skips half-resolved slots so junk calls stop freezing; and
+every non-aligned naming event is flagged: per-row name_status, a
+top-level "naming" block in the payload (curl /api/upcoming | jq
+.naming), counters in the refresh log — so the next stuck-name case,
+whatever its subspecies (placeholder, or a true id-changing rebrand
+hitting "unmatched"), identifies itself without an investigation.
+
+**Why testing missed it.** No fixture ever froze a placeholder row and
+then resolved its listing; the placeholder tests all stopped at "skipped".

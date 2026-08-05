@@ -2006,3 +2006,67 @@ wording.
 **Unlinked orientations degrade, never guess.** A moneyline capture
 whose orientation was never linked cannot join pricing (unchanged), and
 an unlinked close yields no CLV. Absent numbers over invented ones.
+
+## 57. Placeholder resolution, the mobile gate, and an owner-premise correction (patch 0075)
+
+**Owner framing, corrected on the record.** The approval for this fix
+described the TBD issue as "a rename/rebrand mapping problem, not the
+placeholder-bracket bug," with the manual alias table as the interim
+answer. The evidence shows the opposite, and per this file's standing
+practice (§1) the premise is recorded rather than papered over: the
+production rows literally carry the key 'tbd' (a rename cannot produce
+that string), the demonstrated mechanism is placeholder-slot resolution
+plus §55's unmatched fallback plus grade-time-only healing, and the
+alias table is the odds-side mechanism for BOOK-name variants — it
+cannot represent "TBD," which is many different teams, and it is
+untouched by this patch. The owner's instinct still points at something
+real: a true id-changing rebrand would hit the same "unmatched" path and
+the same stuck-name symptom. The flagging below covers both subspecies,
+which is exactly the "catch future cases without another investigation"
+request.
+
+**Placeholder keys are adoptable, never identities.**
+`config.PLACEHOLDER_TEAM_KEYS` ({"tbd", "tba"}) defines them. In
+`_names_for_row`, a placeholder side adopts the listing's identity with
+orientation anchored on the real key; a both-placeholder row adopts the
+listing as listed (nothing anchors orientation, and its frozen call is a
+flagged self-vs-self placeholder). Only a REAL key that stopped matching
+falls back to frozen names — §55's safety case, unchanged.
+
+**The ledger heals at resolution time, and the line is drawn at the
+call.** `resolve_placeholder_names` updates keys and display names for
+placeholder sides the moment the listing resolves them; probabilities,
+pick, versions, timestamps, and grading are never touched, a real key is
+never overwritten, and a placeholder is never adopted over anything.
+Verified against the two real frozen snapshot rows (715115, 715116):
+names heal, every call column byte-identical. This also restores odds
+linkability, which matches book fixtures against published names.
+
+**The half-resolved guard hole is closed — a behavior change,
+pre-registered here.** `playable` now requires both keys non-placeholder,
+so "X vs TBD" slots no longer freeze calls whose TBD-side features are
+pure priors; the slot gets a real first call when fully resolved, under
+the same freeze rules, or is honestly never called if resolution comes
+inside the freeze margin. Existing frozen half-rows stand as record and
+heal via resolution.
+
+**Naming diagnostics.** Every published row carries `name_status`
+(aligned / swapped / resolved / unmatched); the payload carries a
+top-level `naming` block listing non-aligned match ids for the run;
+counters flow through the refresh log. The frontend deliberately does
+not render these — they are operator diagnostics, one `jq .naming` away.
+
+**Mobile.** The tap-target contract is effective hit area, not visual
+size: .i-btn stays 15px with a ~41px ::after hit region, and the new
+`audit:mobile` gate PROBES via elementFromPoint rather than measuring
+boxes, so the extension is load-bearing and a future removal fails the
+gate. Root overflow-x is clipped (the footer's 50vw full-bleed includes
+the scrollbar gutter); the gate still measures scrollWidth, so clipping
+cannot mask real overflow from it. The gate runs where Chrome exists (the
+Mac), like audit:tips.
+
+**Autoplay honesty.** The hero element and files were already
+policy-correct (no audio track exists — verified with ffprobe). What
+ships is a readiness-race retry and first-touch recovery; an OS-level
+refusal (iOS Low Power Mode) cannot be autoplayed through by any site,
+and that limit is stated rather than worked around.

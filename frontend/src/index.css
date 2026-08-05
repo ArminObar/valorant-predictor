@@ -192,6 +192,7 @@ table.kv td:last-child { padding-right: 0; font-variant-numeric: tabular-nums; }
 .rc-end { font-size: 12px; font-weight: 600; font-family: "Space Grotesk", sans-serif; }
 
 /* -------------------------------------------------------- footer */
+html, body { overflow-x: clip; }
 footer { border-top: 1px solid var(--line); background: var(--panel); margin: 42px calc(50% - 50vw) 0; padding: 18px calc(max(50vw - 520px, 0px) + clamp(14px, 4vw, 40px)) 24px; color: var(--dim); font-size: 12.5px; line-height: 1.7; }
 .repo-link { color: var(--dim); }
 .repo-link:hover { color: var(--text); }
@@ -203,6 +204,13 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 }
 @media (max-width: 720px) {
   nav.tabs { flex-wrap: wrap; }
+  /* Wrapped 64px tab rows made the sticky header eat a third of a phone
+     viewport; keep it compact and let the bar grow with its rows. */
+  .topbar { height: auto; }
+  .tab { height: 46px; }
+  /* Pending rows are the only tap path into a match from the scoreboard;
+     ~30px rows are below touch guidance. */
+  .pending-row { padding: 13px 0; }
   .panel, .card { padding: 14px 14px; }
   .teams { font-size: 17px; } .teams.big { font-size: 20px; }
   .probs .num { font-size: 18px; } .probs.big .num { font-size: 22px; }
@@ -216,7 +224,10 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 .i-btn { width: 15px; height: 15px; border-radius: 50%;
   border: 1px solid var(--line); background: var(--chip);
   color: var(--dim); font: 600 10px/13px "IBM Plex Mono", monospace;
-  cursor: pointer; padding: 0; }
+  cursor: pointer; padding: 0; position: relative; }
+/* The visual stays 15px; the HIT AREA is ~41px (touch guidance). The
+   mobile audit probes effective hit areas, so this is load-bearing. */
+.i-btn::after { content: ""; position: absolute; inset: -13px; }
 .i-btn:hover, .i-btn:focus-visible { color: var(--a);
   border-color: var(--a); }
 .infotip-pop { position: fixed;
@@ -270,7 +281,7 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 .mh-title { font-family: "Space Grotesk", sans-serif; font-weight: 600;
   font-size: clamp(32px, 6.5vw, 46px); letter-spacing: -.02em;
   margin: 6px 0 0; flex: 1 1 auto; }
-.mh-stats { display: flex; gap: 26px; }
+.mh-stats { display: flex; gap: 26px; flex-wrap: wrap; row-gap: 12px; }
 .mh-stat { display: flex; flex-direction: column; gap: 2px;
   border-left: 1px solid var(--line); padding-left: 22px; }
 .mh-val { font-family: "Space Grotesk", sans-serif; font-weight: 600;

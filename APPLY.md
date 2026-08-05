@@ -1,79 +1,77 @@
-# APPLY — patch 0074: canonical market sides + explicit pick labeling
+# APPLY — patch 0075: mobile pass + hero autoplay resilience + TBD resolution
 
-One patch, the two approved fixes from the markets investigation.
-LOG entry 55, ASSUMPTIONS §56. No dependency changes, no model-behavior
-changes, BUNDLE_BEHAVIOR_REV deliberately not bumped (no retrain on
-deploy). markets.json rebuilds on the first 10-minute odds tick after
-the deploy, so allow one tick before judging the live numbers.
+One patch, three approved items in priority order. LOG entries 56-58,
+ASSUMPTIONS §57. No dependency changes, no model-behavior changes,
+BUNDLE_BEHAVIOR_REV not bumped. One pre-registered behavior change:
+half-resolved bracket slots ("X vs TBD") no longer freeze predictions;
+they get a real first call once fully resolved (§57).
 
-Fix 1 — the orientation scramble (the real bug from item 2): when two
-books listed the same match in opposite home/away order, the per-side
-best-price comparison collapsed onto one team (the other never entered
-the menu) and the consensus de-vig mixed a favourite's number with an
-underdog's — the displayed value that matched no book and no baseline.
-Sides are now canonical (team1/OVER vs team2/UNDER) and every capture —
-entry, close, every consensus contribution — maps through its own
-linked orientation. Selection, EV, CLV, grading, and naming all follow.
-Four new regression fixtures with disagreeing orientations.
+Item 1 — mobile: kv table scroll-wrapped; tip buttons gain a ~41px hit
+area (visual unchanged); pending rows and tabs touch-sized at <=720px;
+masthead stats wrap; root clips stray sideways scroll; NEW permanent
+gate `npm run audit:mobile` (real Chrome, 390x844, touch, all 8 routes:
+hard-fails horizontal overflow, probes effective tap areas).
 
-Fix 2 — pick labeling (item 1, owner-approved semantics): max-EV
-selection stays, including negative-EV picks. The pick side now wears a
-distinct badge, the column is named "pick", a note above the table
-states every number in a row belongs to the badged side, and any row
-where the model leans the other way says so inline with the complement
-probability. Applied on /markets, the Scoreboard embed, and the match
-page's market table.
+Item 2 — hero video: element and files were already policy-correct (no
+audio track exists; verified). Ships a readiness-race retry
+(loadeddata/canplay), preload="auto", and first-touch recovery for
+OS-refused autoplay (iOS Low Power Mode cannot be autoplayed through,
+by spec; the first tap anywhere now starts it).
+
+Item 3 — TBD resolution: placeholder keys are adoptable, never
+identities. Placeholder sides adopt the listing identity at publish
+time; the LEDGER heals at resolution (keys/names only — the frozen call
+is untouched, verified on the two real snapshot rows); the half-resolved
+guard hole is closed; every non-aligned naming event is flagged
+(per-row name_status + payload "naming" block + counters).
 
 ## Base
 
-Applies on top of origin/main at 86e7397 (patch 0073).
+Applies on top of origin/main at 2670f7b (patch 0074).
 
 ## Apply
 
 ```bash
 cd ~/Downloads/valorant-predictor
-ls ~/Downloads/0074-*.patch || ls patches/applied/0074*.patch
-git am ~/Downloads/0074-*.patch
+ls ~/Downloads/0075-*.patch || ls patches/applied/0075*.patch
+git am ~/Downloads/0075-*.patch
 git log --oneline -1
 ```
 
-The last line must show the 0074 subject (canonical market sides). If
-`git am` fails partway: `git am --abort`, confirm `git status
---porcelain` is clean, retry.
+The last line must show the 0075 subject. If `git am` fails partway:
+`git am --abort`, confirm `git status --porcelain` clean, retry.
+
+## BEFORE snapshot — run against live BEFORE pushing
+
+```bash
+python3 - <<'PYEOF' | tee /tmp/tbd-before.txt
+import json, urllib.request
+u = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/upcoming"))
+s = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/scoreboard"))
+seen = set()
+for r in u["predictions"] + s["pending"]:
+    if "tbd" in (r["team1_name"] + r["team2_name"]).lower() and r["match_id"] not in seen:
+        seen.add(r["match_id"])
+        print(r["match_id"], "|", r["team1_name"], "vs", r["team2_name"],
+              "| https://www.vlr.gg/" + str(r["match_id"]))
+print(len(seen), "TBD-named rows before the fix")
+PYEOF
+```
 
 ## Gates — no dependency change, warm tree is fine
 
 ```bash
-python3 -m pytest            # expect 181 passed
+python3 -m pytest            # expect 184 passed
 cd frontend
 npm test                     # expect pass 44
 npm run build
-npm run audit                # lint 0 errors; RENDER AUDIT: all routes clean;
-                             # TIP AUDIT: all 8 pops anchored, on top, on screen
+npm run audit                # lint 0 errors; render clean; tips all 8;
+                             # MOBILE AUDIT: all 8 routes fit 390px
 cd ..
 ```
 
-## BEFORE snapshot — run this against live BEFORE pushing
-
-Capture the current picks so the after-state has something honest to be
-compared with:
-
-```bash
-python3 - <<'PYEOF' | tee /tmp/markets-before.txt
-import json, urllib.request
-d = json.load(urllib.request.urlopen(
-    "https://vpredict.onrender.com/api/markets"))
-for p in d["picks"]:
-    print(f"{p['match_id']} {p['match']} | pick {p['selection']} "
-          f"@{p['price_entry']} {p['source']} | model {p['p_model']} "
-          f"| shin {p['shin']} cons {p['shin_consensus']} "
-          f"| ev {p['ev_pct']}")
-    if p["n_books"] > 1 and abs(p["shin"] - p["shin_consensus"]) >= 0.05:
-        print("  ^ SCRAMBLE SUSPECT (mixed-side consensus)")
-    if p["ev_pct"] < 0:
-        print("  ^ negative-EV pick (expected; now labeled in the UI)")
-PYEOF
-```
+audit:mobile is new and REQUIRED from now on for any frontend change —
+same Chrome requirement as audit:tips.
 
 ## Ship
 
@@ -81,40 +79,38 @@ PYEOF
 git push
 ```
 
-## AFTER verification — once deployed AND one odds tick has run
+## AFTER verification — deployed AND one 30-minute refresh has run
+
+The refresh cycle's publish step performs the resolution, so allow one
+full refresh (not just an odds tick).
 
 ```bash
-python3 - <<'PYEOF' | tee /tmp/markets-after.txt
+python3 - <<'PYEOF'
 import json, urllib.request
-d = json.load(urllib.request.urlopen(
-    "https://vpredict.onrender.com/api/markets"))
-bad = 0
-for p in d["picks"]:
-    print(f"{p['match_id']} {p['match']} | pick {p['selection']} "
-          f"@{p['price_entry']} {p['source']} | model {p['p_model']} "
-          f"| shin {p['shin']} cons {p['shin_consensus']} "
-          f"| ev {p['ev_pct']}")
-    if p["n_books"] > 1 and abs(p["shin"] - p["shin_consensus"]) >= 0.05:
-        bad += 1; print("  ^ STILL SCRAMBLED — should not happen")
-print(bad, "problems")
+u = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/upcoming"))
+s = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/scoreboard"))
+left = [r for r in u["predictions"] + s["pending"]
+        if "tbd" in (r["team1_name"] + r["team2_name"]).lower()]
+print("naming block:", u.get("naming"))
+print(len(left), "TBD-named rows remain")
+for r in left[:10]:
+    print(" ", r["match_id"], r["team1_name"], "vs", r["team2_name"],
+          "| check https://www.vlr.gg/" + str(r["match_id"]))
 PYEOF
-diff /tmp/markets-before.txt /tmp/markets-after.txt
 ```
 
-Expect `0 problems`. In the diff, expect: every SCRAMBLE SUSPECT line
-gone, with those matches' consensus now within a couple of points of
-their own-book shin; some of those selections legitimately flipping to
-the previously shut-out team (usually the favourite); negative-EV picks
-still present — that is the recorded semantics — now badged and
-annotated in the UI. Entry prices and CLV on unaffected picks should
-not move.
+Expected: every match whose vlr page shows two real names has left the
+TBD list, `naming.resolved` lists the healed ids on the cycle that healed
+them, and any row still TBD-named should be TBD on vlr as well (a
+genuinely unresolved slot — correct). Rows listed under
+`naming.unmatched` are the flag working: real-key mismatches (the rebrand
+subspecies) surfacing themselves for a look.
 
-## What to check on the live site after deploy
+## Mobile verification — this IS the real-device pass
 
-- Markets table: the pick name sits in a highlighted badge, the column
-  header reads "pick", and the note above the table explains that every
-  number in a row belongs to the badged side.
-- Any underdog pick (model below 50%) carries "model favours the other
-  side X%" inline — the dual-team ambiguity this patch was approved to
-  remove.
-- Same treatment on the match page's Market comparison table.
+1. `npm run audit:mobile` (part of `npm run audit`) — real Chrome,
+   phone viewport, all routes.
+2. On your actual phone after deploy: each page scrolls only
+   vertically; info tips open on a comfortable tap; pending rows tap
+   easily; the nav bar is compact; the hero autoplays (and in Low Power
+   Mode, starts on your first touch anywhere).
