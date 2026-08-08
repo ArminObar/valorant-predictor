@@ -477,3 +477,29 @@ def test_close_capture_maps_through_its_own_orientation_for_clv():
     p = build_picks([_row_m1(0.62)], caps)[0][0]
     assert p["selection"] == "RED" and p["close_captured"] is True
     assert p["clv_pct"] == pytest.approx((1.60 / 1.55 - 1) * 100, abs=0.01)
+
+
+# --------------------------------------- close-only groups (LOG entry 59)
+
+def test_close_only_group_reports_no_clv_not_fabricated_zero():
+    """No true freeze exists: entry falls back to the close, so
+    price/close_price is identically 1. That is not a measurement of
+    zero movement and must not ship as CLV +0.00 (LOG entry 59)."""
+    caps = [_cap(kind="close", ph=1.80, pa=2.02,
+                 at=NOW + timedelta(hours=3))]
+    p = build_picks([_row()], caps)[0][0]
+    assert p["entry_kind"] == "close"
+    assert p["close_captured"] is True
+    assert p["clv_pct"] is None
+    assert p["price_entry"] == pytest.approx(1.80)
+
+
+def test_true_zero_movement_still_reports_zero_clv():
+    """A genuine unchanged line between a real freeze and the close is a
+    measurement and keeps its honest 0.0."""
+    caps = [_cap(kind="freeze", ph=1.61, pa=2.40),
+            _cap(kind="close", ph=1.61, pa=2.40,
+                 at=NOW + timedelta(hours=3))]
+    p = build_picks([_row()], caps)[0][0]
+    assert p["entry_kind"] == "freeze"
+    assert p["clv_pct"] == pytest.approx(0.0, abs=1e-9)

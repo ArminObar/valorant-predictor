@@ -14,6 +14,7 @@ never a silent fuzzy guess (ASSUMPTIONS §13/§14).
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,14 +70,32 @@ def iter_captures(path: Path = config.ODDS_JSONL):
                 yield OddsCapture.model_validate_json(line)
 
 
+def priceable(c: OddsCapture) -> bool:
+    """A usable two-sided price: both decimals finite and above 1.0.
+    Everything else is a placeholder or feed glitch, not a price: 0.0
+    (suspended markets), negatives, and NaN or inf, which pass ordinary
+    comparisons unnoticed because NaN compares False with everything
+    (LOG entry 47). Shared by the capture loop and the markets build so
+    "counts as captured" and "counts as a price" can never disagree
+    (LOG entry 59)."""
+    return (math.isfinite(c.price_home) and math.isfinite(c.price_away)
+            and c.price_home > 1.0 and c.price_away > 1.0)
+
+
 def capture_state(path: Path = config.ODDS_JSONL) -> dict:
     """{(source, match_id_or_book_event_id, market, line):
         {"freeze": bool, "close": bool}} derived from the log — the only
     state the capture loop needs. Keyed per market/line so a moneyline
     freeze doesn't suppress the totals freeze for the same match.
-    Pre-totals log rows have no line field and land under line=None."""
+    Pre-totals log rows have no line field and land under line=None.
+    Only priceable rows count toward a slot: a suspended 0.0 first
+    sighting must not consume the one freeze this match will ever get
+    (LOG entry 59). Historical unpriceable rows in the log are thereby
+    un-burned on the first pass after this rule shipped."""
     state: dict = {}
     for c in iter_captures(path):
+        if not priceable(c):
+            continue
         key = (c.source, c.match_id or f"book:{c.book_event_id}",
                c.market, c.line)
         slot = state.setdefault(key, {"freeze": False, "close": False})

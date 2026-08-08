@@ -2070,3 +2070,32 @@ policy-correct (no audio track exists — verified with ffprobe). What
 ships is a readiness-race retry and first-touch recovery; an OS-level
 refusal (iOS Low Power Mode) cannot be autoplayed through by any site,
 and that limit is stated rather than worked around.
+
+## 58. What counts as a capture, and what counts as CLV (patch 0076)
+
+**A capture is a price observation; no price, no capture.** The owner
+approved fixing the reschedule gap (LOG entry 59); the material call
+inside the fix is what to do with an unpriceable (suspended/placeholder)
+price on a linked fixture. Chosen: count it in the refresh report and
+log it, but do not append it to the odds log and do not consume the
+freeze/close slot. Alternative considered: append it with its kind and
+teach state derivation to ignore it. Rejected because the 10-minute tick
+would then re-append one junk row per market per pass for the whole
+suspension window, and because the odds log's purpose is the EV/CLV
+audit trail, not book-status telemetry — a 0.0 carries no odds
+information. The unlinked-fixture rule (§13: stored and reported, never
+dropped) is unchanged; it protects records we cannot yet interpret,
+which is a different thing from records with nothing in them.
+capture_state additionally filters unpriceable rows already in the
+production log, deliberately: it un-burns historically burned slots so
+still-upcoming matches recover a real freeze. Matches that already
+started keep whatever they have; frozen history is not rewritten.
+
+**CLV requires a real freeze.** A close-only group keeps its entry
+fallback (the close price is the earliest usable public price, and EV at
+entry keeps its meaning) but reports CLV as null rather than the
+identically-zero self-division. A true freeze followed by an unmoved
+close still reports 0.0 — that one is a measurement. The payload gains
+entry_kind so the distinction is visible from the API without reading
+the odds log. Display semantics of the entry price are otherwise
+unchanged by owner direction: entry age is expected behavior, not a bug.

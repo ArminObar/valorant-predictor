@@ -37,19 +37,16 @@ from datetime import datetime, timezone
 from .. import config
 from ..evaluation.tiers import classify_tier
 from .devig import devig_both
-from .schema import OddsCapture
+from .schema import OddsCapture, priceable as schema_priceable
 
 log = logging.getLogger("vpredict.markets")
 
 
 def _priceable(c: OddsCapture) -> bool:
-    """A usable two-sided price: both decimals finite and above 1.0.
-    Everything else is a placeholder or feed glitch, not a price: 0.0
-    (suspended markets), negatives, and NaN or inf, which pass ordinary
-    comparisons unnoticed because NaN compares False with everything
-    (LOG entry 47)."""
-    return (math.isfinite(c.price_home) and math.isfinite(c.price_away)
-            and c.price_home > 1.0 and c.price_away > 1.0)
+    """Single definition lives in schema.priceable so the capture loop and
+    this build can never disagree about what counts as a price (LOG
+    entries 47 and 59)."""
+    return schema_priceable(c)
 
 
 def _entry_close(caps: list[OddsCapture]) -> tuple[OddsCapture, OddsCapture | None]:
@@ -219,10 +216,13 @@ def build_picks(ledger_rows: list[dict],
             dv = devig_both([entry.price_home, entry.price_away])
             i = _bidx(entry, s)
             clv = None
-            if close is not None:
+            if close is not None and entry.capture_kind == "freeze":
                 # The close capture maps through its OWN orientation: a book
                 # that flips its listing between entry and close still
-                # grades the same team's price.
+                # grades the same team's price. When the group never got a
+                # true freeze, entry IS the close and price/close_price is
+                # identically 1: that is a fabricated perfect CLV, not a
+                # measurement, so it stays None (LOG entry 59).
                 close_price = _price_of(close, s)
                 if close_price is not None:
                     clv = price / close_price - 1
@@ -256,6 +256,7 @@ def build_picks(ledger_rows: list[dict],
                 "graded": won is not None,
                 "won": won,
                 "entry_captured_at": entry.captured_at.isoformat(),
+                "entry_kind": entry.capture_kind,
                 "close_captured": close is not None,
             })
         except Exception:

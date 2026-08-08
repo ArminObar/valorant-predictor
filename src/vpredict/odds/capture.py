@@ -19,7 +19,7 @@ from pathlib import Path
 from .. import config
 from . import cloudbet
 from .schema import (OddsCapture, append_captures, capture_state,
-                     iter_captures, link_fixture, load_aliases)
+                     iter_captures, link_fixture, load_aliases, priceable)
 
 log = logging.getLogger("vpredict.capture")
 
@@ -72,7 +72,8 @@ def run_once(sources: list[str], from_file: str | None = None,
     aliases = load_aliases()
     state = capture_state(log_path)
     counters = {"appended": 0, "unlinked": 0, "skipped_started": 0,
-                "already_captured": 0, "source_errors": 0}
+                "already_captured": 0, "skipped_unpriceable": 0,
+                "source_errors": 0}
     appended: list[OddsCapture] = []
 
     for source in sources:
@@ -115,6 +116,17 @@ def run_once(sources: list[str], from_file: str | None = None,
                 key = ("skipped_started" if now >= start
                        else "already_captured")
                 counters[key] += 1
+                continue
+            if not priceable(cap):
+                # A suspended/placeholder price is not a capture. Recording
+                # it here used to mark the slot done, so the one freeze this
+                # match would ever get was burned on a 0.0 and the market
+                # shipped close-only with a fabricated CLV of exactly 0.0
+                # (LOG entry 59). Count it, say so, retry next pass.
+                counters["skipped_unpriceable"] += 1
+                log.info("UNPRICEABLE %s %s: %s vs %s at %s/%s — slot left "
+                         "open, will retry", source, kind, cap.book_home,
+                         cap.book_away, cap.price_home, cap.price_away)
                 continue
             cap.capture_kind = kind
             slot[kind] = True

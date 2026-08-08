@@ -218,3 +218,63 @@ def test_recent_captures_window_and_naive_timestamps(tmp_path):
     append_captures([c(30), c(2), c(1, naive=True)], path=log)
     got = recent_captures(hours=24, log_path=log, now=now)
     assert len(got) == 2                     # 30h-old row aged out
+
+
+# ------------------------------------- reschedule gap (LOG entry 59)
+
+def test_unpriceable_rows_do_not_consume_capture_slots(tmp_path):
+    """A suspended 0.0 row in the log must not count as this match's
+    freeze: capture_state ignores unpriceable rows, so the slot stays
+    open and the next pass retries. Before the fix a burned slot made
+    the market close-only forever."""
+    path = tmp_path / "odds.jsonl"
+    junk = _cap("m1", "freeze")
+    junk.price_home = 0.0
+    append_captures([junk], path=path)
+    assert ("cloudbet", "m1", "series_moneyline", None) not in \
+        capture_state(path)
+    good = _cap("m1", "freeze")
+    append_captures([good], path=path)
+    assert capture_state(path)[
+        ("cloudbet", "m1", "series_moneyline", None)]["freeze"] is True
+
+
+def test_run_once_retries_freeze_after_unpriceable_first_sighting(
+        tmp_path, monkeypatch):
+    import json as _json
+
+    from vpredict.odds import capture as capmod
+
+    preds = {"predictions": [{
+        "match_id": "m1", "team1_name": "Team Solid",
+        "team2_name": "Krunker", "start_ts": "2099-01-01T12:00:00Z"}]}
+    pf = tmp_path / "preds.json"
+    pf.write_text(_json.dumps(preds), encoding="utf-8")
+    log_path = tmp_path / "odds.jsonl"
+
+    def fake_fetch(ph, pa):
+        def _fetch(captured_at, capture_kind, **kw):
+            return [OddsCapture(
+                captured_at=captured_at, source="cloudbet",
+                capture_kind=capture_kind, book_event_id="e1",
+                book_home="Team Solid", book_away="Krunker",
+                price_home=ph, price_away=pa)]
+        return _fetch
+
+    # First sighting: market suspended (0.0/0.0). Counted, not recorded.
+    monkeypatch.setattr(capmod.cloudbet, "fetch_valorant_fixtures",
+                        fake_fetch(0.0, 0.0))
+    rep, _ = capmod.run_once(["cloudbet"], from_file=str(pf),
+                             log_path=log_path)
+    assert rep["skipped_unpriceable"] == 1
+    assert rep["appended"] == 0
+    assert list(iter_captures(log_path)) == []
+
+    # Next pass: real prices. The freeze happens now, not never.
+    monkeypatch.setattr(capmod.cloudbet, "fetch_valorant_fixtures",
+                        fake_fetch(1.70, 2.10))
+    rep2, _ = capmod.run_once(["cloudbet"], from_file=str(pf),
+                              log_path=log_path)
+    assert rep2["appended"] == 1
+    got = list(iter_captures(log_path))
+    assert [(c.capture_kind, c.match_id) for c in got] == [("freeze", "m1")]

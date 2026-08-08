@@ -1734,3 +1734,46 @@ hitting "unmatched"), identifies itself without an investigation.
 
 **Why testing missed it.** No fixture ever froze a placeholder row and
 then resolved its listing; the placeholder tests all stopped at "skipped".
+
+## Entry 59: A suspended price burned the only freeze this match would ever get (patch 0076)
+
+**Symptom.** Three graded Markets picks showing CLV of exactly +0.00
+simultaneously (KRU vs G2, Eternal Fire vs FNATIC, Shopify Rebellion
+Black vs 2Game), flagged by the owner as statistically suspicious. An
+exact zero three times is a signature, not line-movement coincidence.
+
+**Cause.** Two cooperating rules, each individually reasonable. (i) The
+capture loop marked a (source, match, market, line) slot done the moment
+it recorded a capture of that kind, with no priceability check, while
+the markets build separately discards unpriceable records (LOG entry
+47's rule). A fixture first sighted while its market was suspended
+(0.0/0.0 placeholder prices) therefore consumed its one freeze on a
+number that could never be used: the capture schedule has no second
+chance for a kind already marked done, so the market shipped close-only
+forever. (ii) The entry fallback in the markets build reuses the close
+capture as entry for a close-only group, and CLV is entry price over
+close price minus one — the same capture divided by itself, identically
+zero. A fabricated perfect CLV, indistinguishable in the payload from a
+genuinely unmoved line, silently inflating close coverage.
+
+**Fix.** One shared priceability predicate now lives in
+odds/schema.priceable and both sides use it. Capture side: an
+unpriceable price on a linked fixture is counted (skipped_unpriceable in
+the refresh report), logged loudly, and NOT appended — the slot stays
+open and the next 10-minute pass retries, so the freeze happens when
+prices go live instead of never. capture_state also ignores unpriceable
+rows when deriving slots from the log, which retroactively un-burns
+every slot the old rule burned: still-upcoming affected matches get a
+real freeze on the first pass after deploy. Markets side: CLV is
+computed only when the entry is a true freeze capture; a close-reused
+entry reports CLV as null, and the pick payload now carries entry_kind
+so the reuse is auditable from the API. A genuinely unmoved line between
+a real freeze and its close keeps its honest 0.0 (pinned by test).
+
+**Why testing missed it.** Every capture-loop test fed priceable
+fixtures, so slot consumption and priceability were never exercised
+against each other; the close-only markets test asserted the entry
+fallback's price, not the CLV it implied. The fabricated zero is also a
+plausible real value, so no display-level check could have caught it.
+Four regression tests now pin both halves, including the
+suspended-then-live retry sequence end to end through run_once.
