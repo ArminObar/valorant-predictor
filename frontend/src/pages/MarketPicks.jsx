@@ -20,6 +20,8 @@ export function MarketPicks({ standalone = false }) {
         label: "ev-clean graded \u00b7 unvalidated", tone: "ink" };
   const s = data.summary;
   const picks = data.picks || [];
+  const ut = data.unit_tracker;
+  const u = (v) => `${v >= 0 ? "+" : ""}${Number(v).toFixed(2)}u`;
   return (
     <div className={standalone ? "page" : "panel"}>
       {standalone ? (
@@ -53,6 +55,33 @@ export function MarketPicks({ standalone = false }) {
             internal error (logged). </>
           )}
           Skips are counted, never hidden.
+        </p>
+      )}
+      {ut && (
+        <p className="note">
+          <span className="badge dim">unit tracker</span>
+          {ut.provisional &&
+            <span className="badge" title={"Hypothetical AND provisional: "
+              + "the tracker inherits the EV validation gate, so nothing "
+              + "here is a proven edge until the gate passes."}>
+              provisional</span>}
+          {" "}Hypothetical quarter-Kelly sizing over the EV-clean
+          moneyline picks graded since {String(ut.start_ts).slice(0, 10)}:
+          {" "}{ut.n_staked === 0 ? (
+            <>no staked picks graded yet.</>
+          ) : (
+            <>net <strong>{u(ut.units_pnl)}</strong> over {ut.n_staked}
+            {" "}pick{ut.n_staked === 1 ? "" : "s"} ({ut.n_wins} won,
+            {" "}{Number(ut.units_staked).toFixed(2)}u staked
+            {ut.roi_pct != null && <>, ROI {u(ut.roi_pct).slice(0, -1)}%</>}).
+            Flat 1u on the same picks: {u(ut.flat_pnl_units)}.</>
+          )}
+          {" "}Imaginary units on a fixed {Number(
+            ut.params?.notional_units ?? 100)}u notional: no money, no
+          bankroll, no compounding. Sizing clips EV at +{Math.round(
+            (ut.params?.ev_clip ?? 0.1) * 100)}% and caps stakes at {Number(
+            ut.params?.stake_cap_units ?? 3)}u so one outlier EV cannot
+          dominate the total.
         </p>
       )}
       {picks.length === 0 ? (

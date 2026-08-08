@@ -2099,3 +2099,43 @@ close still reports 0.0 — that one is a measurement. The payload gains
 entry_kind so the distinction is visible from the API without reading
 the odds log. Display semantics of the entry price are otherwise
 unchanged by owner direction: entry age is expected behavior, not a bug.
+
+## 59. The unit tracker: quarter Kelly, imaginary units, two clamps (patch 0077)
+
+**What it answers.** Win rate alone cannot say whether the picks are
+winning once edge-proportional sizing and variance are accounted for.
+The tracker answers exactly that, and nothing more: it is a sizing
+diagnostic in imaginary units, deliberately NOT a bankroll simulation.
+Fixed 100-unit notional, no compounding, no dollars anywhere in the
+payload or the copy. Owner-specified in the six-item brief; formula and
+clamps reported and approved before building.
+
+**The formula.** Full Kelly for decimal price d and model probability p
+is f* = (d*p - 1)/(d - 1), which is EV/(d - 1). Stakes are quarter
+Kelly on the fixed notional: stake = 0.25 * 100 * min(EV, 0.10) /
+(d - 1), hard-capped at 3.0 units, staked only when EV > 0. The quarter
+fraction is the standard hedge against estimation error in p: full
+Kelly overbets badly under miscalibration. The two clamps exist because
+Kelly's stake is linear in EV, so one claimed +40% pick would otherwise
+out-stake ten ordinary picks: the EV clip makes every pick above +10%
+size identically, and the cap bounds short-price stakes the clip alone
+does not. Settlement: win +stake*(d-1), loss -stake. A flat 1-unit line
+over the identical pick set ships beside it so sizing effects and pick
+quality stay separable.
+
+**Eligibility mirrors the EV gate exactly.** Graded moneyline picks
+with clean EV methodology: extrapolation-band picks and totals are out,
+for the same reasons they are out of the gate (§14, §20). The tracker
+carries the gate's own provisional status and never clears on its own
+sample size: nothing here is a proven edge until the gate passes at
+n >= 100.
+
+**The start boundary.** Only matches starting on or after
+UNIT_TRACKER_START_TS (2026-08-08, the LOG-59 fix date) count. Entry
+prices frozen before that fix can be close-reused entries, and a
+tracker seeded on possibly-phantom prices could never be trusted; the
+frozen ledger and pick history stay untouched either way, per the
+freeze discipline. Alternative considered and rejected for now:
+recomputing corrected entry columns for the prefix from the append-only
+capture log. Possible later without rewriting anything frozen; the
+clean boundary costs only a few weeks of sample at current volumes.

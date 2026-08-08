@@ -214,3 +214,16 @@ EV_MIN_GRADED_PICKS = 100
 EV_EXTRAPOLATION_LO = 0.15
 EV_EXTRAPOLATION_HI = 0.88
 MARKETS_JSON = PROCESSED_DIR / "markets.json"
+
+# Hypothetical unit tracker (ASSUMPTIONS §59). Imaginary units on a FIXED,
+# non-compounding notional: a sizing diagnostic, never money, never a
+# bankroll simulation. Quarter Kelly with the sizing EV clipped and the
+# stake hard-capped so no single outlier EV can dominate the aggregate.
+# Only picks whose match starts on/after the start boundary count: entry
+# prices frozen before the LOG-59 capture fix may be close-reused, and a
+# tracker seeded on possibly-phantom entries would be unfalsifiable.
+UNIT_TRACKER_START_TS = "2026-08-08T00:00:00+00:00"
+UNIT_TRACKER_NOTIONAL_UNITS = 100.0
+UNIT_TRACKER_KELLY_FRACTION = 0.25
+UNIT_TRACKER_EV_CLIP = 0.10          # sizing uses min(EV, 10%)
+UNIT_TRACKER_STAKE_CAP_UNITS = 3.0   # hard per-pick ceiling

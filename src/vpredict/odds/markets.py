@@ -316,6 +316,10 @@ def build_markets_report(ledger_rows: list[dict],
     by_market = {}
     for market in sorted({p["market"] for p in picks}):
         by_market[market] = _agg([p for p in picks if p["market"] == market])
+    gate = {"n_graded": graded_n,
+            "required": config.EV_MIN_GRADED_PICKS,
+            "ev_validated": graded_n >= config.EV_MIN_GRADED_PICKS}
+    from .unit_tracker import compute_unit_tracker
     return {
         "generated_at": (now or datetime.now(timezone.utc)).isoformat(),
         "section": section,               # "LIVE" (frozen ledger) or
@@ -323,9 +327,8 @@ def build_markets_report(ledger_rows: list[dict],
                                           # are separate by design, never
                                           # merged into one number
         "skipped": skipped,
-        "gate": {"n_graded": graded_n,
-                 "required": config.EV_MIN_GRADED_PICKS,
-                 "ev_validated": graded_n >= config.EV_MIN_GRADED_PICKS},
+        "gate": gate,
+        "unit_tracker": compute_unit_tracker(picks, gate),
         "extrapolation_band": [config.EV_EXTRAPOLATION_LO,
                                config.EV_EXTRAPOLATION_HI],
         "summary": _agg(picks),
