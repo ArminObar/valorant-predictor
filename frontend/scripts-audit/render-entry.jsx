@@ -13,7 +13,8 @@ const ROUTES = ["/", "/upcoming", "/scoreboard", "/model", "/markets",
 // case-insensitively against document.body.textContent.
 const MUST_CONTAIN = {
   "/markets": ["unit tracker", "provisional", "RED vs BLU"],
-  "/trends": ["Sample Squad", "pistol"],
+  "/trends": ["Sample Squad", "pistol", "all history",
+    "current form", "teams in scope"],
   "/upcoming": ["low history (2/1)"],
 };
 const errors = [];

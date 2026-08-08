@@ -97,3 +97,93 @@ def test_missing_inputs_yield_null_not_estimates():
            for r in build_trends(ms, now=NOW)["teams"]}["A"]
     assert row["pistol_wr"] is None        # no round strip, no pistols
     assert row["method_mix"] is None       # no won-round methods known
+
+
+# --------------------------------- scoped aggregation (ASSUMPTIONS §63)
+
+from vpredict.data.trends import (aggregate, build_trends_bundle,
+                                  normalize_event, team_map_rows)
+
+
+def test_normalize_event_collapses_real_dirty_strings():
+    dirty = ("Challengers 2025: Türkiye Birlik Stage 2League Phase: "
+             "\n\t\t\t\t\tWeek 1")
+    assert normalize_event(dirty) == \
+        "Challengers 2025: Türkiye Birlik Stage 2"
+    assert normalize_event("Red Bull Home Ground #5") == \
+        "Red Bull Home Ground #5"
+    assert normalize_event("  Game Changers 2026: EMEA Stage 1Group "
+                           "Stage: \n\tWeek 2") == \
+        "Game Changers 2026: EMEA Stage 1"
+    assert normalize_event(None) == "(unknown event)"
+
+
+def _table(ms):
+    return team_map_rows(ms, now=NOW)
+
+
+def test_date_range_scope_includes_only_in_range_maps():
+    ms = [_match(1, days_ago=400, maps=[_map(t1=0, t2=13)]),
+          _match(2, days_ago=10, maps=[_map(t1=13, t2=0)]),
+          _match(3, days_ago=5, maps=[_map(t1=13, t2=0)])]
+    v = aggregate(_table(ms), min_maps=1,
+                  date_from=NOW - timedelta(days=30), now=NOW)
+    row = {r["team_id"]: r for r in v["teams"]}["A"]
+    # The 400-day-old loss is out of scope; lifetime still counts it.
+    assert row["n_window"] == 2 and row["win_rate"] == 1.0
+    assert row["n_lifetime"] == 3
+
+
+def test_event_scope_and_unknown_event_yield_empty_not_error():
+    a = _match(1, days_ago=9, maps=[_map()])
+    a.event = "Cup Alpha Group Stage: Week 1"
+    b = _match(2, days_ago=8, maps=[_map()])
+    b.event = "Cup Beta Group Stage: Week 1"
+    tbl = _table([a, b])
+    v = aggregate(tbl, min_maps=1, event_name="Cup Alpha", now=NOW)
+    assert v["n_teams"] == 2                     # both teams of match 1
+    assert all(r["n_window"] == 1 for r in v["teams"])
+    assert aggregate(tbl, min_maps=1, event_name="No Such Cup",
+                     now=NOW) == {"n_teams": 0, "teams": []}
+
+
+def test_activity_filter_only_applies_when_set():
+    ms = [_match(i, days_ago=200 + i, maps=[_map()]) for i in range(6)]
+    tbl = _table(ms)
+    assert aggregate(tbl, min_maps=5, now=NOW)["n_teams"] == 2
+    assert aggregate(tbl, min_maps=5, active_days=60,
+                     now=NOW)["n_teams"] == 0
+
+
+def test_fk_and_kills_are_coverage_aware_never_zero_filled():
+    ok = _map(rounds=_rounds())
+    holed = _map(rounds=_rounds())
+    holed.team1_players[0].fk = None             # FK unknown on this map
+    holed.team2_players[0].kills = None          # kills unknown on this map
+    ms = [_match(1, days_ago=6, maps=[ok]),
+          _match(2, days_ago=5, maps=[holed])]
+    row = {r["team_id"]: r
+           for r in aggregate(_table(ms), min_maps=1, now=NOW)["teams"]}["A"]
+    # Only the fully-covered map feeds FK and kills: same values as a
+    # single-map aggregate, not diluted by or-0 on the holed map.
+    assert row["fk_diff12"] == pytest.approx(1.2)
+    assert row["comb_kills_avg"] == pytest.approx(125.0)
+    all_holed = [_match(3, days_ago=4, maps=[holed])]
+    row2 = {r["team_id"]: r for r in aggregate(
+        _table(all_holed), min_maps=1, now=NOW)["teams"]}["A"]
+    assert row2["fk_diff12"] is None
+    assert row2["comb_kills_avg"] is None
+
+
+def test_bundle_precomputes_both_views_and_the_tournament_index():
+    ms = [_match(i, days_ago=3 + i, maps=[_map()]) for i in range(6)]
+    for m in ms:
+        m.event = "Cup Alpha Group Stage: Week 1"
+    table, views = build_trends_bundle(ms, now=NOW)
+    assert len(table["rows"]) == 12              # 6 maps x 2 teams
+    assert [t["name"] for t in views["tournaments"]] == ["Cup Alpha"]
+    assert views["views"]["all"]["scope"] == {"preset": "all"}
+    assert views["views"]["current"]["n_teams"] == 2
+    # Current-form view matches the §61 builder exactly: one definition.
+    legacy = build_trends(ms, now=NOW)
+    assert views["views"]["current"]["teams"] == legacy["teams"]

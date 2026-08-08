@@ -180,3 +180,70 @@ def test_spa_fallback_never_masks_api_or_asset_404s(tmp_path, monkeypatch):
     for path in ("/assets/stale-bundle-abc123.js", "/favicon.ico",
                  "/serving/ledger.sqlite"):
         assert c.get(path).status_code == 404, path
+
+
+def test_trends_endpoint_presets_and_custom_scope(tmp_path):
+    """§63: presets serve the precomputed views; a custom scope
+    aggregates the fact table at request time; invalid dates and
+    unknown tournaments clamp to empty, never an error."""
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+
+    from vpredict.data.schema import Match, MapResult, PlayerMapStats
+    from vpredict.data.trends import build_trends_bundle
+    from vpredict.serving.api import create_app
+
+    now = datetime(2026, 8, 8, tzinfo=timezone.utc)
+
+    def _players(k):
+        return [PlayerMapStats(name=f"p{i}", agent="Jett", kills=k,
+                               fk=1, fd=0) for i in range(5)]
+
+    def _m(i, days_ago, event):
+        return Match(
+            match_id=f"m{i}", start_ts=now - timedelta(days=days_ago),
+            status="completed", best_of=3, event=event, series="s",
+            winner="team1", team1_id="A", team1_name="Team A",
+            team2_id="B", team2_name="Team B",
+            maps=[MapResult(game_id="g", map_name="Bind", index=1,
+                            team1_score=13, team2_score=7, rounds=[],
+                            team1_players=_players(15),
+                            team2_players=_players(10))])
+
+    ms = ([_m(i, 5 + i, "Cup Alpha Group Stage: Week 1")
+           for i in range(6)]
+          + [_m(90 + i, 400 + i, "Cup Beta Group Stage: Week 1")
+             for i in range(6)])
+    table, views = build_trends_bundle(ms, now=now)
+    proc = tmp_path / "processed"
+    proc.mkdir(parents=True)
+    (proc / "trends_rows.json").write_text(_json.dumps(table))
+    (proc / "trends.json").write_text(_json.dumps(views))
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    d = client.get("/api/trends").json()
+    assert d["view"]["scope"] == {"preset": "all"}
+    assert d["view"]["n_teams"] == 2
+    assert {t["name"] for t in d["tournaments"]} == {"Cup Alpha",
+                                                     "Cup Beta"}
+
+    d = client.get("/api/trends?preset=current_form").json()
+    assert d["view"]["scope"] == {"preset": "current_form"}
+    # Cup Beta teams are 400+ days stale -> current form hides nothing
+    # here (same two team ids play both), but the window caps maps at 10.
+    assert all(t["n_window"] <= 10 for t in d["view"]["teams"])
+
+    d = client.get("/api/trends?event=Cup+Beta").json()
+    assert d["view"]["scope"]["event"] == "Cup Beta"
+    assert all(t["n_window"] == 6 for t in d["view"]["teams"])
+
+    d = client.get("/api/trends?from=2026-07-28").json()
+    assert d["view"]["n_teams"] == 2
+    assert all(t["n_window"] == 6 for t in d["view"]["teams"])
+    # A scope holding fewer than TRENDS_SCOPE_MIN_MAPS per team lists
+    # nobody: thresholds are visible, small samples are not estimated.
+    d = client.get("/api/trends?from=2026-08-02").json()
+    assert d["view"]["n_teams"] == 0
+
+    d = client.get("/api/trends?from=notadate&event=No+Such+Cup").json()
+    assert d["view"]["n_teams"] == 0             # clamped empty, no 4xx

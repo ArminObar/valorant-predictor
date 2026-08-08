@@ -469,3 +469,12 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
   font-family: "IBM Plex Mono", monospace; font-size: 12px;
   min-width: 180px; }
 .trend-filter:focus-visible { outline: none; border-color: var(--a); }
+
+.trend-preset { border: 1px solid var(--line); border-radius: 999px;
+  background: var(--panel); color: var(--dim); cursor: pointer;
+  padding: 9px 14px; font-family: "IBM Plex Mono", monospace;
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  transition: border-color .15s ease, color .15s ease; }
+.trend-preset:hover, .trend-preset:focus-visible { border-color: var(--a);
+  color: var(--text); outline: none; }
+.trend-preset.active { border-color: var(--a); color: var(--text); }

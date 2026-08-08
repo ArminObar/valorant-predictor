@@ -2140,6 +2140,18 @@ recomputing corrected entry columns for the prefix from the append-only
 capture log. Possible later without rewriting anything frozen; the
 clean boundary costs only a few weeks of sample at current volumes.
 
+*Addendum (2026-08-08): a backdate was proposed, analyzed, and RETRACTED
+before shipping by owner direction — the boundary stands. For the
+record: the underlying prices need no re-derivation (the append-only
+log holds the real captured closes), the fake-zero CLV path is
+structurally dead regardless (CLV requires a true freeze, LOG 59,
+retroactively), and what is genuinely unrecoverable for pre-fix
+finished matches is the missing FREEZE capture, not the close. A safe
+later addition therefore exists without new data: include the labeled
+entries and gate out alias-era cross-links by the entry capture's own
+book start time. That machinery is built and parked on a local branch
+pending a separate owner go.*
+
 ## 60. Alias hygiene: identity precedence and the start-time gate (patch 0078)
 
 **Owner approved proceeding on the sandbox findings without the
@@ -2240,3 +2252,53 @@ recomputation, deliberately, for the freeze-discipline reason above.
 The render audit's upcoming mock now carries a flagged row with counts
 and asserts the visible "(2/1)" text, so the badge enhancement can
 never silently unrender (the LOG-60 mechanism).
+
+## 63. Trends scoping: date range, tournaments, and the all-history default (patch 0079)
+
+**Owner-approved build on the reported feasibility.** The store already
+held the full span (2024-07-23 onward, 6,790 completed matches, 16,136
+maps in the seed); what changes is display semantics, not data. The tab
+now defaults to ALL real scraped history, with the §61 recent-form view
+kept as a one-click preset and custom scopes by date range and
+tournament. The trade-off is stated on purpose: the landing view stops
+being a recent-form scouting table and becomes the career table.
+
+**One metric definition for every view.** The store decomposes once per
+full cycle into a fact table, one row per (team, map), and every view —
+all-history, current-form, custom — is an aggregation over those rows.
+The current-form preset is pinned equal to the original §61 builder by
+test, so the refactor cannot drift the numbers.
+
+**Scope semantics.** A team lists with >= TRENDS_SCOPE_MIN_MAPS = 5
+maps INSIDE the scope; the 60-day activity filter applies only to the
+current-form preset, because a historical scope must show the teams of
+its era. Thresholds are visible; small samples are excluded, never
+estimated.
+
+**Coverage-aware metrics, a tightening found during feasibility.** The
+§61 build treated a map's missing first-kill or kills fields as zero
+while keeping its rounds in the denominator. Harmless at recent 98-100%
+coverage, but FK coverage sits near 88% in 2024-Q4 and 2025-Q4, so a
+historical scope would have understated FK/12 there. Now a map missing
+a metric's inputs is excluded from that metric's numerator AND
+denominator, and a team with nothing left renders null. Not a LOG
+entry: no wrong number was ever displayed (the last-10 windows lived in
+the high-coverage present), but the rule is fixed before any historical
+scope can ship. Same no-fabrication discipline as the unit tracker,
+applied by owner direction: scopes clamp to data that exists, unknown
+tournaments and unparseable dates yield an empty view rather than an
+error, and nothing pre-dating the scrape is synthesized.
+
+**Tournament normalization is a picker heuristic, stated as such.** The
+raw event field is 3,088 distinct strings because vlr concatenates
+tournament, phase, and whitespace; a collapse-and-phase-split pass
+yields 872 tournament keys (pinned on the real dirty shapes). A miss
+leaves the collapsed full string visible in the index rather than
+silently wrong. Matching is by exact normalized name, immune to id
+drift across rebuilds.
+
+**Serving cost, measured.** Fact table: 32,272 rows, 7.4 MB JSON,
+built in ~6 s inside the full cycle only; the API caches it by mtime
+and aggregates custom scopes in 15-43 ms on the two-year store. The
+two preset views are precomputed into trends.json, so the default page
+load stays a static read. BUNDLE_BEHAVIOR_REV untouched.

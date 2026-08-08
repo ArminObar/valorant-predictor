@@ -94,20 +94,27 @@ def _odds_phase(out: dict) -> None:
 
 
 def _trends_phase(out: dict) -> None:
-    """Build trends.json from the store: a pure derived view, rebuilt each
-    full cycle. Kept out of the 10-minute odds tick on purpose — nothing
-    in it changes faster than the results crawl (ASSUMPTIONS §61)."""
-    from ..data.trends import build_trends
+    """Build the trends fact table and its precomputed views from the
+    store: pure derived data, rebuilt each full cycle. Kept out of the
+    10-minute odds tick on purpose — nothing in it changes faster than
+    the results crawl (ASSUMPTIONS §61, §63). Custom scopes aggregate
+    the fact table at request time in the API."""
+    from ..data.trends import build_trends_bundle
     if not config.MATCHES_JSONL.exists():
         out["trends"] = {"skipped": "no store yet"}
         return
-    report = build_trends(store.iter_matches(config.MATCHES_JSONL))
-    path = config.TRENDS_JSON
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
-    tmp.replace(path)
-    out["trends"] = {"teams": report["n_teams"]}
+    table, views = build_trends_bundle(
+        store.iter_matches(config.MATCHES_JSONL))
+    for path, payload in ((config.TRENDS_ROWS_JSON, table),
+                          (config.TRENDS_JSON, views)):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+        tmp.replace(path)
+    out["trends"] = {"teams_all": views["views"]["all"]["n_teams"],
+                     "teams_current": views["views"]["current"]["n_teams"],
+                     "tournaments": len(views["tournaments"]),
+                     "rows": len(table["rows"])}
 
 
 def _markets_phase(out: dict) -> None:

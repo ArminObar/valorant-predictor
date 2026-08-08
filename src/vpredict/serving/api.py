@@ -29,7 +29,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -279,13 +279,70 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                              "items": len(val) if isinstance(val, (list, dict))
                              else None})
 
+    # Trends fact-table cache: parsed once per artifact mtime, so custom
+    # scopes aggregate in-memory instead of re-reading ~5 MB per request.
+    _trends_cache: dict = {}
+
+    def _trends_table() -> dict | None:
+        path = data_dir / "processed" / "trends_rows.json"
+        if not path.exists():
+            return None
+        mtime = path.stat().st_mtime
+        if _trends_cache.get("mtime") != mtime:
+            _trends_cache["table"] = json.loads(
+                path.read_text(encoding="utf-8"))
+            _trends_cache["mtime"] = mtime
+        return _trends_cache["table"]
+
+    def _trends_date(s: str | None, end: bool):
+        """YYYY-MM-DD -> aware UTC bound; anything unparseable is treated
+        as unset — a scope clamps to the data that exists, it never
+        errors (ASSUMPTIONS §63)."""
+        if not s:
+            return None
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            d = _dt.strptime(s.strip()[:10], "%Y-%m-%d")
+            if end:
+                d = d.replace(hour=23, minute=59, second=59)
+            return d.replace(tzinfo=_tz.utc)
+        except ValueError:
+            return None
+
     @app.get("/api/trends")
-    def trends() -> JSONResponse:
-        path = data_dir / "processed" / "trends.json"
-        if path.exists():
-            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
-        return JSONResponse({"generated_at": None, "params": {},
-                             "n_teams": 0, "teams": []})
+    def trends(preset: str = "all",
+               date_from: str | None = Query(None, alias="from"),
+               date_to: str | None = Query(None, alias="to"),
+               event: str | None = None) -> JSONResponse:
+        views_path = data_dir / "processed" / "trends.json"
+        empty = {"generated_at": None, "params": {}, "tournaments": [],
+                 "view": {"n_teams": 0, "teams": [], "scope": {}}}
+        if not views_path.exists():
+            return JSONResponse(empty)
+        bundle = json.loads(views_path.read_text(encoding="utf-8"))
+        head = {"generated_at": bundle.get("generated_at"),
+                "params": bundle.get("params", {}),
+                "tournaments": bundle.get("tournaments", [])}
+        f = _trends_date(date_from, end=False)
+        t = _trends_date(date_to, end=True)
+        ev = (event or "").strip() or None
+        if f is None and t is None and ev is None:
+            key = "current" if preset == "current_form" else "all"
+            view = bundle.get("views", {}).get(key) or empty["view"]
+            return JSONResponse({**head, "view": view})
+        table = _trends_table()
+        if table is None:
+            return JSONResponse({**head, "view": {
+                "n_teams": 0, "teams": [],
+                "scope": {"error": "fact table not built yet"}}})
+        from ..data.trends import aggregate
+        view = aggregate(table, min_maps=config.TRENDS_SCOPE_MIN_MAPS,
+                         date_from=f, date_to=t, event_name=ev)
+        view["scope"] = {"preset": "custom",
+                         "from": f.date().isoformat() if f else None,
+                         "to": t.date().isoformat() if t else None,
+                         "event": ev}
+        return JSONResponse({**head, "view": view})
 
     @app.get("/api/markets")
     def markets() -> JSONResponse:

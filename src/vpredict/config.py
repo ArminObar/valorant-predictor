@@ -223,6 +223,8 @@ TRENDS_JSON = PROCESSED_DIR / "trends.json"
 TRENDS_WINDOW_MAPS = 10       # per-team rolling window
 TRENDS_ACTIVE_DAYS = 60       # hide teams with no completed map since
 TRENDS_MIN_LIFETIME_MAPS = 5  # below this a window is noise
+TRENDS_ROWS_JSON = PROCESSED_DIR / "trends_rows.json"
+TRENDS_SCOPE_MIN_MAPS = 5     # min maps INSIDE a custom scope to list a team
 
 # Hypothetical unit tracker (ASSUMPTIONS §59). Imaginary units on a FIXED,
 # non-compounding notional: a sizing diagnostic, never money, never a

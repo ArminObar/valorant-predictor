@@ -1,72 +1,52 @@
-# APPLY — patch 0078: audit hardening + alias hygiene + Trends + prior-map counts
+# APPLY — patch 0079: Trends date-range and tournament scoping, all-history default
 
-One patch, four approved items, packaged together by owner direction.
-Supersedes the four individually numbered files (0078-0081) delivered
-earlier in this session: apply ONLY this one. No dependency changes.
-No model serving change: BUNDLE_BEHAVIOR_REV not bumped (audit tooling,
-odds linking, derived views, display metadata only).
+One patch, one owner-approved item (ASSUMPTIONS §63). No dependency
+changes, no model serving change, BUNDLE_BEHAVIOR_REV untouched.
 
-Item A — audit (LOG 60): the render gate now asserts payload-driven
-content per route (MUST_CONTAIN), with the markets mock carrying a
-populated unit_tracker. Proven both ways: the committed Markets page
-renders the tracker panel in the harness; the pre-0077 page fails it.
-Item B — alias hygiene (LOG 61, ASSUMPTIONS §60): poisoned
-Cloud9 -> LOUD seed alias removed; raw identity now beats alias
-redirect; any name match is refused when book and prediction starts
-differ by > 6 h; unlinked fixtures stored once, counted every pass;
-markets counts orientation-dropped groups (skipped.n_groups_unpriced).
-Item C — Trends (ASSUMPTIONS §61): seventh tab, per-team last-10-map
-windows (win rate, spread, pistols, combined kills, FK/12, won-round
-method mix, agents) built each full cycle into trends.json, served at
-/api/trends. Clutch/economy trends explicitly absent (inputs never
-scraped; stated on the page).
-Item D — prior-map counts (ASSUMPTIONS §62): team1/team2_prior_maps
-frozen with the low_history flag (ledger ALTERs, idempotent), published
-verbatim, shown as "low history (a/b)" with named tooltips on Schedule,
-Scoreboard, and the match page; pre-column rows stay null.
+RETRACTION NOTE: an earlier 0079 file named
+"0079-tracker-backdate-..." was delivered and then retracted by owner
+direction (the unit tracker keeps its 2026-08-08 start boundary, §59
+addendum). If that file is still in Downloads, DELETE it; apply only
+this Trends patch as 0079.
 
-Pre-registered behavior changes: /api/upcoming rows and new ledger rows
-gain team1_prior_maps/team2_prior_maps; markets skipped gains
-n_groups_unpriced; capture stops re-appending unlinked fixtures every
-pass; a 7th "trends" tab and /api/trends appear; refresh report gains a
-"trends" phase.
+What ships: the Trends tab defaults to ALL real scraped history
+(career table over the full store), keeps the §61 recent-form view as
+a "current form" preset, and adds custom scoping by date range and
+tournament. The store decomposes each full cycle into a fact table
+(one row per team-map, trends_rows.json) plus precomputed views
+(trends.json); /api/trends serves presets statically and aggregates
+custom scopes from the cached fact table per request (measured 15-43 ms
+on the two-year store). Tournament picker uses normalized names (872
+keys from 3,088 raw event strings, heuristic pinned by test). Metrics
+became coverage-aware: a map missing a metric's inputs is excluded
+from numerator and denominator (matters for FK in two ~88%-coverage
+historical quarters), and nothing is estimated: unknown tournaments
+and bad dates clamp to an empty view, never an error.
+
+Pre-registered behavior changes: /api/trends response shape becomes
+{generated_at, params, tournaments, view:{scope, n_teams, teams}} and
+accepts ?preset=current_form, ?from=YYYY-MM-DD, ?to=YYYY-MM-DD,
+?event=<tournament name>; the refresh report's trends line gains
+teams_all/teams_current/tournaments/rows; processed/ gains
+trends_rows.json (~7 MB).
 
 ## Base
 
-Applies on top of patch 0077 (the unit-tracker commit).
+Applies on top of patch 0078 (the combined audit/alias/trends/counts
+commit).
 
 ## Apply
 
 ```bash
 cd ~/Downloads/valorant-predictor
-ls ~/Downloads/0078-*.patch || ls patches/applied/0078*.patch
-git am ~/Downloads/0078-*.patch
+ls ~/Downloads/0079-*.patch || ls patches/applied/0079*.patch
+git am ~/Downloads/0079-trends-*.patch
 git log --oneline -1
 ```
 
-The last line must show the 0078 subject (audit + alias hygiene +
-trends + prior-map counts). If `git am` fails partway: `git am --abort`,
-confirm `git status --porcelain` clean, retry. If both an old four-file
-set and this single file are in Downloads, apply ONLY this one.
-
-## Production aliases.json — optional one-line edit (Render Shell)
-
-The disk copy was seeded once, so the seed fix does not reach it. The
-two code layers in this patch (raw-identity precedence + the 6 h start
-gate) neutralize the entry either way; removing it is hygiene, not a
-requirement. In the Render Shell, whenever convenient:
-
-```bash
-python3 - <<'PYEOF'
-import json
-p = "/data/odds/aliases.json"
-d = json.load(open(p))
-gone = d.pop("Cloud9", None)
-open(p, "w").write(json.dumps(d, indent=1, ensure_ascii=False) + "\n")
-print("removed:", gone, "| remaining:", len(d))
-PYEOF
-cat /data/odds/aliases.json
-```
+The last line must show the 0079 Trends-scoping subject. If `git am`
+fails partway: `git am --abort`, confirm `git status --porcelain`
+clean, retry.
 
 ## Gates (all must pass before push)
 
@@ -80,55 +60,53 @@ npm run audit
 cd ..
 ```
 
-Expect 210 Python tests and 44 JS tests. Sandbox ran every stage
-runnable there green, including the REAL Chrome tips and mobile audits
-against this exact tree (10 routes total across stages; content
-assertions on /markets, /trends, /upcoming; tips expects exactly 1
-icon on /trends; mobile covers /trends at 390x844). Run the full
-`npm run audit` locally anyway per standing procedure.
+Expect 217 Python tests and 44 JS tests. Sandbox ran everything green
+on this exact tree, including real-Chrome tips (9 popovers) and mobile
+(9 routes at 390x844, /trends with the new controls included).
 
 ## Push, then verify live
 
 ```bash
 git push
-# after Render deploys, the served bundle must match the local build:
 curl -s https://vpredict.onrender.com/ | grep -o 'index-[a-zA-Z0-9]*\.js'
 ls frontend/dist/assets/*.js
 ```
 
-The filenames must match (Render "Live" is not proof). The unit
-tracker panel is proven to render and paint from this tree, so if the
-hashes match and the panel still is not on /markets in your browser,
-hard-refresh (cached index.html); if the hashes differ, check Render's
-Events/build log for this commit (the 0075 incident class).
-
-After the next FULL 30-minute cycle (not the 10-minute odds tick):
+After the next FULL 30-minute cycle (the fact table builds there):
 
 ```bash
 python3 - <<'PYEOF'
 import json, urllib.request
-t = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/trends"))
-print("trends teams:", t.get("n_teams"), "generated:", t.get("generated_at"))
-u = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/upcoming"))
-withc = [p for p in u["predictions"] if p.get("team1_prior_maps") is not None]
-print("upcoming rows with prior-map counts:", len(withc), "of",
-      len(u["predictions"]))
-m = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/markets"))
-print("unpriced groups counted:", m.get("skipped", {}).get("n_groups_unpriced"))
+def get(u):
+    return json.load(urllib.request.urlopen(
+        "https://vpredict.onrender.com" + u))
+d = get("/api/trends")
+print("all-history teams:", d["view"]["n_teams"],
+      "| tournaments:", len(d["tournaments"]))
+c = get("/api/trends?preset=current_form")
+print("current-form teams:", c["view"]["n_teams"])
+name = urllib.parse.quote(d["tournaments"][0]["name"])
+e = get("/api/trends?event=" + name)
+print("event scope:", d["tournaments"][0]["name"], "->",
+      e["view"]["n_teams"], "teams")
+q = get("/api/trends?from=2025-01-01&to=2025-03-31")
+print("2025-Q1 scope:", q["view"]["n_teams"], "teams")
 PYEOF
 ```
 
-Trends should report ~200 teams; the /trends tab should render the
-table. Prior-map counts appear on rows frozen AFTER this deploy (older
-frozen rows stay null by design, §62). In the runtime logs, any
-`LINK GATE:` warning is the start-time gate refusing a cross-link, and
-`UNLINKED` lines now appear once per fixture instead of every pass.
+Expected magnitudes from the seed: ~800 all-history teams, ~200
+current-form, ~870 tournaments, 2025-Q1 around 260 teams. On /trends:
+the page lands on "all history", the two preset pills switch views,
+the date inputs and tournament box scope live, and out-of-data scopes
+show the empty-state line instead of an error. Until the first full
+cycle after deploy, custom scopes report "fact table not built yet" in
+the scope block: expected, not a failure.
 
 ## Rollback
 
 ```bash
-git revert <0078-sha>          # or reset --hard before push
+git revert <0079-sha>          # or reset --hard before push
 ```
 
-Everything is additive: derived views, audit tooling, nullable ledger
-columns (the ALTERs are harmless to leave in place on revert).
+Derived views and display only. trends_rows.json is regenerated or
+ignored either way.
