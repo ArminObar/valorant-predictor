@@ -2302,3 +2302,41 @@ built in ~6 s inside the full cycle only; the API caches it by mtime
 and aggregates custom scopes in 15-43 ms on the two-year store. The
 two preset views are precomputed into trends.json, so the default page
 load stays a static read. BUNDLE_BEHAVIOR_REV untouched.
+
+## 64. The coverage-gap audit is a standing check, and one accepted casualty (patch 0080)
+
+**The audit.** scripts/gap_audit.py partitions every graded ledger
+match into exactly one bucket (covered; explained no-pick classes;
+suspended-only; captured-but-never-linked; pre-capture era; never
+listed), with a sum check, so scoreboard-minus-markets is always fully
+accounted for. Its definitions are imported from the live pipeline —
+the same normalize_team, the same priceable(), the same
+ODDS_LINK_MAX_START_DELTA_H tolerance — so the audit cannot drift from
+what production does. Read-only, one command, tested bucket-by-bucket
+including both retro-link variants and the time-gate refusal.
+
+**First production run (owner, 2026-08-08), recorded as the
+baseline:** 110 graded; 58 covered; expected gap 51 (27 pre-capture
+era, 24 never listed); both bug buckets zero; exactly one
+captured-but-never-linked match.
+
+**The one casualty, and the decision.** Cloud9 vs LOUD, 2026-07-31:
+real Cloudbet prices captured, never linked. Reproduced mechanism, a
+THIRD poisoned-alias failure mode distinct from LOG 61's theft: under
+the pre-fix code the alias canonicalized BOTH sides of the fixture to
+"loud", collapsing its identity into a self-pair that can never match
+its own match's (cloud9, loud) name pair, so the fixture sat unlinked
+for good. Under current code the same fixture links "exact" in both
+orientations even with the poisoned entry still present (raw identity
+scans first), so recurrence is impossible. Decision, owner-accepted:
+PERMANENT casualty — and the reason is an integrity choice, not data
+loss. The captures exist and a pick could be derived deterministically
+from frozen pre-match inputs, but that pick was never published before
+the match, and inserting it into the public graded record after the
+result would break the called-in-advance property the Markets page
+advertises (§8's Elo-column principle: nothing about the public
+comparison may be recomputed favourably later). The unit tracker's
+2026-08-08 boundary already excludes it; the EV gate stays clean of
+never-published picks. Any future historical-relink design (§60,
+still deferred) must be restricted to not-yet-graded matches for
+exactly this reason.
