@@ -181,6 +181,9 @@ ODDS_RAW_DIR = ODDS_DIR / "raw"               # append-only raw API responses
 ODDS_ALIASES_JSON = ODDS_DIR / "aliases.json" # book-name -> vlr-name overrides
 ODDS_UPCOMING_URL = "https://vpredict.onrender.com/api/upcoming"
 ODDS_CLOSE_WINDOW_MIN = 20    # a capture within this window of start_ts is the "close"
+ODDS_LINK_MAX_START_DELTA_H = 6   # name-matched fixture must also start within
+                                  # this many hours of the prediction, or the
+                                  # link is refused (LOG entry 61)
 ODDS_MIN_INTERVAL_S = 1.0     # politeness floor between odds-source requests
 CLOUDBET_BASE_URL = "https://sports-api.cloudbet.com/pub/v2/odds"
 # Headline column: first source in this list that priced the match wins.
@@ -214,6 +217,12 @@ EV_MIN_GRADED_PICKS = 100
 EV_EXTRAPOLATION_LO = 0.15
 EV_EXTRAPOLATION_HI = 0.88
 MARKETS_JSON = PROCESSED_DIR / "markets.json"
+
+# Phase-1 Trends (ASSUMPTIONS §61): store-derived team form windows.
+TRENDS_JSON = PROCESSED_DIR / "trends.json"
+TRENDS_WINDOW_MAPS = 10       # per-team rolling window
+TRENDS_ACTIVE_DAYS = 60       # hide teams with no completed map since
+TRENDS_MIN_LIFETIME_MAPS = 5  # below this a window is noise
 
 # Hypothetical unit tracker (ASSUMPTIONS §59). Imaginary units on a FIXED,
 # non-compounding notional: a sizing diagnostic, never money, never a

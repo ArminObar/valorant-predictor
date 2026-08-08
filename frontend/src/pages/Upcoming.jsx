@@ -93,8 +93,15 @@ function Card({ m, now, onOpen }) {
           {m.event}{m.best_of ? ` \u00b7 Bo${m.best_of}` : ""}
           {m.low_history && (
             <span className="sched-lowhist"
-              title="Fewer than three recorded maps for one team; listed, not scored.">
-              low history
+              title={m.team1_prior_maps != null
+                ? `${m.team1_name}: ${m.team1_prior_maps} prior map`
+                  + `${m.team1_prior_maps === 1 ? "" : "s"}, `
+                  + `${m.team2_name}: ${m.team2_prior_maps}. Fewer than `
+                  + `three for one side; listed, not scored.`
+                : "Fewer than three recorded maps for one team; "
+                  + "listed, not scored."}>
+              low history{m.team1_prior_maps != null
+                && ` (${m.team1_prior_maps}/${m.team2_prior_maps})`}
             </span>
           )}
         </div>

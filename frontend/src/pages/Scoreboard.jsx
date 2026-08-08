@@ -81,9 +81,18 @@ export function Scoreboard({ onOpen }) {
                       onClick={() => onOpen(r.match_id)}>
                     <td>{r.team1_name} <span className="dim">vs</span> {r.team2_name}
                       {Boolean(r.low_history) && (
-                        <span className="badge" title={"Almost no history "
-                          + "when this locked (often a TBD bracket slot). "
-                          + "Kept in the record, not scored."}>low history</span>
+                        <span className="badge" title={
+                          r.team1_prior_maps != null
+                            ? `${r.team1_prior_maps} and `
+                              + `${r.team2_prior_maps} prior maps when this `
+                              + `locked (often a TBD bracket slot). Kept in `
+                              + `the record, not scored.`
+                            : "Almost no history "
+                              + "when this locked (often a TBD bracket slot). "
+                              + "Kept in the record, not scored."}>low history
+                          {r.team1_prior_maps != null
+                            && ` (${r.team1_prior_maps}/${r.team2_prior_maps})`}
+                        </span>
                       )}
                     </td>
                     <td className="dim">{fmtTime(r.start_ts)}</td>

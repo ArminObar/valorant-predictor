@@ -1,37 +1,72 @@
-# APPLY — patches 0076 + 0077: reschedule-gap fix, then the unit tracker
+# APPLY — patch 0078: audit hardening + alias hygiene + Trends + prior-map counts
 
-Two patches, applied in order. 0076 is the approved reschedule-gap fix
-(LOG entry 59, ASSUMPTIONS §58): a suspended 0.0 first sighting no
-longer consumes a match's one freeze slot, and CLV is reported only when
-the entry is a true freeze, so the fabricated exact-0.00 CLVs disappear
-(they become null, honestly). 0077 is the unit tracker (ASSUMPTIONS
-§59): hypothetical quarter-Kelly sizing in imaginary units over the
-EV-clean graded moneyline picks starting 2026-08-08, provisional with
-the EV gate, with a flat 1u companion line, shipped in the markets
-payload and as a panel on Markets. No dependency changes. No model
-serving change: BUNDLE_BEHAVIOR_REV not bumped (markets/display side
-only). Pre-registered behavior changes: close-only picks now show CLV
-null instead of +0.00; the refresh odds report gains a
-skipped_unpriceable counter; the markets payload gains entry_kind per
-pick and a unit_tracker block.
+One patch, four approved items, packaged together by owner direction.
+Supersedes the four individually numbered files (0078-0081) delivered
+earlier in this session: apply ONLY this one. No dependency changes.
+No model serving change: BUNDLE_BEHAVIOR_REV not bumped (audit tooling,
+odds linking, derived views, display metadata only).
+
+Item A — audit (LOG 60): the render gate now asserts payload-driven
+content per route (MUST_CONTAIN), with the markets mock carrying a
+populated unit_tracker. Proven both ways: the committed Markets page
+renders the tracker panel in the harness; the pre-0077 page fails it.
+Item B — alias hygiene (LOG 61, ASSUMPTIONS §60): poisoned
+Cloud9 -> LOUD seed alias removed; raw identity now beats alias
+redirect; any name match is refused when book and prediction starts
+differ by > 6 h; unlinked fixtures stored once, counted every pass;
+markets counts orientation-dropped groups (skipped.n_groups_unpriced).
+Item C — Trends (ASSUMPTIONS §61): seventh tab, per-team last-10-map
+windows (win rate, spread, pistols, combined kills, FK/12, won-round
+method mix, agents) built each full cycle into trends.json, served at
+/api/trends. Clutch/economy trends explicitly absent (inputs never
+scraped; stated on the page).
+Item D — prior-map counts (ASSUMPTIONS §62): team1/team2_prior_maps
+frozen with the low_history flag (ledger ALTERs, idempotent), published
+verbatim, shown as "low history (a/b)" with named tooltips on Schedule,
+Scoreboard, and the match page; pre-column rows stay null.
+
+Pre-registered behavior changes: /api/upcoming rows and new ledger rows
+gain team1_prior_maps/team2_prior_maps; markets skipped gains
+n_groups_unpriced; capture stops re-appending unlinked fixtures every
+pass; a 7th "trends" tab and /api/trends appear; refresh report gains a
+"trends" phase.
 
 ## Base
 
-Applies on top of origin/main at 28b17bf (patch 0075).
+Applies on top of patch 0077 (the unit-tracker commit).
 
 ## Apply
 
 ```bash
 cd ~/Downloads/valorant-predictor
-ls ~/Downloads/007[67]-*.patch || ls patches/applied/007[67]*.patch
-git am ~/Downloads/0076-*.patch
-git log --oneline -1
-git am ~/Downloads/0077-*.patch
+ls ~/Downloads/0078-*.patch || ls patches/applied/0078*.patch
+git am ~/Downloads/0078-*.patch
 git log --oneline -1
 ```
 
-Each `git log` line must show that patch's subject. If `git am` fails
-partway: `git am --abort`, confirm `git status --porcelain` clean, retry.
+The last line must show the 0078 subject (audit + alias hygiene +
+trends + prior-map counts). If `git am` fails partway: `git am --abort`,
+confirm `git status --porcelain` clean, retry. If both an old four-file
+set and this single file are in Downloads, apply ONLY this one.
+
+## Production aliases.json — optional one-line edit (Render Shell)
+
+The disk copy was seeded once, so the seed fix does not reach it. The
+two code layers in this patch (raw-identity precedence + the 6 h start
+gate) neutralize the entry either way; removing it is hygiene, not a
+requirement. In the Render Shell, whenever convenient:
+
+```bash
+python3 - <<'PYEOF'
+import json
+p = "/data/odds/aliases.json"
+d = json.load(open(p))
+gone = d.pop("Cloud9", None)
+open(p, "w").write(json.dumps(d, indent=1, ensure_ascii=False) + "\n")
+print("removed:", gone, "| remaining:", len(d))
+PYEOF
+cat /data/odds/aliases.json
+```
 
 ## Gates (all must pass before push)
 
@@ -45,64 +80,55 @@ npm run audit
 cd ..
 ```
 
-Expect 198 Python tests (188 after 0076, plus 10 tracker tests) and 44
-JS tests. `npm run audit` needs Chrome (tips + mobile stages). Sandbox
-already ran pytest, npm test, build, audit:lint, audit:render green;
-tips and mobile run on your machine per standing procedure.
+Expect 210 Python tests and 44 JS tests. Sandbox ran every stage
+runnable there green, including the REAL Chrome tips and mobile audits
+against this exact tree (10 routes total across stages; content
+assertions on /markets, /trends, /upcoming; tips expects exactly 1
+icon on /trends; mobile covers /trends at 390x844). Run the full
+`npm run audit` locally anyway per standing procedure.
 
-## BEFORE snapshot — run against live BEFORE pushing
-
-```bash
-python3 - <<'PYEOF' | tee /tmp/clv-before.txt
-import json, urllib.request
-d = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/markets"))
-zero = [p for p in d["picks"] if p.get("clv_pct") == 0.0]
-print("exact-0.0 CLV picks:", len(zero))
-for p in zero: print("  ", p["match"], p["source"], p.get("entry_captured_at"))
-print("unit_tracker in payload:", "unit_tracker" in d)
-PYEOF
-```
-
-## Push, then verify live AFTER Render deploys
+## Push, then verify live
 
 ```bash
 git push
-# wait for Render deploy, then confirm the served bundle actually changed:
+# after Render deploys, the served bundle must match the local build:
 curl -s https://vpredict.onrender.com/ | grep -o 'index-[a-zA-Z0-9]*\.js'
 ls frontend/dist/assets/*.js
 ```
 
-The two filenames must match (STATE.md workflow note; Render "Live" is
-not proof). Then, after the next 10-minute odds tick:
+The filenames must match (Render "Live" is not proof). The unit
+tracker panel is proven to render and paint from this tree, so if the
+hashes match and the panel still is not on /markets in your browser,
+hard-refresh (cached index.html); if the hashes differ, check Render's
+Events/build log for this commit (the 0075 incident class).
+
+After the next FULL 30-minute cycle (not the 10-minute odds tick):
 
 ```bash
 python3 - <<'PYEOF'
 import json, urllib.request
-d = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/markets"))
-zero = [p for p in d["picks"] if p.get("clv_pct") == 0.0
-        and p.get("entry_kind") == "close"]
-print("fabricated zeros remaining (must be 0):", len(zero))
-nul = [p for p in d["picks"] if p.get("clv_pct") is None
-       and p.get("close_captured")]
-print("close-only picks now honestly null:", len(nul))
-t = d.get("unit_tracker") or {}
-print("tracker:", t.get("n_staked"), "staked,",
-      t.get("units_pnl"), "units, provisional:", t.get("provisional"))
+t = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/trends"))
+print("trends teams:", t.get("n_teams"), "generated:", t.get("generated_at"))
+u = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/upcoming"))
+withc = [p for p in u["predictions"] if p.get("team1_prior_maps") is not None]
+print("upcoming rows with prior-map counts:", len(withc), "of",
+      len(u["predictions"]))
+m = json.load(urllib.request.urlopen("https://vpredict.onrender.com/api/markets"))
+print("unpriced groups counted:", m.get("skipped", {}).get("n_groups_unpriced"))
 PYEOF
 ```
 
-The three previously fabricated rows (KRU vs G2, Eternal Fire vs
-FNATIC, Shopify Rebellion Black vs 2Game) should move from +0.00 to
-null. In the runtime logs, `skipped_unpriceable` appearing with a
-nonzero count in an odds tick is the capture-side fix working: a
-suspended price got counted and left the slot open instead of burning
-it.
+Trends should report ~200 teams; the /trends tab should render the
+table. Prior-map counts appear on rows frozen AFTER this deploy (older
+frozen rows stay null by design, §62). In the runtime logs, any
+`LINK GATE:` warning is the start-time gate refusing a cross-link, and
+`UNLINKED` lines now appear once per fixture instead of every pass.
 
 ## Rollback
 
 ```bash
-git revert <0077-sha> <0076-sha>   # or: git reset --hard 28b17bf (before push only)
+git revert <0078-sha>          # or reset --hard before push
 ```
 
-Both patches are additive on the serving side; reverting restores the
-prior payload shape. The odds log is append-only and untouched by both.
+Everything is additive: derived views, audit tooling, nullable ledger
+columns (the ALTERs are harmless to leave in place on revert).

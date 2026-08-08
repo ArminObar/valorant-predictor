@@ -2139,3 +2139,104 @@ freeze discipline. Alternative considered and rejected for now:
 recomputing corrected entry columns for the prefix from the append-only
 capture log. Possible later without rewriting anything frozen; the
 clean boundary costs only a few weeks of sample at current volumes.
+
+## 60. Alias hygiene: identity precedence and the start-time gate (patch 0078)
+
+**Owner approved proceeding on the sandbox findings without the
+production shell output.** The repo seed is fixed here; the production
+/data/odds/aliases.json was seeded once and keeps the poisoned entry
+until the one-line edit in APPLY runs. Until then, the two code layers
+below already neutralize it.
+
+**Raw identity beats alias redirect.** An alias exists to translate a
+book's spelling to vlr's, not to reassign identity. Scanning the raw
+normalised pair before applying aliases means a poisoned entry can
+never steal a fixture whose own teams are on the board. Cost: none for
+legitimate aliases, whose raw names by definition match nothing.
+
+**A name match must also be a time match.** Any candidate, exact or
+aliased, is refused when its prediction start differs from the book's
+listed start by more than ODDS_LINK_MAX_START_DELTA_H = 6 hours,
+chosen to tolerate listing drift and delays while sitting far below
+the shortest realistic gap between two distinct fixtures of the same
+name pair (round-robin rematches are days apart). No book start means
+no gate: Cloudbet and Pinnacle both supply one today, so that path is
+vestigial caution. A refused link logs at WARNING with both times.
+
+**Why there is no name-similarity guard.** A load-time check cannot
+know that Cloud9 and LOUD are different orgs; worse, "loud" is a
+substring of "cloud9", so every plausible textual heuristic would
+whitelist exactly this poison. Identity precedence plus the time gate
+are enforceable; a semantic org registry is not worth maintaining.
+
+**Unlinked records: store once, count always.** One stored record per
+unlinked (source, event, market, line) is enough for suggest_aliases
+and for any later relink, and it is the EARLIEST sighting, which is the
+record a relink would want as entry. The per-pass counter still reports
+every sighting. Historical relink of previously unlinked captures
+remains deferred: it changes EV-at-entry retroactively, so it needs its
+own design (append corrected records vs a derived link table,
+restricted to ungraded matches) and its own approval.
+
+## 61. Phase-1 Trends: definitions, filters, and one corrected premise (patch 0078)
+
+**Corrected premise, recorded per house rule.** The feasibility report
+listed clutch trends as computable from existing data. That was wrong:
+clutch_wins (and multikills) are Tier B performance-tab fields present
+as columns but populated in 0 of 161,352 stored player rows — the
+report checked key presence, not non-null coverage. Phase 1 therefore
+ships spreads, pistols, combined kills, won-round method mix, agents,
+and FK trends, and says on the page itself that clutch and economy
+trends are absent because the store has never held their inputs. They
+arrive with a real Tier B scraping milestone, never as estimates.
+
+**Metric definitions (all pinned by test).** Per team, over its last
+TRENDS_WINDOW_MAPS = 10 completed maps: win rate; spread = mean round
+margin per map using full map scores (overtime included); pistol win
+rate over round-strip rounds 1 and 13 with known winners
+(regulation-only by construction, per §3's overtime rule); combined
+kills = both teams' player kills per map; FK/12 = 12 * (team first
+kills - first deaths) / total rounds; method mix = distribution of
+elim/boom/defuse/time over rounds the team WON with a known method
+(the ~14% unattributed round block, consistent with the OT lump, is
+excluded rather than guessed); agents = five most-picked over the
+window. Fields whose inputs are absent render n/a, never 0.
+
+**Filters.** Teams appear with >= TRENDS_MIN_LIFETIME_MAPS = 5 lifetime
+maps and a completed map inside TRENDS_ACTIVE_DAYS = 60. Judgment
+constants, not tuned; both live in config. On the seed store this
+yields 207 active teams, ~6 s to build.
+
+**Placement.** Built in the full refresh cycle only (the 10-minute
+odds tick stays light), written atomically to trends.json, served by
+/api/trends, rendered at /trends as the seventh tab. Descriptive form
+only: the page says explicitly it is not model features and not
+betting advice. The trends build is a derived view of the store;
+BUNDLE_BEHAVIOR_REV untouched.
+
+## 62. Prior-map counts ship frozen with the low-history flag (patch 0078)
+
+**The counts are the flag's evidence, so they freeze with it.** Each
+side's prior eligible-map count at the prediction cutoff
+(team1_prior_maps / team2_prior_maps) is now part of the prediction
+dict, stored in the ledger at first call via the established
+idempotent-ALTER convention, and published verbatim from the ledger
+re-read like every other frozen field. The contract test additionally
+pins internal consistency: low_history must equal
+min(counts) < MIN_MAPS_HISTORY, so the flag and its evidence can never
+drift apart.
+
+**Rows frozen before the columns existed publish null, never a
+recomputed number.** A team's map count grows over time; recomputing it
+"as of now" for an old row would misstate what was known when the call
+locked, which is exactly what the flag documents. The same precedent as
+p_maps_dist (§ on totals): pre-column rows simply do not have the
+field. All three badge surfaces (Schedule, Scoreboard, match page) show
+"low history (a/b)" with a named tooltip when the counts exist and the
+original badge unchanged when they do not.
+
+**Scope note.** No backfill of historical rows and no display-time
+recomputation, deliberately, for the freeze-discipline reason above.
+The render audit's upcoming mock now carries a flagged row with counts
+and asserts the visible "(2/1)" text, so the badge enhancement can
+never silently unrender (the LOG-60 mechanism).

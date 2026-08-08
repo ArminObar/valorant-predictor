@@ -171,6 +171,8 @@ def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
         "per_map": {m: round(float(p), 4) for m, p in zip(kept_maps, p_maps)},
         "per_map_elo": per_map_elo,
         "pool": pool, "low_history": low_history,
+        "team1_prior_maps": int(snap_a.n_maps),
+        "team2_prior_maps": int(snap_b.n_maps),
         "model_version": bundle.get("version", "unknown"),
     }
 
@@ -315,6 +317,8 @@ def run_predictions(bundle: dict, history, upcoming: list[Match],
             p_model=pd_row["p_model"], p_elo=pd_row["p_elo"],
             model_version=pd_row["model_version"],
             low_history=pd_row["low_history"],
+            team1_prior_maps=pd_row.get("team1_prior_maps"),
+            team2_prior_maps=pd_row.get("team2_prior_maps"),
             p_maps_dist=pd_row.get("maps_dist"), now=now)
         counters[status] += 1
         if status == "too_late":          # raced the margin since the check
@@ -363,6 +367,11 @@ def run_predictions(bundle: dict, history, upcoming: list[Match],
             # The call itself comes from the LEDGER, verbatim.
             "p_model": row["p_model"], "p_elo": row["p_elo"],
             "low_history": bool(row["low_history"]),
+            # The flag's evidence, frozen with it (ASSUMPTIONS §62). Rows
+            # frozen before the columns existed publish null, never a
+            # recomputed number.
+            "team1_prior_maps": row.get("team1_prior_maps"),
+            "team2_prior_maps": row.get("team2_prior_maps"),
             "model_version": row["model_version"],
             "maps_dist": maps_dist,
             # Display-only per-map surface (never in the ledger): frozen in

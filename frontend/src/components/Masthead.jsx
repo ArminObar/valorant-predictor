@@ -16,6 +16,9 @@ export const MASTHEAD_TIPS = {
   markets: "The model's probability set against sportsbook prices. "
     + "Every pick lists with its expected value at the captured entry "
     + "price, positive or negative.",
+  trends: "Descriptive form windows per team: spreads, pistols, "
+    + "combined kills, round win methods, and agent picks over the "
+    + "last ten completed maps. Not model features.",
   backtest: "A replay of the past two years as if the model had been "
     + "live the whole time. Simulated results only; the real record "
     + "lives on the scoreboard.",

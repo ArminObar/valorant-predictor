@@ -109,7 +109,8 @@ def build_picks(ledger_rows: list[dict],
     (LOG entries 46 and 47); this caller skips and counts, loudly, so no
     single record or group can take down the whole build."""
     rows_by_id = {r["match_id"]: r for r in ledger_rows}
-    skipped = {"n_unpriceable": 0, "n_group_errors": 0}
+    skipped = {"n_unpriceable": 0, "n_group_errors": 0,
+               "n_groups_unpriced": 0}
     usable: list[OddsCapture] = []
     for c in captures:
         if _priceable(c):
@@ -158,6 +159,12 @@ def build_picks(ledger_rows: list[dict],
                 if probs is not None:
                     priced[src] = (entry, close, probs)
             if not priced:
+                # Every source's entry failed _model_side_probs: an
+                # unlinked-orientation moneyline or a totals capture with
+                # no frozen maps distribution. Counted so a match with
+                # real captured odds can never vanish from Markets
+                # silently (LOG entry 61).
+                skipped["n_groups_unpriced"] += 1
                 continue
 
             def _bidx(cap2: OddsCapture, cs: int) -> int | None:

@@ -19,7 +19,7 @@ import path from "node:path";
 
 const PAGE = pathToFileURL(
   path.resolve(import.meta.dirname, "tip-page.html")).href;
-const ROUTES = ["/", "/upcoming", "/scoreboard", "/model", "/markets",
+const ROUTES = ["/", "/upcoming", "/scoreboard", "/model", "/markets", "/trends",
                 "/backtest", "/how", "/match/m1"];
 const VIEW = { width: 390, height: 844, deviceScaleFactor: 3,
                isMobile: true, hasTouch: true };

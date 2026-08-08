@@ -48,6 +48,14 @@ CREATE TABLE IF NOT EXISTS predictions (
 _MIGRATIONS = [
     ("p_maps_dist", "ALTER TABLE predictions ADD COLUMN p_maps_dist TEXT"),
     ("maps_played", "ALTER TABLE predictions ADD COLUMN maps_played INTEGER"),
+    # Each side's prior eligible-map count at call time: the low_history
+    # flag's evidence, frozen with it (ASSUMPTIONS §62). Pre-existing rows
+    # stay NULL; recomputing them later would misstate what was known when
+    # the call locked.
+    ("team1_prior_maps",
+     "ALTER TABLE predictions ADD COLUMN team1_prior_maps INTEGER"),
+    ("team2_prior_maps",
+     "ALTER TABLE predictions ADD COLUMN team2_prior_maps INTEGER"),
 ]
 
 _EPS = 1e-6
@@ -89,6 +97,8 @@ class Ledger:
                           team2_name: str, event: str, best_of: int,
                           p_model: float, p_elo: float, model_version: str,
                           low_history: bool = False,
+                          team1_prior_maps: int | None = None,
+                          team2_prior_maps: int | None = None,
                           p_maps_dist: dict | None = None,
                           now: datetime | None = None) -> str:
         """Returns 'inserted' | 'frozen' (already predicted) | 'too_late'."""
@@ -101,11 +111,13 @@ class Ledger:
             "INSERT OR IGNORE INTO predictions "
             "(match_id, made_at, start_ts, team1, team2, team1_name, team2_name,"
             " event, best_of, p_model, p_elo, model_version, low_history,"
-            " p_maps_dist) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " team1_prior_maps, team2_prior_maps, p_maps_dist) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (match_id, _iso(now), _iso(start_ts), team1, team2, team1_name,
              team2_name, event, int(best_of), float(p_model), float(p_elo),
              model_version, int(bool(low_history)),
+             None if team1_prior_maps is None else int(team1_prior_maps),
+             None if team2_prior_maps is None else int(team2_prior_maps),
              _json.dumps(p_maps_dist) if p_maps_dist else None))
         self._con.commit()
         return "inserted" if cur.rowcount == 1 else "frozen"

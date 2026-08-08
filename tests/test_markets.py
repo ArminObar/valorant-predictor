@@ -503,3 +503,12 @@ def test_true_zero_movement_still_reports_zero_clv():
     p = build_picks([_row()], caps)[0][0]
     assert p["entry_kind"] == "freeze"
     assert p["clv_pct"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_all_orientations_unlinked_group_is_counted_not_silent():
+    """A match with real captured prices but no linked orientation used to
+    vanish from Markets without a trace (LOG entry 61)."""
+    cap = _cap(home_is_t1=None)
+    picks, skipped = build_picks([_row()], [cap])
+    assert picks == []
+    assert skipped["n_groups_unpriced"] == 1

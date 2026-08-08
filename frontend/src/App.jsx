@@ -8,6 +8,7 @@ import { Upcoming } from "./pages/Upcoming.jsx";
 import { Scoreboard } from "./pages/Scoreboard.jsx";
 import { ModelTab } from "./pages/ModelTab.jsx";
 import { MarketPicks } from "./pages/MarketPicks.jsx";
+import { Trends } from "./pages/Trends.jsx";
 import { Backtest } from "./pages/Backtest.jsx";
 import { MatchDetail } from "./pages/MatchDetail.jsx";
 import { HowItWorks } from "./pages/HowItWorks.jsx";
@@ -35,7 +36,8 @@ function AppFooter() {
 const TABS = [
   ["upcoming", "schedule"], ["scoreboard", "scoreboard"],
   ["model", "model"], ["markets", "markets"],
-  ["backtest", "backtest"], ["how", "how it works"],
+  ["trends", "trends"], ["backtest", "backtest"],
+  ["how", "how it works"],
 ];
 
 /* Interior shell: sticky topbar, centered column, footer. Home sits
@@ -79,6 +81,7 @@ export default function App() {
           <Route path="/scoreboard" element={<Scoreboard />} />
           <Route path="/model" element={<ModelTab />} />
           <Route path="/markets" element={<MarketPicks standalone />} />
+          <Route path="/trends" element={<Trends />} />
           <Route path="/backtest" element={<Backtest />} />
           <Route path="/how" element={<HowItWorks />} />
           <Route path="/match/:id" element={<MatchDetail />} />

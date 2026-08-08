@@ -455,3 +455,17 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 
 .how-card p { color: var(--dim); font-size: 13px; margin: 0;
   line-height: 1.55; }
 :focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+
+/* Trends page controls (patch 0078). Sort buttons inherit the header
+   cell's look; probes hitting the surrounding th resolve to an ancestor
+   of the button, which the tap audit accepts by containment. */
+.th-sort { all: unset; cursor: pointer; font: inherit; color: inherit;
+  letter-spacing: inherit; text-transform: inherit; }
+.th-sort:hover, .th-sort:focus-visible { color: var(--a); }
+.trend-controls { display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; }
+.trend-filter { border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--text); padding: 9px 12px;
+  font-family: "IBM Plex Mono", monospace; font-size: 12px;
+  min-width: 180px; }
+.trend-filter:focus-visible { outline: none; border-color: var(--a); }

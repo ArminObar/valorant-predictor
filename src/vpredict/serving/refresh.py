@@ -93,6 +93,23 @@ def _odds_phase(out: dict) -> None:
         lock.close()
 
 
+def _trends_phase(out: dict) -> None:
+    """Build trends.json from the store: a pure derived view, rebuilt each
+    full cycle. Kept out of the 10-minute odds tick on purpose — nothing
+    in it changes faster than the results crawl (ASSUMPTIONS §61)."""
+    from ..data.trends import build_trends
+    if not config.MATCHES_JSONL.exists():
+        out["trends"] = {"skipped": "no store yet"}
+        return
+    report = build_trends(store.iter_matches(config.MATCHES_JSONL))
+    path = config.TRENDS_JSON
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    tmp.replace(path)
+    out["trends"] = {"teams": report["n_teams"]}
+
+
 def _markets_phase(out: dict) -> None:
     """Build markets.json in-cycle from the ledger (read directly, no
     pending cap — LOG entry 45) and the server odds log. Atomic write, same
@@ -244,6 +261,12 @@ def refresh_cycle(crawl: bool = True,
         except Exception as e:
             log.error("markets build failed: %s", e)
             out["markets"] = {"error": str(e)}
+    with phase("trends"):
+        try:
+            _trends_phase(out)
+        except Exception as e:
+            log.error("trends build failed: %s", e)
+            out["trends"] = {"error": str(e)}
 
     log.info("refresh cycle: %s", out)
     return out

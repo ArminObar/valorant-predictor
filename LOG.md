@@ -1777,3 +1777,87 @@ fallback's price, not the CLV it implied. The fabricated zero is also a
 plausible real value, so no display-level check could have caught it.
 Four regression tests now pin both halves, including the
 suspended-then-live retry sequence end to end through run_once.
+
+## Entry 60: The render audit was vacuous for payload-driven sections (patch 0078)
+
+**Symptom.** The unit tracker panel absent from the live Markets page
+while /api/markets carried a fully populated unit_tracker block
+(n_staked 1, all fields correct). Backend confirmed working; frontend
+showing nothing.
+
+**Cause.** Two independent facts. (i) The page code is NOT the bug: the
+committed MarketPicks.jsx reads data.unit_tracker and renders the panel,
+proven by rendering the route in the real jsdom harness against a
+payload containing the tracker (text 1246ch -> 1623ch, panel strings
+present), and negative-controlled by rendering the pre-0077 page the
+same way, which fails. (ii) The render audit could not have said any of
+that when 0077 shipped, because its /api/markets mock predated the
+unit_tracker field entirely: the panel's condition was falsy in the
+harness, so "all routes clean" was vacuously true for a section that had
+never rendered once. A wired-but-unfed section renders nothing and
+errors nothing, which is the same blind spot the v2 crisis exposed
+(entries 43-58), one layer up: the route renders, a section inside it
+silently does not. The only remaining explanation for the live absence
+is a served bundle older than the payload's Python: the Dockerfile
+builds the frontend from source in the image (stage 1, npm run build),
+so a genuinely new deploy cannot serve an old bundle; a cached
+index.html in the browser, or a stale Render build (the 0075 incident
+class), can. The bundle-hash comparison in APPLY distinguishes the two
+in one command.
+
+**Fix.** The audit mock now carries the full current payload shape
+(unit_tracker populated, entry_kind on picks), and the render audit
+gains MUST_CONTAIN: per-route required substrings checked against the
+rendered text, failing the route when payload-driven content silently
+does not appear. Seeded with the tracker panel's strings on /markets;
+the mechanism is generic and future sections add one line.
+
+**Why testing missed it.** The audit asserted zero console errors and
+measured text length without requiring any content, and its fixtures
+were written before the field existed. Nothing forced fixture parity
+with the real payload; now the assertion does, for every section listed.
+
+## Entry 61: A poisoned alias could hand one team's prices to another (patch 0078)
+
+**Symptom.** Owner report: matches with confirmed live Pinnacle/Cloudbet
+odds absent from Markets. Investigation found the aliases seed mapping
+"Cloud9" to "LOUD" — two different orgs — and reproduced the
+consequence against this week's real slate: the book's 100 Thieves vs
+Cloud9 fixture (Aug 7) linked to the LOUD vs 100 Thieves match two days
+later, orientation flipped, method "alias". Cloud9's prices would have
+been recorded as LOUD's; the real Cloud9 match lost its fixture and
+vanished from Markets; the stolen link could also poison the victim
+match's close-capture slot.
+
+**Cause.** Three stacked absences. (i) The alias table is data no test
+exercised, and nothing sanity-checked it: how the entry got in is not
+recoverable (fuzzy.py would plausibly have suggested it — "loud" is a
+substring of "cloud9" — but suggestions are never auto-applied, so a
+manual accept slipped). (ii) link_fixture applied aliases BEFORE the
+exact scan, so a poisoned redirect outranked a fixture's own raw
+identity even when its real match was on the board. (iii) No start-time
+check: a name-pair coincidence days away linked as readily as tonight's
+match. Two side findings shipped with the fix: unlinked fixtures were
+re-appended every 10-minute pass for their whole listing window (pure
+log bloat), and a match whose every capture had an unlinked orientation
+dropped out of the markets build with no counter.
+
+**Fix.** Four layers. The poisoned entry is removed from the seed (the
+production copy needs the one-line shell edit in APPLY, since the disk
+was seeded once). link_fixture now scans raw identity first — an alias
+can never steal a fixture whose own teams are on the board — and
+refuses any name match, exact or aliased, whose start differs from the
+book's by more than ODDS_LINK_MAX_START_DELTA_H (6 h), logged loudly.
+Unlinked fixtures are stored once per (source, event, market, line)
+instead of every pass, still counted every pass. The markets build
+counts orientation-dropped groups (skipped.n_groups_unpriced) so a
+match with real prices can never vanish silently again. Seven tests pin
+the poison scenario both ways, the gate, the no-gate default, the
+dedupe, and the counter.
+
+**Why testing missed it.** Linking tests used fictional names with a
+sane fictional alias; nothing tested an alias whose key was itself a
+real team on the board, because the table was assumed curated. The
+re-append and the silent group drop were invisible for the usual
+reason: each pass and each build was individually correct, and nothing
+measured the log or the payload across passes.

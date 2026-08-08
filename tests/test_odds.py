@@ -278,3 +278,83 @@ def test_run_once_retries_freeze_after_unpriceable_first_sighting(
     assert rep2["appended"] == 1
     got = list(iter_captures(log_path))
     assert [(c.capture_kind, c.match_id) for c in got] == [("freeze", "m1")]
+
+
+# ------------------------------------ alias hygiene (LOG entry 61)
+
+PREDS_C9 = [
+    {"match_id": "m_loud", "team1_name": "LOUD",
+     "team2_name": "100 Thieves", "start_ts": "2026-08-09T20:00:00Z"},
+    {"match_id": "m_c9", "team1_name": "100 Thieves",
+     "team2_name": "Cloud9", "start_ts": "2026-08-07T23:00:00Z"},
+]
+
+
+def test_raw_identity_beats_alias_redirect():
+    """The poisoned-alias scenario, pinned: with 'Cloud9 -> LOUD' in the
+    table and BOTH matches on the board, the Cloud9 fixture must link to
+    its own match by raw identity, never be redirected onto LOUD's."""
+    aliases = {"cloud9": "loud"}
+    got = link_fixture("100 Thieves", "Cloud9", PREDS_C9, aliases,
+                       book_start_ts="2026-08-07T23:00:00Z")
+    assert got == ("m_c9", True, "exact")
+
+
+def test_start_gate_refuses_a_cross_link_days_away():
+    """Same poison, worse board: the Cloud9 match is NOT yet listed, so
+    raw identity finds nothing and the alias redirect points at a match
+    two days away. The start-time gate must refuse it."""
+    aliases = {"cloud9": "loud"}
+    preds = [p for p in PREDS_C9 if p["match_id"] == "m_loud"]
+    got = link_fixture("100 Thieves", "Cloud9", preds, aliases,
+                       book_start_ts="2026-08-07T23:00:00Z")
+    assert got == (None, None, None)
+
+
+def test_alias_within_gate_still_links():
+    aliases = {"krnkr": "krunkeresports"}
+    got = link_fixture("Team Solid", "KRNKR", PREDS, aliases,
+                       book_start_ts="2026-07-25T11:30:00Z")
+    assert got == ("m1", True, "alias")
+
+
+def test_no_book_start_means_no_gate():
+    aliases = {"cloud9": "loud"}
+    preds = [p for p in PREDS_C9 if p["match_id"] == "m_loud"]
+    got = link_fixture("100 Thieves", "Cloud9", preds, aliases,
+                       book_start_ts=None)
+    assert got == ("m_loud", False, "alias")
+
+
+def test_exact_link_also_respects_the_start_gate():
+    preds = [{"match_id": "m_far", "team1_name": "Team Solid",
+              "team2_name": "Krunker", "start_ts": "2026-07-28T12:00:00Z"}]
+    got = link_fixture("Team Solid", "Krunker", preds,
+                       book_start_ts="2026-07-25T12:00:00Z")
+    assert got == (None, None, None)
+
+
+def test_unlinked_fixture_is_stored_once_not_every_pass(tmp_path,
+                                                        monkeypatch):
+    import json as _json
+
+    from vpredict.odds import capture as capmod
+
+    pf = tmp_path / "preds.json"
+    pf.write_text(_json.dumps({"predictions": []}), encoding="utf-8")
+    log_path = tmp_path / "odds.jsonl"
+
+    def _fetch(captured_at, capture_kind, **kw):
+        return [OddsCapture(
+            captured_at=captured_at, source="cloudbet",
+            capture_kind=capture_kind, book_event_id="e77",
+            book_home="Mystery Org", book_away="Unknown Five",
+            price_home=1.90, price_away=1.90)]
+
+    monkeypatch.setattr(capmod.cloudbet, "fetch_valorant_fixtures", _fetch)
+    r1, _ = capmod.run_once(["cloudbet"], from_file=str(pf),
+                            log_path=log_path)
+    r2, _ = capmod.run_once(["cloudbet"], from_file=str(pf),
+                            log_path=log_path)
+    assert r1["unlinked"] == 1 and r2["unlinked"] == 1
+    assert len(list(iter_captures(log_path))) == 1

@@ -108,6 +108,15 @@ def test_per_map_payload_contract():
 
     # Coverage: both per-map dicts speak for exactly the requested pool.
     assert set(p["per_map"]) == set(pool)
+
+    # The low-history flag ships with its evidence: each side's prior
+    # eligible-map count at the cutoff (ASSUMPTIONS §62). Integers, and
+    # consistent with the flag's own threshold rule.
+    assert isinstance(p["team1_prior_maps"], int)
+    assert isinstance(p["team2_prior_maps"], int)
+    assert p["low_history"] == (
+        min(p["team1_prior_maps"], p["team2_prior_maps"])
+        < config.MIN_MAPS_HISTORY)
     assert set(p["per_map_elo"]) == set(pool)
 
     # The leans are the SAME numbers the feature row consumed: recompute

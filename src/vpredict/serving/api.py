@@ -279,6 +279,14 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                              "items": len(val) if isinstance(val, (list, dict))
                              else None})
 
+    @app.get("/api/trends")
+    def trends() -> JSONResponse:
+        path = data_dir / "processed" / "trends.json"
+        if path.exists():
+            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+        return JSONResponse({"generated_at": None, "params": {},
+                             "n_teams": 0, "teams": []})
+
     @app.get("/api/markets")
     def markets() -> JSONResponse:
         path = data_dir / "processed" / "markets.json"

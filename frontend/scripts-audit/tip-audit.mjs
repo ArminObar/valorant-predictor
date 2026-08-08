@@ -12,7 +12,7 @@ const PAGE = pathToFileURL(
   path.resolve(import.meta.dirname, "tip-page.html")).href;
 // route -> exact expected icon count; drift in either direction fails.
 const EXPECT = { "/upcoming": 1, "/scoreboard": 3, "/model": 2,
-                 "/markets": 1, "/backtest": 1 };
+                 "/markets": 1, "/trends": 1, "/backtest": 1 };
 const TOL = 3; // px; placement is exact, tolerance is for rounding
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

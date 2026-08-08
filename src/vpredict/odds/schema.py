@@ -14,6 +14,7 @@ never a silent fuzzy guess (ASSUMPTIONS §13/§14).
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 from datetime import datetime, timezone
@@ -22,6 +23,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from .. import config
+
+log = logging.getLogger("vpredict.schema")
 
 
 class OddsCapture(BaseModel):
@@ -135,30 +138,64 @@ def load_aliases(path: Path = config.ODDS_ALIASES_JSON) -> dict[str, str]:
 
 
 def link_fixture(book_home: str, book_away: str, predictions: list[dict],
-                 aliases: dict[str, str] | None = None
+                 aliases: dict[str, str] | None = None,
+                 book_start_ts=None,
                  ) -> tuple[str | None, bool | None, str | None]:
     """Match a book fixture to one frozen prediction.
 
     Returns (match_id, book_home_is_team1, method). Predictions are the
     dicts the public /api/upcoming serves (team1_name/team2_name/match_id).
-    Exact normalised pair match first (either orientation), then the alias
-    table; anything else is (None, None, None) and the caller logs it.
+    Two rules harden this against alias poisoning (LOG entry 61):
+
+    1. RAW identity beats alias redirect. The raw normalised pair is
+       scanned against every prediction before any alias is applied, so
+       an alias mapping one real org's name onto another can never steal
+       a fixture whose own teams are already on the board.
+    2. Start-time gate. When the book supplies a start time, a candidate
+       whose prediction start differs by more than
+       ODDS_LINK_MAX_START_DELTA_H hours is rejected (and logged), so a
+       name-pair coincidence days away cannot cross-link. No book start
+       means no gate, as before.
+
+    Anything unmatched is (None, None, None) and the caller logs it.
     """
     aliases = aliases or {}
 
-    def canon(name: str) -> str:
-        n = normalize_team(name)
-        return aliases.get(n, n)
+    def _within_gate(p: dict) -> bool:
+        if book_start_ts is None:
+            return True
+        try:
+            ps = datetime.fromisoformat(
+                str(p["start_ts"]).replace("Z", "+00:00"))
+            bs = book_start_ts
+            if isinstance(bs, str):
+                bs = datetime.fromisoformat(bs.replace("Z", "+00:00"))
+            if ps.tzinfo is None:
+                ps = ps.replace(tzinfo=timezone.utc)
+            if bs.tzinfo is None:
+                bs = bs.replace(tzinfo=timezone.utc)
+        except (KeyError, ValueError, TypeError):
+            return True                    # unparseable: do not guess
+        delta_h = abs((ps - bs).total_seconds()) / 3600.0
+        if delta_h > config.ODDS_LINK_MAX_START_DELTA_H:
+            log.warning(
+                "LINK GATE: '%s vs %s' name-matches %s but starts %.1f h "
+                "apart (> %s h); refusing the link", book_home, book_away,
+                p.get("match_id"), delta_h,
+                config.ODDS_LINK_MAX_START_DELTA_H)
+            return False
+        return True
 
-    h, a = canon(book_home), canon(book_away)
-    for p in predictions:
-        t1, t2 = normalize_team(p["team1_name"]), normalize_team(p["team2_name"])
-        if (h, a) == (t1, t2):
-            return p["match_id"], True, "exact" if (
-                normalize_team(book_home), normalize_team(book_away)
-            ) == (t1, t2) else "alias"
-        if (h, a) == (t2, t1):
-            return p["match_id"], False, "exact" if (
-                normalize_team(book_home), normalize_team(book_away)
-            ) == (t2, t1) else "alias"
+    raw = (normalize_team(book_home), normalize_team(book_away))
+    ali = (aliases.get(raw[0], raw[0]), aliases.get(raw[1], raw[1]))
+    for pair, method in ((raw, "exact"), (ali, "alias")):
+        if method == "alias" and pair == raw:
+            break                          # no alias applied: nothing new
+        for p in predictions:
+            t1 = normalize_team(p["team1_name"])
+            t2 = normalize_team(p["team2_name"])
+            if pair == (t1, t2) and _within_gate(p):
+                return p["match_id"], True, method
+            if pair == (t2, t1) and _within_gate(p):
+                return p["match_id"], False, method
     return None, None, None

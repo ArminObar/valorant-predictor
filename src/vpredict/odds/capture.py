@@ -71,6 +71,8 @@ def run_once(sources: list[str], from_file: str | None = None,
     by_id = {p["match_id"]: p for p in predictions}
     aliases = load_aliases()
     state = capture_state(log_path)
+    seen_unlinked = {(c.source, c.book_event_id, c.market, c.line)
+                     for c in iter_captures(log_path) if c.match_id is None}
     counters = {"appended": 0, "unlinked": 0, "skipped_started": 0,
                 "already_captured": 0, "skipped_unpriceable": 0,
                 "source_errors": 0}
@@ -96,16 +98,24 @@ def run_once(sources: list[str], from_file: str | None = None,
         to_append = []
         for cap in fixtures:
             mid, home_is_t1, method = link_fixture(
-                cap.book_home, cap.book_away, predictions, aliases)
+                cap.book_home, cap.book_away, predictions, aliases,
+                book_start_ts=cap.book_start_ts)
             cap.match_id, cap.book_home_is_team1 = mid, home_is_t1
             cap.link_method = method
             if mid is None:
                 counters["unlinked"] += 1
-                log.info("UNLINKED %s fixture: %s vs %s — add to %s if it "
-                         "belongs to a frozen prediction",
-                         source, cap.book_home, cap.book_away,
-                         config.ODDS_ALIASES_JSON)
-                to_append.append(cap)     # stored anyway, per §13
+                ukey = (source, cap.book_event_id, cap.market, cap.line)
+                if ukey not in seen_unlinked:
+                    # One stored record per unlinked fixture: enough for
+                    # suggest_aliases and for any later relink, without the
+                    # 10-minute tick appending a duplicate every pass for
+                    # the whole listing window (LOG entry 61).
+                    seen_unlinked.add(ukey)
+                    log.info("UNLINKED %s fixture: %s vs %s — add to %s if "
+                             "it belongs to a frozen prediction",
+                             source, cap.book_home, cap.book_away,
+                             config.ODDS_ALIASES_JSON)
+                    to_append.append(cap)     # stored once, per §13
                 continue
             start = datetime.fromisoformat(
                 by_id[mid]["start_ts"].replace("Z", "+00:00"))

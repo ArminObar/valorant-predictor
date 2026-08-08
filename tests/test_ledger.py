@@ -123,3 +123,27 @@ def test_self_collided_fixture_is_never_predicted(tmp_path):
                           json_path=tmp_path / "up.json")
     assert out["skipped_placeholder"] == 1 and out["inserted"] == 0
     led.close()
+
+
+def test_prior_map_counts_freeze_with_the_flag(tmp_path):
+    """ASSUMPTIONS §62: the counts are the flag's evidence at call time,
+    stored with the frozen row; absent counts stay NULL (never 0), and the
+    idempotent ALTERs upgrade an existing ledger in place."""
+    led = _mk(tmp_path)
+    led.insert_prediction(
+        match_id="lh1", start_ts=NOW + timedelta(hours=2),
+        team1="a", team2="b", team1_name="A", team2_name="B",
+        event="E", best_of=3, p_model=0.6, p_elo=0.55,
+        model_version="v1", low_history=True,
+        team1_prior_maps=2, team2_prior_maps=0, now=NOW)
+    _insert(led, mid="nohist")            # older call path: no counts
+    rows = {r["match_id"]: r for r in led.rows()}
+    assert rows["lh1"]["team1_prior_maps"] == 2
+    assert rows["lh1"]["team2_prior_maps"] == 0
+    assert rows["nohist"]["team1_prior_maps"] is None
+    led.close()
+    # Reopening re-runs migrations: must be a no-op, data intact.
+    led2 = _mk(tmp_path)
+    rows = {r["match_id"]: r for r in led2.rows()}
+    assert rows["lh1"]["team2_prior_maps"] == 0
+    led2.close()

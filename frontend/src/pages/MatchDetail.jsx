@@ -67,8 +67,16 @@ export function MatchDetail() {
             )}
             {" "}&middot; Elo {fmtPct(src.p_elo)}
             {Boolean(src.low_history) && (
-              <span className="badge" title={"Almost no history when this "
-                + "locked. Kept in the record, not scored."}>low history</span>
+              <span className="badge" title={src.team1_prior_maps != null
+                ? `${src.team1_name}: ${src.team1_prior_maps} prior map`
+                  + `${src.team1_prior_maps === 1 ? "" : "s"}, `
+                  + `${src.team2_name}: ${src.team2_prior_maps} when this `
+                  + `locked. Kept in the record, not scored.`
+                : "Almost no history when this "
+                  + "locked. Kept in the record, not scored."}>low history
+                {src.team1_prior_maps != null
+                  && ` (${src.team1_prior_maps}/${src.team2_prior_maps})`}
+              </span>
             )}
           </span>
           <span className="num b">{fmtPctOpp(p)}</span>
