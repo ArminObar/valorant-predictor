@@ -113,6 +113,14 @@ def predict_one(bundle: dict, engine: AsOfEngine, lites: list[dict],
     snap_b = engine.team_snapshot(b, now_ts)
     low_history = min(snap_a.n_maps, snap_b.n_maps) < config.MIN_MAPS_HISTORY
     diffs = snapshot_diffs(snap_a, snap_b)
+    if "roster_ext_maps_diff" in feature_names:
+        # Bundle-driven (ASSUMPTIONS §66): the trained schema decides, so
+        # train and serve cannot drift on this family.
+        from ..features.roster import roster_features_asof
+        ra = roster_features_asof(engine.df, a, now_ts)
+        rb = roster_features_asof(engine.df, b, now_ts)
+        for k in ("roster_ext_maps_log", "roster_coplay_log"):
+            diffs[k.replace("_log", "_diff")] = ra[k] - rb[k]
     probe = {"a": a, "b": b, "maps": [], "maps_extra": pool}
     e_feat = elo_snapshot_at(lites, now_ts, probe,
                              k=params.get("elo_k_features", config.DEFAULT_ELO_K))

@@ -2377,3 +2377,61 @@ recovery source stays untouched until the question closes. The
 evidence request stands regardless: full gap_audit output, wc -l on
 the log versus the baseline header's row count, and crontab -l on the
 Mac.
+
+## 66. Roster-continuity features, Phase 1 — pre-registered protocol and decision rule (patch 0082)
+
+**Owner-approved scope: membership signal only.** Two features from
+team-membership data the store already holds, no performance stats, no
+new scraping, no parser changes: roster_ext_maps_diff (log1p of the
+current lineup's prior maps on OTHER teams, differenced) and
+roster_coplay_diff (log1p of mean pairwise co-appearances among the
+current lineup, differenced). Current lineup = the most recent
+ELIGIBLE map's lineup under the §3 estimated-finish rule; a literal
+debut has no lineup and reads 0.0 by design. Identity is the display
+name; for map-COUNT features a mislink biases a count and cannot
+poison a performance history — an accepted Phase-1 tradeoff, with
+id-based identity queued for Phase 2. The in-build leakage spot-check
+now cross-validates the batch sweep against an independent
+truncated-history recomputation, and augment_swapped negates the new
+columns automatically because they end in _diff.
+
+**Ablation protocol, written before the run.** One relaxed build per
+arm (min_history=0, roster off/on); STANDARD rows are then the subset
+with both teams at >=3 prior maps, which reproduces the shipped
+filter; the low-history slice is the complement, never used before by
+any selection. The shipped machinery is reused verbatim:
+chronological_split on standard rows (70/15/15 by match),
+augment_swapped on train, select_model's full gated menu and
+calibration on validation. The test window is a DISCLOSED SECOND READ
+of the same window results-2yr used; validation decides, test is
+reported for the record.
+
+**Decision rule, fixed in advance.** Ship default ON (and bump
+BUNDLE_BEHAVIOR_REV) only if the ON arm improves the LOW-HISTORY
+validation log loss — the population this family exists for — AND does
+not worsen overall validation log loss by more than 0.001. Any other
+outcome ships the code default OFF with the numbers reported honestly,
+and Phase 2 stays held. Per-tier validation numbers are reported for
+both arms; low-history per-tier cells are expected to be tiny and are
+reported with their n.
+
+*Run outcome (2026-08-09, `roster_phase1-2026-08-09.md`): primary MET
+(low-history val LL 0.6658 -> 0.6413, acc 62.9% -> 67.0%, n=288);
+guard MET (overall val LL 0.6504 -> 0.6447). Disclosed test read moved
+the same direction independently (low-history 0.6901 -> 0.6283, acc
+57.2% -> 68.3%, n=145; overall 0.6716 -> 0.6619). Verdict per the
+pre-fixed rule: SHIP default ON, BUNDLE_BEHAVIOR_REV 4 -> 5 (one
+retrain on deploy). Honesty items on the record: per-tier validation
+is mixed on data-rich tiers (tier2 improves 0.6531 -> 0.6431; tier1
+slightly worse 0.6648 -> 0.6685; "other" worse on n=48) — the gain
+concentrates exactly where the family was aimed. Suspicious-good
+scrutiny per the standing rule: the low-history deltas are large, but
+the features are as-of membership counts under the same
+estimated-finish rule as everything else, the in-build leakage
+spot-check now cross-validates the batch sweep against an independent
+truncated-history recomputation in BOTH arms, val and test slices
+moved consistently and independently, and the mechanism (imported
+experience where team history is thin) is exactly the a-priori
+hypothesis — accepted as real, with the live low-history ledger slice
+as the ongoing check. Phase 2 remains held pending that live
+confirmation.*

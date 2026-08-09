@@ -1,30 +1,32 @@
-# APPLY — patch 0081: coverage-drop hardening, branch-independent
+# APPLY — patch 0082: roster-continuity features, Phase 1 (ships ON per §66)
 
-One patch (ASSUMPTIONS §65). No model change, no frontend change,
-BUNDLE_BEHAVIOR_REV untouched. Ships only what is correct under either
-surviving mechanism for the coverage drop; the deploy itself then
-discriminates between them.
+One patch, owner-approved scope (ASSUMPTIONS §66): membership-only
+roster-continuity features, no performance stats, no new scraping, no
+parser changes. The pre-registered ablation decided the default:
+primary and guard both MET, so the family ships ON and
+BUNDLE_BEHAVIOR_REV bumps 4 -> 5, which triggers exactly ONE retrain on
+deploy. Frozen ledger rows are immune by construction (§8).
 
-What ships: the legacy /api/ingest/markets route is removed and
-scripts/publish_markets.py deleted (markets is server-authoritative; a
-surviving Mac cron job now fails loudly instead of silently replacing
-the fresh build); every server markets build carries
-"builder": "server-refresh" and the gap-audit header prints it, so a
-foreign or pre-0081 markets.json is visibly UNSTAMPED; the odds ingest
-endpoint now applies §58's priceable gate (suspended rows counted as
-"unpriceable", never appended — also blocks --push-log from
-re-importing pre-gate rows); the audit header adds the capture-log
-time span.
+New: src/vpredict/features/roster.py (batch sweep + serving query,
+pinned equal by test), two columns roster_ext_maps_diff and
+roster_coplay_diff in training and serving (serving is bundle-driven:
+it computes them only when the trained schema carries them),
+scripts/ablate_roster.py (the §66 harness; the only source of the
+numbers), roster_phase1-2026-08-09.md (this run's record), five
+feature tests, MODEL_CARD updates, and the in-build leakage spot-check
+now cross-validates the roster sweep against an independent
+truncated-history recomputation.
 
 ## Base
 
-Applies on top of patch 0080 (the coverage-gap audit).
+Applies on top of patch 0081 (markets provenance + ingest hardening).
+Apply 0081 first if you have not.
 
 ## Apply
 
 ```bash
 cd ~/Downloads/valorant-predictor
-git am ~/Downloads/0081-*.patch
+git am ~/Downloads/0082-*.patch
 git log --oneline -1
 ```
 
@@ -36,41 +38,44 @@ python3 -m pytest
 cd frontend && npm test && npm run build && npm run audit && cd ..
 ```
 
-Expect 225 Python tests and 44 JS tests.
+Expect 230 Python tests and 44 JS tests.
 
-## Push, then run the discriminator
+## Push, then verify the one retrain
 
-After deploy, wait two or three 10-minute odds ticks, then in the
-Render Shell:
+Deploy triggers a single retrain (rev 5). After the next FULL cycle:
 
 ```bash
-python3 scripts/gap_audit.py
-wc -l /data/odds/odds.jsonl
+python3 - <<'PYEOF'
+import json, urllib.request
+d = json.load(urllib.request.urlopen(
+    "https://vpredict.onrender.com/api/model"))
+print("version:", d.get("version"))
+PYEOF
 ```
 
-Read it against §64's baseline (58 covered / 51 expected gap / 1
-casualty):
+The version string must change once and then hold. In the Render Shell,
+confirm the new bundle carries the family:
 
-- Covered recovers toward 58 AND the header shows
-  builder: server-refresh -> mechanism B (legacy Mac markets push) was
-  live and is now closed. Also run `crontab -l` on the Mac and delete
-  any publish_markets line — the job can only fail loudly now, but it
-  should not keep firing.
-- Covered stays near 35 -> mechanism A confirmed: the log lost rows.
-  Say the word and 0082 is the capture-rebuild tool that reconstructs
-  them from /data/raw (full response bodies, per source, per day —
-  nothing unrecoverable). No deploy alone can recover coverage in this
-  branch; the rebuild does.
+```bash
+python3 - <<'PYEOF'
+import joblib
+b = joblib.load("/data/models/model.joblib")
+print([c for c in b["feature_names"] if c.startswith("roster")])
+print("behavior rev:", b.get("behavior_rev"))
+PYEOF
+```
 
-Either way, paste the full audit output. The wc -l line against the
-baseline header's "capture log: N rows" settles the log question in
-one comparison.
+Expect roster_stability_diff plus the two new columns, behavior rev 5.
+Low-history matches predicted AFTER the retrain will differentiate by
+lineup pedigree instead of collapsing to shared defaults; already-
+frozen predictions never change. The identical-probability plateau
+behavior (§21/LOG 37) is unrelated and unchanged.
 
 ## Rollback
 
 ```bash
-git revert <0081-sha>
+git revert <0082-sha>
 ```
 
-Restores the legacy route; do that only if something unexpected breaks,
-since the route's only known caller is the stale legacy job.
+Reverting also reverts the rev bump; the next deploy retrains once
+back onto the previous schema. Frozen rows unaffected either way.

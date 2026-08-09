@@ -36,7 +36,9 @@
   share, attack/defense side efficiencies, first-kill diff per 12 rounds,
   shrunk pistol win rate, rest days, roster stability, overall and
   map-specific Elo diffs, map identity one-hots, best-of, playoff flag,
-  history depth. Tier-B economy/clutch features are auto-dropped when the
+  history depth, and two roster-continuity signals (lineup experience
+  imported from other teams; lineup co-play), computed from observed
+  lineups as of match start. Tier-B economy/clutch features are auto-dropped when the
   source tabs weren't scraped (they currently are dropped).
 - **Version.** Reported by `/api/model` and stamped on every ledger row.
 
@@ -163,7 +165,10 @@ third-decimal. Every figure regenerates from `scripts/evaluate.py`.
 - **Roster/patch semantics are coarse.** Roster change is a lineup-overlap
   decay factor; patches and agent metas are unmodeled.
 - **Low-history flag.** Predictions for teams with <3 prior maps are made
-  but flagged `low_history` in the ledger and UI.
+  but flagged `low_history` in the ledger and UI. Roster-continuity
+  features reduce (not remove) the cold start; a literal debut lineup
+  is unknown until its first scraped map, and player identity is
+  name-keyed until the Phase-2 id retrofit.
 
 ## Maintenance
 

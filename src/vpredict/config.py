@@ -78,7 +78,7 @@ CAL_OUTPUT_CLIP = 0.005
 # rev 3 = stand-in features (§19) + deploy-retrain trigger (LOG entry 36);
 # rev 4 = smooth-isotonic calibration candidate in the menu (§21 option B,
 #         LOG entry 37) — output shape can change if it wins selection.
-BUNDLE_BEHAVIOR_REV = 4
+BUNDLE_BEHAVIOR_REV = 5
 # Published probabilities (ledger, upcoming JSON, backtest rows) are rounded
 # to this many decimals and then clamped inside (0, 1) by one ulp of that
 # rounding — a probability of exactly 0.0000 or 1.0000 is an evidentially
@@ -225,6 +225,12 @@ TRENDS_ACTIVE_DAYS = 60       # hide teams with no completed map since
 TRENDS_MIN_LIFETIME_MAPS = 5  # below this a window is noise
 TRENDS_ROWS_JSON = PROCESSED_DIR / "trends_rows.json"
 TRENDS_SCOPE_MIN_MAPS = 5     # min maps INSIDE a custom scope to list a team
+
+# Roster-continuity feature family, Phase 1 (ASSUMPTIONS §66). Membership
+# only, no performance stats, no new scraping. Default reflects the
+# pre-registered ablation verdict recorded in §66; serving auto-detects
+# from the bundle's feature_names, so this flag only steers TRAINING.
+ROSTER_CONTINUITY_FEATURES = True   # §66 ablation verdict: SHIP
 
 # Hypothetical unit tracker (ASSUMPTIONS §59). Imaginary units on a FIXED,
 # non-compounding notional: a sizing diagnostic, never money, never a

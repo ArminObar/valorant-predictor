@@ -22,6 +22,8 @@ from .. import config
 from ..data.store import is_playoff
 from ..modeling.baselines import compute_prematch_elo, elo_snapshot_at, matches_lite_from_maps
 from .asof import AsOfEngine, TIER_A_DIFFS, TIER_B_DIFFS, add_est_end, snapshot_diffs
+from .roster import (roster_continuity_table,
+                     roster_features_asof)
 
 log = logging.getLogger("vpredict.build")
 
@@ -71,12 +73,17 @@ def build_features(
     min_history: int = config.MIN_MAPS_HISTORY,
     spot_checks: int = config.LEAKAGE_SPOT_CHECKS,
     seed: int = config.RANDOM_SEED,
+    roster_continuity: bool | None = None,
 ) -> FeatureSet:
     if maps_df.empty:
         raise ValueError("maps_df is empty — scrape data first (make scrape) or run make demo")
     lites = matches_lite_from_maps(maps_df)
     elo_table = compute_prematch_elo(lites, k=elo_k)
     engine = AsOfEngine(maps_df, half_life_days=half_life_days, roster_factor=roster_factor)
+    if roster_continuity is None:
+        roster_continuity = config.ROSTER_CONTINUITY_FEATURES
+    roster_table = (roster_continuity_table(maps_df, lites)
+                    if roster_continuity else None)
 
     feat_rows: list[dict] = []
     meta_rows: list[dict] = []
@@ -88,6 +95,11 @@ def build_features(
         if min(snap_a.n_maps, snap_b.n_maps) < min_history:
             continue
         diffs = snapshot_diffs(snap_a, snap_b)
+        if roster_table is not None:
+            ra = roster_table[(str(lite["match_id"]), lite["a"])]
+            rb = roster_table[(str(lite["match_id"]), lite["b"])]
+            for k in ("roster_ext_maps_log", "roster_coplay_log"):
+                diffs[k.replace("_log", "_diff")] = ra[k] - rb[k]
         hist_min = math.log1p(min(snap_a.n_maps, snap_b.n_maps))
         playoff = is_playoff(lite["series"])
         entry = elo_table[lite["match_id"]]
@@ -134,6 +146,8 @@ def build_features(
 
     base = ["elo_diff", "map_elo_diff"] + TIER_A_DIFFS + \
         [c for c in TIER_B_DIFFS if c not in dropped]
+    if roster_table is not None:
+        base += ["roster_ext_maps_diff", "roster_coplay_diff"]
     feature_names = base + CONTEXT_FEATURES + sorted(dummies.columns)
     X = X[feature_names].astype(float)
 
@@ -163,6 +177,13 @@ def _recompute_row(maps_df: pd.DataFrame, fs: FeatureSet, i: int) -> pd.Series:
     snap_a = engine.team_snapshot(m["team_a"], cutoff)
     snap_b = engine.team_snapshot(m["team_b"], cutoff)
     diffs = snapshot_diffs(snap_a, snap_b)
+    if "roster_ext_maps_diff" in fs.feature_names:
+        # Independent recomputation on purpose: the truncated-history
+        # O(n) query cross-checks the build's batch sweep (§66).
+        ra = roster_features_asof(trunc, m["team_a"], cutoff)
+        rb = roster_features_asof(trunc, m["team_b"], cutoff)
+        for k in ("roster_ext_maps_log", "roster_coplay_log"):
+            diffs[k.replace("_log", "_diff")] = ra[k] - rb[k]
     lites_trunc = matches_lite_from_maps(trunc)
     probe = {"a": m["team_a"], "b": m["team_b"],
              "maps": [(m["map_name"], 0, m["map_index"])]}
