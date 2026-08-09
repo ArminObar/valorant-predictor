@@ -52,7 +52,7 @@ def test_appends_validated_and_dedupes(tmp_path, monkeypatch):
     r = _post(c, {"captures": [_cap(), _cap()]})       # same record twice
     assert r.status_code == 200
     assert r.json() == {"received": 2, "appended": 1,
-                        "duplicates": 1, "invalid": 0}
+                        "duplicates": 1, "invalid": 0, "unpriceable": 0}
     # idempotent re-push
     r2 = _post(c, {"captures": [_cap()]})
     assert r2.json()["appended"] == 0 and r2.json()["duplicates"] == 1

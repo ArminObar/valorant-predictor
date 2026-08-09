@@ -201,8 +201,11 @@ def classify(graded_rows: list[dict], captures: list[OddsCapture],
         else:
             buckets["5b_never_listed"].append(info)
 
+    caps_ts = [c.captured_at for c in captures]
     stats = {
         "n_graded": len(graded_rows),
+        "log_first": min(caps_ts).isoformat() if caps_ts else None,
+        "log_last": max(caps_ts).isoformat() if caps_ts else None,
         "n_low_history": sum(1 for r in graded_rows
                              if r.get("low_history")),
         "n_captures": len(captures),
@@ -220,9 +223,11 @@ def render(result: dict, picks: list[dict], markets_meta: dict,
     """The report string, identical in shape to the first production run
     (2026-08-08) so results stay comparable over time."""
     buckets, st = result["buckets"], result["stats"]
+    builder = (markets_meta.get("builder")
+               or "UNSTAMPED (pre-0081 build or foreign write)")
     lines = ["=" * 70, "RECONCILIATION",
              f"  markets.json generated_at: "
-             f"{markets_meta.get('generated_at')}",
+             f"{markets_meta.get('generated_at')}  builder: {builder}",
              f"  ledger: {st['n_graded']} graded rows"
              + (f", {pending_n} pending" if pending_n is not None
                 else ""),
@@ -239,7 +244,9 @@ def render(result: dict, picks: list[dict], markets_meta: dict,
         f"  markets skipped counters: {markets_meta.get('skipped')}",
         f"  capture log: {st['n_captures']} rows; linked matches "
         f"{st['n_linked_matches']}; unlinked fixtures (deduped) "
-        f"{st['n_unlinked_fixtures']}"]
+        f"{st['n_unlinked_fixtures']}",
+        f"  capture log span: {st.get('log_first')} .. "
+        f"{st.get('log_last')}"]
     for s, t in st["first_capture_per_source"].items():
         lines.append(f"    first {s} capture: {t}")
     lines += ["=" * 70,

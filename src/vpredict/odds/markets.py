@@ -329,6 +329,10 @@ def build_markets_report(ledger_rows: list[dict],
     from .unit_tracker import compute_unit_tracker
     return {
         "generated_at": (now or datetime.now(timezone.utc)).isoformat(),
+        # Provenance (ASSUMPTIONS 65): the only writer of markets.json is
+        # the in-process refresh build; anything else claiming the file is
+        # visibly foreign in the gap audit header.
+        "builder": "server-refresh",
         "section": section,               # "LIVE" (frozen ledger) or
                                           # "BACKTEST" (simulated) — the two
                                           # are separate by design, never

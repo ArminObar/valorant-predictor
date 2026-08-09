@@ -2340,3 +2340,40 @@ comparison may be recomputed favourably later). The unit tracker's
 never-published picks. Any future historical-relink design (§60,
 still deferred) must be restricted to not-yet-graded matches for
 exactly this reason.
+
+## 65. Coverage-drop hardening ships branch-independent; the diagnosis stays open (patch 0081)
+
+**Owner directed a fix while the discriminator evidence is still owed;
+the defensible call is to ship only what is correct under EITHER
+surviving mechanism, and to say plainly that the cause is not yet
+identified.** The two mechanisms on the table for the 58 -> 35 covered
+drop: (A) the capture log lost rows (fits the empty bug bucket exactly;
+but no code path can shrink the file — every writer opens append-only
+and the upload route is confined to processed/ — so it would be an
+external event); (B) the legacy Mac markets push (scripts/
+publish_markets.py -> /api/ingest/markets) surviving in the Mac crontab
+and periodically replacing the server's fresh markets.json with one
+built from the Mac's stale local data. This patch: (1) removes the
+legacy route and deletes publish_markets.py — markets is
+server-authoritative since the migration, the route had no legitimate
+caller left, and a surviving cron job now fails loudly instead of
+silently overwriting; (2) stamps every server build with
+builder: server-refresh and prints it in the gap-audit header, so an
+unstamped or foreign markets.json is visible forever; (3) applies §58's
+priceable rule at the ingest door (the capture loop got it in 0076; the
+ingest path was the remaining hole, and it also stops --push-log heals
+from re-importing pre-gate suspended rows); (4) adds the capture-log
+time span to the audit header so log drift is a one-line diff against
+§64's baseline.
+
+**The deploy doubles as the discriminator.** If coverage recovers
+toward the 58 baseline within a few ten-minute ticks, mechanism B was
+live and is closed (a LOG entry follows the confirmation). If coverage
+stays near 35, mechanism A is confirmed and the next patch is the
+capture-rebuild tool that reconstructs lost rows from /data/raw's
+full-body response logs — nothing is unrecoverable while raw survives,
+which is also why raw rotation is deliberately NOT in this patch: the
+recovery source stays untouched until the question closes. The
+evidence request stands regardless: full gap_audit output, wc -l on
+the log versus the baseline header's row count, and crontab -l on the
+Mac.

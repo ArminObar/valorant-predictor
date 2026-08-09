@@ -48,6 +48,7 @@ def main() -> int:
     result = classify(graded, captures, mk.get("picks", []), aliases)
     print(render(result, mk.get("picks", []),
                  {"generated_at": mk.get("generated_at"),
+                  "builder": mk.get("builder"),
                   "skipped": mk.get("skipped")}, pending_n))
     return 0
 

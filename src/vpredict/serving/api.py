@@ -222,7 +222,8 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         if not isinstance(items, list) or len(items) > 2000:
             return JSONResponse({"error": "expected 'captures': list "
                                  "(max 2000)"}, status_code=400)
-        from ..odds.schema import OddsCapture, append_captures, iter_captures
+        from ..odds.schema import (OddsCapture, append_captures,
+                                   iter_captures, priceable)
         odds_path = data_dir / "odds" / "odds.jsonl"
 
         def _key(c: "OddsCapture") -> tuple:
@@ -232,13 +233,21 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
         if odds_path.exists():
             seen = {_key(c) for c in iter_captures(odds_path)}
         counts = {"received": len(items), "appended": 0,
-                  "duplicates": 0, "invalid": 0}
+                  "duplicates": 0, "invalid": 0, "unpriceable": 0}
         fresh = []
         for it in items:
             try:
                 cap = OddsCapture.model_validate(it)
             except Exception:
                 counts["invalid"] += 1
+                continue
+            if not priceable(cap):
+                # §58 applies at every door (ASSUMPTIONS 65): suspended and
+                # placeholder prices are not prices; the capture loop stopped
+                # storing them in patch 0076 and the ingest path now matches.
+                # This also stops --push-log heals from re-importing pre-gate
+                # suspended rows.
+                counts["unpriceable"] += 1
                 continue
             k = _key(cap)
             if k in seen:
@@ -355,10 +364,6 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
                      "required": config.EV_MIN_GRADED_PICKS,
                      "ev_validated": False},
             "summary": None, "by_tier": {}, "by_market": {}, "picks": []})
-
-    @app.post("/api/ingest/markets")
-    async def ingest_markets(request: Request) -> JSONResponse:
-        return await _ingest(request, "markets.json", "picks")
 
     @app.get("/api/backtest")
     def backtest() -> JSONResponse:

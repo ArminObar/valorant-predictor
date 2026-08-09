@@ -247,3 +247,31 @@ def test_trends_endpoint_presets_and_custom_scope(tmp_path):
 
     d = client.get("/api/trends?from=notadate&event=No+Such+Cup").json()
     assert d["view"]["n_teams"] == 0             # clamped empty, no 4xx
+
+
+def test_odds_ingest_gates_unpriceable_rows(tmp_path, monkeypatch):
+    """ASSUMPTIONS §65: §58's priceable rule applies at every door. A
+    suspended (0.0) price pushed through the ingest endpoint is counted
+    and dropped, never appended — which also stops --push-log heals from
+    re-importing pre-gate rows."""
+    from fastapi.testclient import TestClient
+    from vpredict.serving.api import create_app
+    monkeypatch.setenv("VPREDICT_INGEST_TOKEN", "s3cret")
+    c = TestClient(create_app(data_dir=tmp_path))
+    base = {"captured_at": "2026-08-08T10:00:00+00:00",
+            "source": "pinnacle", "capture_kind": "freeze",
+            "market": "series_moneyline", "line": None,
+            "book_event_id": "e1", "book_home": "A", "book_away": "B",
+            "book_start_ts": "2026-08-09T10:00:00+00:00",
+            "match_id": "m1", "book_home_is_team1": True,
+            "link_method": "exact"}
+    items = [dict(base, price_home=0.0, price_away=0.0),
+             dict(base, book_event_id="e2", price_home=1.8,
+                  price_away=2.0)]
+    r = c.post("/api/ingest/odds", json={"captures": items},
+               headers={"Authorization": "Bearer s3cret"})
+    assert r.status_code == 200
+    got = r.json()
+    assert got["unpriceable"] == 1 and got["appended"] == 1
+    log = (tmp_path / "odds" / "odds.jsonl").read_text()
+    assert log.count("\n") == 1 and '"price_home":1.8' in log

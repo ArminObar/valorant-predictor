@@ -172,7 +172,15 @@ def test_book_priority_prefers_pinnacle_for_headline():
 
 # --------------------------------------------------------------- ingest API
 
-def test_markets_endpoint_empty_then_ingest_roundtrip(tmp_path, monkeypatch):
+def test_markets_is_server_authoritative_and_legacy_route_is_gone(
+        tmp_path, monkeypatch):
+    """ASSUMPTIONS §65: the in-process refresh build is the only writer of
+    markets.json. The legacy Mac-push route is removed, so a surviving
+    publish job fails loudly instead of silently replacing the fresh
+    build; the read endpoint serves whatever the build wrote, builder
+    stamp included."""
+    import json as _json
+
     from fastapi.testclient import TestClient
     from vpredict.serving.api import create_app
     monkeypatch.setenv("VPREDICT_INGEST_TOKEN", "s3cret")
@@ -183,19 +191,26 @@ def test_markets_endpoint_empty_then_ingest_roundtrip(tmp_path, monkeypatch):
     report = {"generated_at": NOW.isoformat(), "picks": [{"x": 1}],
               "gate": {"n_graded": 0, "required": 100,
                        "ev_validated": False}}
-    assert c.post("/api/ingest/markets", json=report).status_code == 401
-    assert c.post("/api/ingest/markets", json=report,
-                  headers={"Authorization": "Bearer wrong"}
-                  ).status_code == 401
-    ok = c.post("/api/ingest/markets", json=report,
-                headers={"Authorization": "Bearer s3cret"})
-    assert ok.status_code == 200 and ok.json()["items"] == 1
-    assert c.get("/api/markets").json()["picks"] == [{"x": 1}]
-
-    monkeypatch.delenv("VPREDICT_INGEST_TOKEN")
+    # Even a correctly-authenticated legacy push must fail now.
+    # 405 not 404: the SPA fallback owns unknown GET paths, so a POST to
+    # the removed route hits method-not-allowed. Either way: no write.
     assert c.post("/api/ingest/markets", json=report,
                   headers={"Authorization": "Bearer s3cret"}
-                  ).status_code == 503
+                  ).status_code in (404, 405)
+    assert not (tmp_path / "processed" / "markets.json").exists()
+
+    proc = tmp_path / "processed"
+    proc.mkdir(parents=True, exist_ok=True)
+    (proc / "markets.json").write_text(_json.dumps(
+        {**report, "builder": "server-refresh"}))
+    got = c.get("/api/markets").json()
+    assert got["picks"] == [{"x": 1}]
+    assert got["builder"] == "server-refresh"
+
+
+def test_report_carries_builder_provenance():
+    r = build_markets_report([], [])
+    assert r["builder"] == "server-refresh"
 
 
 def test_totals_ev_excluded_from_aggregates_and_gate():
