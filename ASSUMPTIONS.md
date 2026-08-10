@@ -2543,3 +2543,35 @@ the validation gate does not count them. Conservative and reversible
 by design — relaxing the constant re-admits them, the label ships
 either way. The unit tracker is unaffected: its 2026-08-08 boundary
 already excludes the entire era.
+
+## 70. Roster-continuity live checkpoint: population, schedule, and criteria, pinned before any data exists (patch 0086)
+
+**Population.** Graded ledger rows flagged low_history whose
+prediction was made at or after ROSTER_LIVE_SINCE — the rev-5 era,
+when the roster-continuity family began serving. The boundary ships
+PROVISIONAL-CONSERVATIVE at 2026-08-11T00:00:00Z: deliberately late,
+so it can exclude borderline rows but can never include a possibly
+rev-4 row. It tightens to the verified deploy moment in a one-line
+config change once the outstanding 0082 post-deploy verification is
+reported; the report prints the boundary and the distinct
+model_version stamps in the slice so the era claim is inspectable, not
+asserted.
+
+**Metrics.** Series grain, the deliverable: model log loss, Brier, and
+accuracy on the slice against the p_elo column logged at the same
+moment as each prediction — the standing comparator that cannot be
+recomputed favorably later. The same-period established-history slice
+rides alongside for context only; per-tier cells print with their n
+and carry no criterion of their own.
+
+**Schedule and criteria, fixed in advance.** Below n=30 the tool
+reports accumulation only and withholds the metrics entirely: repeated
+small-n peeks invite anchoring and forking-paths temptation, and a
+number nobody has seen cannot steer anyone. At 30 to 49 the numbers
+print labeled DIRECTIONAL with no verdict. At n=50 the decision read
+evaluates the single primary criterion: model log loss strictly below
+Elo log loss on the slice. Framing pinned with it: the §66 ablation
+remains the primary evidence for the family; the live read is a
+sanity check that the serving path computes what training promised.
+Phase 2's gate is the decision read holding, and unlocking Phase 2
+remains an owner call, not an automatic trigger.

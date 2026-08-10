@@ -219,6 +219,14 @@ EV_MIN_GRADED_PICKS = 100
 # Reversible by design: relaxing this constant re-admits them; the
 # per-pick label ships either way.
 MARKETS_PUBLIC_SINCE = "2026-07-25T06:20:25+00:00"
+# Roster-continuity live checkpoint (ASSUMPTIONS §70). The era boundary
+# is PROVISIONAL-CONSERVATIVE: deliberately later than any plausible
+# rev-5 deploy moment, so it can exclude borderline rows but never
+# include a possibly rev-4 one. Tighten to the verified deploy moment
+# (one line) once the outstanding 0082 post-deploy check is reported.
+ROSTER_LIVE_SINCE = "2026-08-11T00:00:00+00:00"
+ROSTER_CHECKPOINT_FIRST_N = 30      # directional read; metrics withheld below
+ROSTER_CHECKPOINT_DECISION_N = 50   # decision read; single primary criterion
 # Series-grain probabilities outside the test window's supported range are
 # labeled EXTRAPOLATION, not edge, and excluded from EV aggregates. Band ≈
 # the frozen test window's series-probability range (results §2).
