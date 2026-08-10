@@ -79,3 +79,30 @@ def test_shape_guards(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     assert _post(c, {"nope": []}).status_code == 400
     assert _post(c, {"captures": [_cap()] * 2001}).status_code == 400
+
+
+def test_records_before_is_strict_and_tz_safe():
+    """§68: the merge filter is strictly-older, so the boundary row
+    itself (the server's surviving head) can never be re-pushed."""
+    from datetime import datetime, timezone
+
+    from vpredict.odds.capture import records_before
+    from vpredict.odds.schema import OddsCapture
+
+    cut = datetime(2026, 7, 29, 19, 39, 25, 114281, tzinfo=timezone.utc)
+
+    def _c(ts):
+        return OddsCapture(captured_at=ts, source="cloudbet",
+                           capture_kind="freeze",
+                           book_event_id="e", book_home="A",
+                           book_away="B", price_home=1.8, price_away=2.0)
+
+    older = _c(datetime(2026, 7, 24, 6, 56, 45, tzinfo=timezone.utc))
+    boundary = _c(cut)
+    newer = _c(datetime(2026, 8, 1, tzinfo=timezone.utc))
+    got = records_before([older, boundary, newer], cut)
+    assert got == [older]
+    # Naive cutoff treated as UTC, same result.
+    got2 = records_before([older, boundary, newer],
+                          cut.replace(tzinfo=None))
+    assert got2 == [older]

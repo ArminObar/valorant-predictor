@@ -36,6 +36,10 @@ def main() -> int:
     ap.add_argument("--push", action="store_true",
                     help="POST the last ODDS_PUSH_WINDOW_H hours of local "
                          "records (idempotent; heals earlier failed pushes)")
+    ap.add_argument("--before", default=None, metavar="ISO_TS",
+                    help="with --push-log: push only records captured "
+                         "STRICTLY before this timestamp (surgical "
+                         "head-restore merge, ASSUMPTIONS 68)")
     ap.add_argument("--push-log", action="store_true",
                     help="POST the ENTIRE local log (idempotent seed)")
     args = ap.parse_args()
@@ -44,6 +48,14 @@ def main() -> int:
 
     if args.push_log:
         records = list(iter_captures())
+        if args.before:
+            from datetime import datetime
+            from vpredict.odds.capture import records_before
+            cut = datetime.fromisoformat(args.before.replace("Z", "+00:00"))
+            kept = records_before(records, cut)
+            print(f"--before {args.before}: {len(kept)} of "
+                  f"{len(records)} local records qualify")
+            records = kept
         print(json.dumps(push_captures(records), indent=1))
         return 0
     if not args.once:

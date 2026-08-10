@@ -1,75 +1,66 @@
-# APPLY — patch 0083: rebuild the odds log's lost head from /data/raw
+# APPLY — patch 0084: restore the truncated head from the Mac log
 
-One patch (ASSUMPTIONS §67, LOG 62). No model change, no frontend
-change, BUNDLE_BEHAVIOR_REV untouched. Ships the rebuild tool, its
-importable core with five tests, and the audit header's "first line
-written" fingerprint.
+One patch (ASSUMPTIONS §68, LOG 62 addendum). Adds --before to
+--push-log for a strictly-older surgical merge, plus the corrected
+timeline and the raw-path correction on the record. No server behavior
+change; the merge runs FROM THE MAC through the 0081-gated ingest.
 
 ## Apply and gate
 
 ```bash
 cd ~/Downloads/valorant-predictor
-git am ~/Downloads/0083-*.patch
+git am ~/Downloads/0084-*.patch
 git log --oneline -1
 source .venv/bin/activate && python3 -m pytest
 cd frontend && npm test && npm run build && npm run audit && cd ..
 git push
 ```
 
-Expect 235 Python tests and 44 JS.
+Expect 236 Python tests and 44 JS. (Push keeps the repo and image
+consistent; the merge itself needs only the Mac-side apply.)
 
-## Preflight in the Render Shell (BEFORE any apply)
+## Evidence first (Render Shell) — finalizes LOG 62's trigger line
 
 ```bash
 ls -la /data/odds/
-df -h /data && du -sh /data/raw
-python3 scripts/rebuild_odds_from_raw.py        # dry run
+ls /data/odds/raw/ | head -5        # the CORRECT raw path
+du -sh /data/odds/raw 2>/dev/null; df -h /data
 ```
 
-- If ls shows a renamed original (odds.jsonl.bak or similar): STOP and
-  paste it — merging the original beats any replay.
-- The ls mtimes, df, du, plus `crontab -l` on the Mac are the trigger
-  evidence LOG 62 still needs; paste them regardless.
-- The dry run prints the raw inventory (cloudbet daily files must reach
-  back before 2026-07-29), the cutoff, and every row it would append,
-  grouped per match. Review, then:
+On the Mac: `crontab -l`. Paste all of it. A renamed original in
+/data/odds still supersedes everything: stop and paste if one exists.
 
-```bash
-python3 scripts/rebuild_odds_from_raw.py --apply
-```
-
-## Mac side (Pinnacle history)
+## The merge (Mac)
 
 ```bash
 cd ~/Downloads/valorant-predictor
-python3 - <<'PYEOF'
-import json
-r = json.loads(open("data/odds/odds.jsonl").readline())
-print("Mac log first row:", r["source"], r["captured_at"])
-PYEOF
-python scripts/capture_odds.py --push-log      # gated since 0081
+python scripts/capture_odds.py --push-log --before 2026-07-29T19:39:25.114281Z
 ```
 
-If the Mac log's first row predates 2026-07-29, the push also restores
-head rows the server raw may lack; the gate drops suspended rows this
-time.
+Expected output shape: "--before ...: N of 21106 local records
+qualify", then the ingest counts — appended = the restored head,
+unpriceable = pre-0076 suspended rows correctly refused at the door,
+duplicates ≈ 0, invalid 0. Nothing pushed can collide with anything
+the server holds: strictly older by construction.
 
 ## Close-out
 
-Wait one 10-minute tick, then:
+Wait one 10-minute tick, then in the Shell:
 
 ```bash
 python3 scripts/gap_audit.py
 ```
 
-Success criteria pinned in §67, close is a diff not a feeling:
-pre-capture-era back to ~27; capture-era coverage back toward the
-recorded ~70%; the four marquee matches out of the suspended-only
-bucket; exactly one casualty (Cloud9 vs LOUD) still; the header's new
-"first line written" line printed. Paste the output; the LOG-62
-trigger line gets finalized from the preflight evidence.
+Criteria unchanged from §67: pre-capture-era back to ~27; capture-era
+coverage back toward the recorded ~70%; the four marquee matches
+covered again; exactly one casualty (Cloud9 vs LOUD); the header's
+"first line written" now shows the restored head's write order
+honestly (earliest capture 2026-07-24, first written 2026-07-29 —
+that divergence is the healed-log signature the line exists to show).
+Paste the output; LOG 62's trigger line gets finalized from the
+evidence block, or recorded as unidentified-operational.
 
 ## Rollback
 
-The tool appends only; `git revert` removes the tool. Appended rows
-are real recovered captures and stay.
+The merge appends real recovered captures; they stay. `git revert`
+removes only the CLI flag.

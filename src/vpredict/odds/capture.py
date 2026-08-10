@@ -186,6 +186,16 @@ def recent_captures(hours: float | None = None,
 
 
 # ------------------------------------------------------------------ push
+def records_before(records: list["OddsCapture"],
+                   cutoff: datetime) -> list["OddsCapture"]:
+    """Strictly-older filter for a surgical --push-log merge
+    (ASSUMPTIONS §68): everything pushed predates everything the target
+    log holds, so key collisions and entry drift for surviving-era
+    matches are impossible by construction, not by hope."""
+    cut = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc)
+    return [c for c in records if c.captured_at < cut]
+
+
 def push_captures(records: list[OddsCapture],
                   base_url: str | None = None,
                   token: str | None = None,

@@ -2475,3 +2475,34 @@ trigger is unidentified; the LOG entry says so plainly. The standing
 evidence ask (ls -la /data/odds including any renamed original, df,
 du of raw, Mac crontab) rides in APPLY's preflight, and if a renamed
 original surfaces, merging it supersedes the replay.
+
+
+## 68. Restoring the truncated head from the Mac log: the surgical merge (patch 0084)
+
+**Source of truth for the lost window.** The Mac captured alone from
+2026-07-24T06:56:45Z; the server's own capture (and its raw archive at
+/data/odds/raw) begins 2026-07-29T19:39:25Z, so no server-side replay
+can reach the head. The Mac's local log holds it with the ORIGINAL
+capture_kind stamps — higher fidelity than any raw replay, which is
+why the 0083 tool becomes the fallback, not the path.
+
+**The merge is --push-log --before 2026-07-29T19:39:25.114281Z,
+strictly older than the server's surviving head.** Consequences by
+construction, not by hope: zero key collisions (nothing pushed can
+share a timestamp with anything held); zero entry drift for
+surviving-era matches (their rows are untouched); restored pre-cutoff
+rows restore the baseline-published state that §64 recorded, because
+the baseline demonstrably included the migrated prefix. Two deltas
+versus the pre-truncation file, both policy-aligned and stated:
+pre-0076 suspended rows are gated out at the 0081 ingest door (bucket
+3 shrinks rather than refills), and nothing else changes. Unlinked
+originals restore too, including any Cloud9-LOUD rows, so §64's
+casualty classification is expected to persist via original evidence.
+
+**Close-out criteria carry over from §67 unchanged:** pre-era back to
+~27, capture-era coverage back toward the recorded ~70%, the four
+marquee matches covered again, exactly one casualty. The trigger
+evidence ask rides in APPLY once more — ls -la /data/odds (mtimes and
+any renamed original), ls /data/odds/raw (the CORRECT path), df, du,
+Mac crontab — and LOG 62's trigger line is finalized from it or
+recorded as unidentified-operational, never guessed.

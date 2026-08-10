@@ -1902,3 +1902,20 @@ still exist. The audit printed no span until 0081 and nothing
 distinguished write-order head from earliest capture until this patch.
 The loss was visible only as derived-metric drift against §64's
 recorded baseline — which is exactly why that baseline existed.
+
+*Addendum (patch 0084).* Timeline refined by two owner findings: the
+Mac was the SOLE capture source from 2026-07-24T06:56:45Z until
+server-side capture began 2026-07-29T19:39:25Z, and the Mac's local
+log (21,106 rows, intact, original capture-kind stamps) still holds
+the whole window. The §64 baseline (27 pre-era, 58 covered, read
+server-side) proves the migrated Mac prefix WAS on the server that
+morning, so the truncation removed exactly that migrated prefix; "the
+head was never merged" is contradicted by the baseline and stays out
+of the record. Path correction, owed by the investigation itself: the
+odds raw archive lives at /data/odds/raw (config.ODDS_RAW_DIR), not
+/data/raw as earlier instructions said — the earlier "raw doesn't
+exist" check hit the wrong path. Recovery is the Mac log via
+--push-log --before <server head>, strictly older by construction;
+server raw remains the fallback for any post-head gap and its listing
+is trigger evidence either way. Trigger still unidentified pending
+that evidence.*
