@@ -2506,3 +2506,40 @@ evidence ask rides in APPLY once more — ls -la /data/odds (mtimes and
 any renamed original), ls /data/odds/raw (the CORRECT path), df, du,
 Mac crontab — and LOG 62's trigger line is finalized from it or
 recorded as unidentified-operational, never guessed.
+
+## 69. Entry orientability, the audit⇔build parity pin, and the pre-markets-era gate exclusion (patch 0085)
+
+**Entry semantics, made explicit.** The entry is the earliest public
+price that can actually be graded: the earliest ORIENTED priceable
+freeze, else the earliest oriented priceable capture (a close-only
+market keeps reusing its close; CLV stays None there per LOG 59). A
+moneyline capture with no linked orientation can never produce a
+graded side, so it was never a usable entry; such rows are set aside
+from entry selection only, counted in n_entries_unorientable, and stay
+untouched in the log. Sibling-orientation inheritance was considered
+and rejected: books flip listing order mid-window, so every capture
+maps through its OWN linked orientation (LOG 55). Called-in-advance
+survives: the chosen entry is a real pre-match public price at its own
+captured_at.
+
+**Parity is now a test, not a hope.** Any match holding at least one
+oriented priceable moneyline row must be covered by the build; the
+all-unoriented case must land in the orientation bucket, never the bug
+bucket. Pinned across profiles in test_markets, so the audit's
+definition and the build's behavior cannot drift apart on this class
+again.
+
+**Pre-markets-era picks: labeled, shown, out of the gate.** The merge
+restored more than any server baseline held (the original migration
+seeding was partial), so graded picks now emit for matches whose
+entries predate the first possible public markets build — commit
+0d2ddf2, authored 2026-07-25T06:20:25Z, which created markets.py and
+the /api/markets route; config.MARKETS_PUBLIC_SINCE carries that
+timestamp with its derivation. Those picks are deterministic
+derivations from frozen pre-match data and remain visible with the
+pre_markets_era label, but they were never public pre-match, so they
+cannot help validate EV: _ev_excluded returns "pre_markets_era" and
+the validation gate does not count them. Conservative and reversible
+by design — relaxing the constant re-admits them, the label ships
+either way. The unit tracker is unaffected: its 2026-08-08 boundary
+already excludes the entire era.

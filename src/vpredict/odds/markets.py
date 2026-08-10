@@ -49,15 +49,35 @@ def _priceable(c: OddsCapture) -> bool:
     return schema_priceable(c)
 
 
-def _entry_close(caps: list[OddsCapture]) -> tuple[OddsCapture, OddsCapture | None]:
-    """Entry = earliest freeze capture (the public 'called at' price);
-    close = latest close capture. A close-only market uses it for both."""
+def _entry_can_price(c: OddsCapture) -> bool:
+    """A moneyline capture with no linked orientation can never produce a
+    graded side pick, so it was never a usable entry. Totals are
+    canonical by capture convention (home = OVER at every book)."""
+    return c.market != "series_moneyline" or c.book_home_is_team1 is not None
+
+
+def _entry_close(caps: list[OddsCapture],
+                 ) -> tuple[OddsCapture | None, OddsCapture | None, int]:
+    """Entry = earliest ORIENTED priceable freeze (the earliest public
+    price that can actually be graded), falling back to the earliest
+    oriented priceable capture when no oriented freeze exists — a
+    close-only market keeps reusing its close. Unorientable rows are
+    set aside from ENTRY selection only (counted by the caller; they
+    stay in the log) — before patch 0085 an unorientable earliest
+    freeze silently unpriced whole matches that later rows could price
+    (LOG entry 63). Sibling-orientation inheritance was considered and
+    rejected: books flip listing order mid-window, so every capture
+    maps through its OWN linked orientation (LOG entry 55). Close =
+    latest close capture, orientation-checked at price time by
+    _price_of as before."""
     caps = sorted(caps, key=lambda c: c.captured_at)
-    freezes = [c for c in caps if c.capture_kind == "freeze"]
+    orientable = [c for c in caps if _entry_can_price(c)]
+    freezes = [c for c in orientable if c.capture_kind == "freeze"]
     closes = [c for c in caps if c.capture_kind == "close"]
-    entry = freezes[0] if freezes else caps[0]
+    entry = freezes[0] if freezes else (orientable[0] if orientable
+                                        else None)
     close = closes[-1] if closes else None
-    return entry, close
+    return entry, close, len(caps) - len(orientable)
 
 
 def _model_side_probs(row: dict, cap: OddsCapture) -> tuple[float, float] | None:
@@ -110,7 +130,7 @@ def build_picks(ledger_rows: list[dict],
     single record or group can take down the whole build."""
     rows_by_id = {r["match_id"]: r for r in ledger_rows}
     skipped = {"n_unpriceable": 0, "n_group_errors": 0,
-               "n_groups_unpriced": 0}
+               "n_groups_unpriced": 0, "n_entries_unorientable": 0}
     usable: list[OddsCapture] = []
     for c in captures:
         if _priceable(c):
@@ -151,7 +171,12 @@ def build_picks(ledger_rows: list[dict],
                                                key=_group_order):
         row = rows_by_id[mid]
         try:
-            entries = {src: _entry_close(caps) for src, caps in sources.items()}
+            entries = {}
+            for src, caps in sources.items():
+                entry, close, n_uo = _entry_close(caps)
+                skipped["n_entries_unorientable"] += n_uo
+                if entry is not None:
+                    entries[src] = (entry, close)
             # Per-source model side-probs (book orientation can differ by book).
             priced = {}
             for src, (entry, close) in entries.items():
@@ -264,6 +289,8 @@ def build_picks(ledger_rows: list[dict],
                 "won": won,
                 "entry_captured_at": entry.captured_at.isoformat(),
                 "entry_kind": entry.capture_kind,
+                "pre_markets_era": entry.captured_at
+                < datetime.fromisoformat(config.MARKETS_PUBLIC_SINCE),
                 "close_captured": close is not None,
             })
         except Exception:
@@ -284,6 +311,11 @@ def _ev_excluded(p: dict) -> str | None:
         return "extrapolation"
     if config.EV_EXCLUDE_TOTALS and p["market"] == "maps_total":
         return "totals_independence_bias"
+    if p.get("pre_markets_era"):
+        # §69: the entry predates the first possible public markets
+        # build, so this pick was never public pre-match. Deterministic
+        # from frozen data and shown, but it cannot help validate EV.
+        return "pre_markets_era"
     return None
 
 
@@ -296,6 +328,8 @@ def _agg(picks: list[dict]) -> dict:
         "n_graded": len(graded),
         "n_extrapolated": sum(p["extrapolated"] for p in picks),
         "n_ev_excluded": sum(_ev_excluded(p) is not None for p in picks),
+        "n_pre_markets_era": sum(bool(p.get("pre_markets_era"))
+                                 for p in picks),
         "win_rate": (round(sum(p["won"] for p in graded) / len(graded), 4)
                      if graded else None),
         "avg_ev_pct": (round(sum(p["ev_pct"] for p in core) / len(core), 2)

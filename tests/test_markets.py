@@ -21,7 +21,7 @@ from vpredict.odds import cloudbet
 from vpredict.odds.markets import build_markets_report, build_picks
 from vpredict.odds.schema import OddsCapture
 
-NOW = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)
 
 
 # ------------------------------------------------------------- series dist
@@ -527,3 +527,115 @@ def test_all_orientations_unlinked_group_is_counted_not_silent():
     picks, skipped = build_picks([_row()], [cap])
     assert picks == []
     assert skipped["n_groups_unpriced"] == 1
+
+
+# ---- patch 0085: unorientable entries, parity, and the era gate (§69)
+
+def _cap85(kind, days_before, ph, pa, orient=True, start=None,
+           source="cloudbet"):
+    start = start or datetime(2026, 8, 30, 18, 0, tzinfo=timezone.utc)
+    return OddsCapture(
+        captured_at=start - timedelta(days=days_before), source=source,
+        capture_kind=kind, book_event_id="e85", book_home="Alpha",
+        book_away="Beta", book_start_ts=start, price_home=ph,
+        price_away=pa, match_id="m85",
+        book_home_is_team1=(True if orient else None),
+        link_method="exact")
+
+
+def _row85(start=None):
+    start = start or datetime(2026, 8, 30, 18, 0, tzinfo=timezone.utc)
+    return {"match_id": "m85", "team1_name": "Alpha",
+            "team2_name": "Beta", "start_ts": start.isoformat(),
+            "event": "VCT", "best_of": 3, "p_model": 0.31, "p_elo": 0.4,
+            "low_history": 0, "graded": 1, "team1_won": 0,
+            "p_maps_dist": None, "maps_played": 2}
+
+
+def test_unorientable_freeze_no_longer_unprices_the_match():
+    """LOG 63 regression: the restored-era profile — unoriented freeze
+    plus oriented close — must price via the oriented close, entry
+    reused as close, CLV honestly None (LOG 59), the set-aside row
+    counted."""
+    caps = [_cap85("freeze", 3, 1.36, 3.17, orient=False),
+            _cap85("close", 0.01, 1.40, 3.00)]
+    rep = build_markets_report([_row85()], caps)
+    assert len(rep["picks"]) == 1
+    p = rep["picks"][0]
+    assert p["entry_kind"] == "close" and p["clv_pct"] is None
+    assert rep["skipped"]["n_entries_unorientable"] == 1
+    assert rep["skipped"]["n_groups_unpriced"] == 0
+
+
+def test_oriented_later_freeze_becomes_the_entry():
+    caps = [_cap85("freeze", 3, 1.36, 3.17, orient=False),
+            _cap85("freeze", 2, 1.38, 3.10),
+            _cap85("close", 0.01, 1.40, 3.00)]
+    rep = build_markets_report([_row85()], caps)
+    p = rep["picks"][0]
+    assert p["entry_kind"] == "freeze"
+    assert p["clv_pct"] is not None
+    assert rep["skipped"]["n_entries_unorientable"] == 1
+
+
+def test_all_unoriented_still_counts_unpriced_not_an_error():
+    caps = [_cap85("freeze", 3, 1.36, 3.17, orient=False)]
+    rep = build_markets_report([_row85()], caps)
+    assert rep["picks"] == []
+    assert rep["skipped"]["n_groups_unpriced"] == 1
+    assert rep["skipped"]["n_group_errors"] == 0
+
+
+def test_audit_and_build_agree_on_every_orientation_profile():
+    """The parity pin (§69): any match holding at least one oriented
+    priceable moneyline row must be COVERED by the build — the audit's
+    bug bucket stays empty by construction, and the all-unoriented case
+    lands in the orientation bucket, never in 2c."""
+    from vpredict.odds.coverage_audit import classify
+    profiles = {
+        "unoriented freeze + oriented close":
+            [_cap85("freeze", 3, 1.36, 3.17, orient=False),
+             _cap85("close", 0.01, 1.40, 3.00)],
+        "oriented freeze only": [_cap85("freeze", 3, 1.36, 3.17)],
+        "close only": [_cap85("close", 0.01, 1.36, 3.17)],
+        "all unoriented": [_cap85("freeze", 3, 1.36, 3.17, orient=False)],
+    }
+    for name, caps in profiles.items():
+        rep = build_markets_report([_row85()], caps)
+        res = classify([_row85()], caps, rep["picks"], {})
+        assert res["buckets"].get("2c_unexplained", []) == [], name
+        if name == "all unoriented":
+            assert [m["mid"] for m in
+                    res["buckets"].get("2b_orientation_missing", [])] == ["m85"]
+        else:
+            assert [m["mid"] for m in
+                    res["buckets"].get("1_covered", [])] == ["m85"], name
+
+
+def test_pre_markets_era_picks_are_labeled_and_out_of_the_gate():
+    """§69: an entry captured before the first possible public markets
+    build is shown, labeled, and excluded from the validation gate; a
+    post-boundary pick counts normally."""
+    early_start = datetime(2026, 7, 24, 20, 0, tzinfo=timezone.utc)
+    late_start = datetime(2026, 8, 30, 18, 0, tzinfo=timezone.utc)
+    row_e = dict(_row85(early_start), match_id="mE",
+                 team1_name="E1", team2_name="E2")
+    row_l = dict(_row85(late_start), match_id="mL",
+                 team1_name="L1", team2_name="L2")
+    cap_e = OddsCapture(
+        captured_at=early_start - timedelta(hours=6), source="cloudbet",
+        capture_kind="freeze", book_event_id="eE", book_home="E1",
+        book_away="E2", book_start_ts=early_start, price_home=1.8,
+        price_away=2.0, match_id="mE", book_home_is_team1=True,
+        link_method="exact")
+    cap_l = _cap85("freeze", 0.25, 1.8, 2.0, start=late_start)
+    cap_l.match_id = "mL"
+    cap_l.book_home = "L1"
+    cap_l.book_away = "L2"
+    rep = build_markets_report([row_e, row_l], [cap_e, cap_l])
+    by_id = {p["match_id"]: p for p in rep["picks"]}
+    assert by_id["mE"]["pre_markets_era"] is True
+    assert by_id["mE"]["ev_excluded"] == "pre_markets_era"
+    assert by_id["mL"]["pre_markets_era"] is False
+    assert rep["gate"]["n_graded"] == 1
+    assert rep["summary"]["n_pre_markets_era"] == 1

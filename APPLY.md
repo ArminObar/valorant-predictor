@@ -1,66 +1,41 @@
-# APPLY — patch 0084: restore the truncated head from the Mac log
+# APPLY — patch 0085: entry orientability fix, parity pin, era gate label
 
-One patch (ASSUMPTIONS §68, LOG 62 addendum). Adds --before to
---push-log for a strictly-older surgical merge, plus the corrected
-timeline and the raw-path correction on the record. No server behavior
-change; the merge runs FROM THE MAC through the 0081-gated ingest.
+One patch (ASSUMPTIONS §69, LOG 63). Fixes the real bug behind the 23
+bug-bucket matches: an unorientable earliest freeze silently unpriced
+whole matches that later rows could price. No model change, no
+frontend change, BUNDLE_BEHAVIOR_REV untouched; markets.json rebuilds
+on the next tick after deploy.
 
 ## Apply and gate
 
 ```bash
 cd ~/Downloads/valorant-predictor
-git am ~/Downloads/0084-*.patch
+git am ~/Downloads/0085-*.patch
 git log --oneline -1
 source .venv/bin/activate && python3 -m pytest
 cd frontend && npm test && npm run build && npm run audit && cd ..
 git push
 ```
 
-Expect 236 Python tests and 44 JS. (Push keeps the repo and image
-consistent; the merge itself needs only the Mac-side apply.)
+Expect 241 Python tests and 44 JS.
 
-## Evidence first (Render Shell) — finalizes LOG 62's trigger line
-
-```bash
-ls -la /data/odds/
-ls /data/odds/raw/ | head -5        # the CORRECT raw path
-du -sh /data/odds/raw 2>/dev/null; df -h /data
-```
-
-On the Mac: `crontab -l`. Paste all of it. A renamed original in
-/data/odds still supersedes everything: stop and paste if one exists.
-
-## The merge (Mac)
-
-```bash
-cd ~/Downloads/valorant-predictor
-python scripts/capture_odds.py --push-log --before 2026-07-29T19:39:25.114281Z
-```
-
-Expected output shape: "--before ...: N of 21106 local records
-qualify", then the ingest counts — appended = the restored head,
-unpriceable = pre-0076 suspended rows correctly refused at the door,
-duplicates ≈ 0, invalid 0. Nothing pushed can collide with anything
-the server holds: strictly older by construction.
-
-## Close-out
-
-Wait one 10-minute tick, then in the Shell:
+## Close-out (Render Shell, after one 10-minute tick)
 
 ```bash
 python3 scripts/gap_audit.py
 ```
 
-Criteria unchanged from §67: pre-capture-era back to ~27; capture-era
-coverage back toward the recorded ~70%; the four marquee matches
-covered again; exactly one casualty (Cloud9 vs LOUD); the header's
-"first line written" now shows the restored head's write order
-honestly (earliest capture 2026-07-24, first written 2026-07-29 —
-that divergence is the healed-log signature the line exists to show).
-Paste the output; LOG 62's trigger line gets finalized from the
-evidence block, or recorded as unidentified-operational.
+Expected movement, pinned before looking: the 23 leave 2c (bucket back
+to zero — the parity test now guarantees this class cannot recur);
+covered rises by ≈23; skipped counters show n_entries_unorientable > 0
+and n_groups_unpriced correspondingly lower; the gate's n_graded drops
+by the pre-markets-era count (picks with entries before
+2026-07-25T06:20:25Z are labeled pre_markets_era, visible, excluded
+from validation). Remaining gap = never-listed + the 4 genuinely
+suspended-only + 3 alias-era casualties, all previously dispositioned.
+Paste the output and this investigation closes end to end.
 
 ## Rollback
 
-The merge appends real recovered captures; they stay. `git revert`
-removes only the CLI flag.
+`git revert <0085-sha>`; the next tick rebuilds markets.json under the
+old rules. No data is written by this patch at all.

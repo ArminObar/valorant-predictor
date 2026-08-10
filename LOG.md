@@ -1919,3 +1919,38 @@ exist" check hit the wrong path. Recovery is the Mac log via
 server raw remains the fallback for any post-head gap and its listing
 is trigger evidence either way. Trigger still unidentified pending
 that evidence.*
+
+## 63. An unorientable earliest freeze silently unpriced whole matches
+
+**Symptom.** After the head-restore merge, 23 graded matches with
+real, linked, oriented priceable moneyline prices sat in the audit's
+always-zero bucket (2c): the audit saw usable odds, the build emitted
+no pick, and no counter obviously owned them (they accrued in
+n_groups_unpriced among legitimate cases).
+
+**Cause.** Entry selection took the earliest freeze-kind capture with
+no orientability check, and _model_side_probs then required
+orientation from exactly that row. A source whose earliest freeze was
+unoriented dropped entirely even when later captures were oriented;
+with every source dropped, the group unpriced. The audit's bug-bucket
+test accepted ANY oriented priceable row in the match, so audit and
+build disagreed about which row must carry orientation. The restored
+July-era rows carried exactly this profile, so fuller data produced
+fewer picks — the merge exposed the bug, it did not create it, and the
+same matches were covered at the §64 baseline because the partially
+seeded log happened to lack the early unoriented freezes.
+
+**Fix.** Patch 0085. Entry = earliest ORIENTED priceable freeze,
+falling back to the earliest oriented priceable capture (close-reuse,
+CLV stays None per LOG 59); unorientable rows are set aside from entry
+selection only and counted (n_entries_unorientable); sibling-
+orientation inheritance rejected because books flip listing order
+mid-window (LOG 55). A parity test now pins the audit's coverage test
+to the build's pricing test across orientation profiles, so the two
+can never disagree on this class again.
+
+**Why testing missed it.** Every markets fixture used oriented rows
+throughout; no fixture put an unoriented capture EARLIEST in a group
+that later rows could price. And nothing asserted the audit⇔build
+equivalence — each was tested against its own definition, and the gap
+between the definitions is exactly where the 23 lived.

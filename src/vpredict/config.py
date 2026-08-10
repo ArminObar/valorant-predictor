@@ -211,6 +211,14 @@ ODDS_PUSH_WINDOW_H = 24
 EV_EXCLUDE_TOTALS = True
 
 EV_MIN_GRADED_PICKS = 100
+# Earliest moment a markets.json could have been publicly served: the
+# commit that created odds/markets.py and the /api/markets route
+# (0d2ddf2, authored 2026-07-25T06:20:25Z). Picks whose ENTRY precedes
+# this cannot have been public pre-match, so they are labeled and kept
+# out of the validation gate and EV aggregates (ASSUMPTIONS §69).
+# Reversible by design: relaxing this constant re-admits them; the
+# per-pick label ships either way.
+MARKETS_PUBLIC_SINCE = "2026-07-25T06:20:25+00:00"
 # Series-grain probabilities outside the test window's supported range are
 # labeled EXTRAPOLATION, not edge, and excluded from EV aggregates. Band ≈
 # the frozen test window's series-probability range (results §2).
