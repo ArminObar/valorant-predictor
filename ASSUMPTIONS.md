@@ -2435,3 +2435,43 @@ experience where team history is thin) is exactly the a-priori
 hypothesis — accepted as real, with the live low-history ledger slice
 as the ongoing check. Phase 2 remains held pending that live
 confirmation.*
+
+## 67. The log-truncation investigation, the two wrong stories, and the rebuild scope (patch 0083)
+
+**The record of how this closed, kept deliberately.** Two comfortable
+explanations were proposed and withdrawn against the recorded numbers:
+market-tier coverage limits (contradicted by the §64 baseline's 70%
+capture-era coverage under identical limits) and a boundary-definition
+bug in the retired standalone audit (structurally impossible: covered
+never depends on the era boundary, and a boundary can only trade
+matches between the two no-coverage buckets — demonstrated). The
+definition-free fingerprint then falsified the specifics of BOTH
+remaining stories, including this project's own emptied-then-refilled
+variant, and pinned the truth: head truncation before
+2026-07-29T19:39:25Z, a ~3-day loss window, not a ~2-week wipe. The
+arithmetic closes: the matches graded inside that window account for
+the -23 covered and +19 pre-era, and the four marquee "suspended-only"
+matches are the ones whose only surviving rows are post-head suspended
+captures from the pre-0076 era.
+
+**Rebuild scope, chosen and stated.** The replay restores linked,
+priceable freeze/close rows only. Suspended rows are not resynthesized
+(§58 excludes them by policy at every door now). Unlinked fixtures
+from the lost window are not resynthesized: their matches are graded,
+and §64 restricts any future relink to not-yet-graded matches, so they
+have no remaining consumer. Kind stamping replays the production
+decide_kind with simulated slots; captured_at is the archived
+fetched_at; linking runs under today's rules including the 6h gate.
+Additions are restricted to strictly before the surviving head minus a
+60s guard so reconstructed rows can never near-duplicate surviving
+originals whose captured_at differs from fetched_at by seconds; the
+ingest identity key dedupes as a second belt. Apply is append-only.
+Restored rows restore picks that were publicly live before their
+matches on 2026-08-08 — repair of a recorded loss, the opposite of the
+Cloud9-LOUD retroactive-insertion case (§64).
+
+**Open item carried, not dropped.** The truncation's operational
+trigger is unidentified; the LOG entry says so plainly. The standing
+evidence ask (ls -la /data/odds including any renamed original, df,
+du of raw, Mac crontab) rides in APPLY's preflight, and if a renamed
+original surfaces, merging it supersedes the replay.

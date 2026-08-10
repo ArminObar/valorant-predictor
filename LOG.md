@@ -1861,3 +1861,44 @@ real team on the board, because the table was assumed curated. The
 re-append and the silent group drop were invisible for the usual
 reason: each pass and each build was individually correct, and nothing
 measured the log or the payload across passes.
+
+## 62. The odds log lost its head to an operational truncation
+
+**Symptom.** Markets coverage of graded matches collapsed 58 -> 35
+between two same-day audit runs (2026-08-08) and stayed collapsed (42
+of 129 a week later); the pre-capture-era bucket grew 27 -> 46; four
+marquee matches surfaced as "linked but only ever suspended"; two
+plausible-sounding wrong explanations were offered and retracted
+(market-tier limits; a boundary-definition bug in the retired
+standalone audit).
+
+**Cause.** Head truncation of /data/odds/odds.jsonl: every row before
+2026-07-29T19:39:25Z removed, the remainder intact and in original
+order, during the 2026-08-08 window between the two audit runs.
+Established by a definition-free fingerprint (the file's first written
+line equals its earliest capture, cloudbet 2026-07-29T19:39:25), which
+also falsified the emptied-then-refilled variant. Application code is
+exonerated: every writer opens the log append-only, the derived-view
+upload route is confined to processed/, no retention or rotation code
+exists anywhere (grep-verified), and the intact ledger on the same
+disk rules out disk-level events. The operational trigger remains
+unidentified pending file-metadata evidence (ls/mtimes, disk state,
+crontab); recorded honestly as such rather than guessed.
+
+**Fix.** Patch 0083: scripts/rebuild_odds_from_raw.py replays the raw
+response archive (append_raw's full bodies with fetched_at) through
+the CURRENT production code — parse_competition_events, link_fixture
+with the time gate, decide_kind driven with simulated slots,
+priceable() — and appends only linked priceable freeze/close rows
+strictly older than the surviving head minus a guard, key-deduped as a
+second belt. Pinnacle history re-heals from the Mac's local log via
+--push-log through the 0081-gated ingest. The audit header gains a
+"first line written" fingerprint so a healed or truncated log shows
+its divergence on one line forever.
+
+**Why testing missed it.** Nothing asserted the log's integrity as a
+file: tests cover writers and readers, not whether yesterday's bytes
+still exist. The audit printed no span until 0081 and nothing
+distinguished write-order head from earliest capture until this patch.
+The loss was visible only as derived-metric drift against §64's
+recorded baseline — which is exactly why that baseline existed.

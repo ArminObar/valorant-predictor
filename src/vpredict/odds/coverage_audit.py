@@ -206,6 +206,11 @@ def classify(graded_rows: list[dict], captures: list[OddsCapture],
         "n_graded": len(graded_rows),
         "log_first": min(caps_ts).isoformat() if caps_ts else None,
         "log_last": max(caps_ts).isoformat() if caps_ts else None,
+        # Write-order head, distinct from earliest captured_at on purpose:
+        # a healed or truncated log shows the divergence right here (§67).
+        "first_written": ((captures[0].source,
+                           captures[0].captured_at.isoformat())
+                          if captures else None),
         "n_low_history": sum(1 for r in graded_rows
                              if r.get("low_history")),
         "n_captures": len(captures),
@@ -246,7 +251,8 @@ def render(result: dict, picks: list[dict], markets_meta: dict,
         f"{st['n_linked_matches']}; unlinked fixtures (deduped) "
         f"{st['n_unlinked_fixtures']}",
         f"  capture log span: {st.get('log_first')} .. "
-        f"{st.get('log_last')}"]
+        f"{st.get('log_last')}",
+        f"  first line written: {st.get('first_written')}"]
     for s, t in st["first_capture_per_source"].items():
         lines.append(f"    first {s} capture: {t}")
     lines += ["=" * 70,

@@ -1,81 +1,75 @@
-# APPLY — patch 0082: roster-continuity features, Phase 1 (ships ON per §66)
+# APPLY — patch 0083: rebuild the odds log's lost head from /data/raw
 
-One patch, owner-approved scope (ASSUMPTIONS §66): membership-only
-roster-continuity features, no performance stats, no new scraping, no
-parser changes. The pre-registered ablation decided the default:
-primary and guard both MET, so the family ships ON and
-BUNDLE_BEHAVIOR_REV bumps 4 -> 5, which triggers exactly ONE retrain on
-deploy. Frozen ledger rows are immune by construction (§8).
+One patch (ASSUMPTIONS §67, LOG 62). No model change, no frontend
+change, BUNDLE_BEHAVIOR_REV untouched. Ships the rebuild tool, its
+importable core with five tests, and the audit header's "first line
+written" fingerprint.
 
-New: src/vpredict/features/roster.py (batch sweep + serving query,
-pinned equal by test), two columns roster_ext_maps_diff and
-roster_coplay_diff in training and serving (serving is bundle-driven:
-it computes them only when the trained schema carries them),
-scripts/ablate_roster.py (the §66 harness; the only source of the
-numbers), roster_phase1-2026-08-09.md (this run's record), five
-feature tests, MODEL_CARD updates, and the in-build leakage spot-check
-now cross-validates the roster sweep against an independent
-truncated-history recomputation.
-
-## Base
-
-Applies on top of patch 0081 (markets provenance + ingest hardening).
-Apply 0081 first if you have not.
-
-## Apply
+## Apply and gate
 
 ```bash
 cd ~/Downloads/valorant-predictor
-git am ~/Downloads/0082-*.patch
+git am ~/Downloads/0083-*.patch
 git log --oneline -1
-```
-
-## Gates
-
-```bash
-source .venv/bin/activate
-python3 -m pytest
+source .venv/bin/activate && python3 -m pytest
 cd frontend && npm test && npm run build && npm run audit && cd ..
+git push
 ```
 
-Expect 230 Python tests and 44 JS tests.
+Expect 235 Python tests and 44 JS.
 
-## Push, then verify the one retrain
-
-Deploy triggers a single retrain (rev 5). After the next FULL cycle:
+## Preflight in the Render Shell (BEFORE any apply)
 
 ```bash
-python3 - <<'PYEOF'
-import json, urllib.request
-d = json.load(urllib.request.urlopen(
-    "https://vpredict.onrender.com/api/model"))
-print("version:", d.get("version"))
-PYEOF
+ls -la /data/odds/
+df -h /data && du -sh /data/raw
+python3 scripts/rebuild_odds_from_raw.py        # dry run
 ```
 
-The version string must change once and then hold. In the Render Shell,
-confirm the new bundle carries the family:
+- If ls shows a renamed original (odds.jsonl.bak or similar): STOP and
+  paste it — merging the original beats any replay.
+- The ls mtimes, df, du, plus `crontab -l` on the Mac are the trigger
+  evidence LOG 62 still needs; paste them regardless.
+- The dry run prints the raw inventory (cloudbet daily files must reach
+  back before 2026-07-29), the cutoff, and every row it would append,
+  grouped per match. Review, then:
 
 ```bash
-python3 - <<'PYEOF'
-import joblib
-b = joblib.load("/data/models/model.joblib")
-print([c for c in b["feature_names"] if c.startswith("roster")])
-print("behavior rev:", b.get("behavior_rev"))
-PYEOF
+python3 scripts/rebuild_odds_from_raw.py --apply
 ```
 
-Expect roster_stability_diff plus the two new columns, behavior rev 5.
-Low-history matches predicted AFTER the retrain will differentiate by
-lineup pedigree instead of collapsing to shared defaults; already-
-frozen predictions never change. The identical-probability plateau
-behavior (§21/LOG 37) is unrelated and unchanged.
+## Mac side (Pinnacle history)
+
+```bash
+cd ~/Downloads/valorant-predictor
+python3 - <<'PYEOF'
+import json
+r = json.loads(open("data/odds/odds.jsonl").readline())
+print("Mac log first row:", r["source"], r["captured_at"])
+PYEOF
+python scripts/capture_odds.py --push-log      # gated since 0081
+```
+
+If the Mac log's first row predates 2026-07-29, the push also restores
+head rows the server raw may lack; the gate drops suspended rows this
+time.
+
+## Close-out
+
+Wait one 10-minute tick, then:
+
+```bash
+python3 scripts/gap_audit.py
+```
+
+Success criteria pinned in §67, close is a diff not a feeling:
+pre-capture-era back to ~27; capture-era coverage back toward the
+recorded ~70%; the four marquee matches out of the suspended-only
+bucket; exactly one casualty (Cloud9 vs LOUD) still; the header's new
+"first line written" line printed. Paste the output; the LOG-62
+trigger line gets finalized from the preflight evidence.
 
 ## Rollback
 
-```bash
-git revert <0082-sha>
-```
-
-Reverting also reverts the rev bump; the next deploy retrains once
-back onto the previous schema. Frozen rows unaffected either way.
+The tool appends only; `git revert` removes the tool. Appended rows
+are real recovered captures and stay.
